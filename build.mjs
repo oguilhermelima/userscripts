@@ -1,0 +1,222 @@
+#!/usr/bin/env node
+// =============================================================================
+//  build.mjs — build the common and social userscripts into dist/.
+//
+//  Sources live in scripts/. The build produces one installable file per
+//  userscript, an all-in-one pack, and this README.
+//
+//  Usage: node build.mjs
+// =============================================================================
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const scriptsDir = path.join(__dirname, "scripts");
+const distDir = path.join(__dirname, "dist");
+
+const GH = {
+  user: "oguilhermelima",
+  repo: "userscripts",
+  branch: "main",
+};
+const RAW = `https://raw.githubusercontent.com/${GH.user}/${GH.repo}/${GH.branch}/dist`;
+const PACK_BASE = "1.0";
+let packBuild = "0";
+try {
+  packBuild = execFileSync("git", ["rev-list", "--count", "HEAD"], {
+    cwd: __dirname,
+    stdio: ["ignore", "pipe", "ignore"],
+  }).toString().trim();
+} catch {
+  // A new repository has no commit count until its first commit.
+}
+const PACK_VERSION = `${PACK_BASE}.${packBuild}`;
+const HEADER_RE = /\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==/;
+
+function parse(source) {
+  const match = source.match(HEADER_RE);
+  if (!match) throw new Error("missing ==UserScript== block");
+  const header = match[0];
+  const body = source.slice(match.index + header.length).replace(/^\s*\n/, "");
+  const meta = {};
+  for (const line of header.split("\n")) {
+    const item = line.match(/^\/\/\s*@(\S+)(?:\s+(.*?))?\s*$/);
+    if (!item) continue;
+    (meta[item[1]] ||= []).push(item[2] ?? "");
+  }
+  return { header, body, meta };
+}
+
+const first = (meta, key, fallback = "") => meta[key]?.[0] ?? fallback;
+
+function hostsFrom(meta) {
+  const hosts = new Set();
+  for (const pattern of meta.match || []) {
+    const match = pattern.match(/^(?:\*|https?):\/\/([^/]+)(?:\/|$)/);
+    if (!match) continue;
+    hosts.add(match[1].replace(/^\*\./, ""));
+  }
+  return [...hosts];
+}
+
+function withUpdate(header, fileName) {
+  const url = `${RAW}/${fileName}`;
+  const lines = header.split("\n").filter(line => !/@(updateURL|downloadURL)\b/.test(line));
+  const output = [];
+  for (const line of lines) {
+    output.push(line);
+    if (/^\/\/\s*@version\b/.test(line)) {
+      output.push(`// @updateURL    ${url}`);
+      output.push(`// @downloadURL  ${url}`);
+    }
+  }
+  return output.join("\n");
+}
+
+const standaloneFiles = fs.readdirSync(scriptsDir)
+  .filter(file => file.endsWith(".user.js"))
+  .sort();
+const entries = standaloneFiles.map(file => ({
+  name: file.replace(/\.user\.js$/, ""),
+  src: fs.readFileSync(path.join(scriptsDir, file), "utf8"),
+}));
+
+fs.mkdirSync(distDir, { recursive: true });
+const parsed = [];
+for (const entry of entries) {
+  const item = parse(entry.src);
+  parsed.push({ ...entry, ...item });
+  const fileName = `${entry.name}.user.js`;
+  fs.writeFileSync(path.join(distDir, fileName), `${withUpdate(item.header, fileName)}\n${item.body}`);
+}
+
+const union = key => {
+  const values = new Set();
+  for (const item of parsed) for (const value of item.meta[key] || []) values.add(value);
+  return [...values];
+};
+const allMatch = union("match");
+const allGrant = union("grant");
+const allConnect = union("connect");
+const allRequire = union("require");
+const packUrl = `${RAW}/pack.user.js`;
+const headerLines = [
+  "// ==UserScript==",
+  "// @name         Common Userscripts — All-in-One Pack",
+  "// @namespace    oguilhermelima-userscripts",
+  `// @version      ${PACK_VERSION}`,
+  "// @description  Installs all common and social userscripts in one file.",
+  "// @author       oguilhermelima",
+  `// @updateURL    ${packUrl}`,
+  `// @downloadURL  ${packUrl}`,
+  ...allMatch.map(value => `// @match        ${value}`),
+  ...allConnect.map(value => `// @connect      ${value}`),
+  ...allRequire.map(value => `// @require      ${value}`),
+  ...allGrant.map(value => `// @grant        ${value}`),
+  "// @run-at       document-start",
+  "// ==/UserScript==",
+].join("\n");
+
+const modules = parsed.map(item => {
+  const hosts = hostsFrom(item.meta);
+  const noframes = "noframes" in item.meta;
+  const guard = [`hostIn(${JSON.stringify(hosts)})`, noframes ? "window.top === window.self" : null]
+    .filter(Boolean).join(" && ");
+  return `
+/* ===================== ${item.name} (v${first(item.meta, "version")}) ===================== */
+;(function () {
+  if (!(${guard})) return;
+  try {
+${item.body.split("\n").map(line => line.trim() ? `    ${line.trimEnd()}` : "").join("\n")}
+  } catch (error) { console.error("[pack:${item.name}]", error); }
+})();`;
+}).join("\n");
+
+const pack = `${headerLines}
+
+/* ==========================================================================
+ * GENERATED by build.mjs — DO NOT edit manually. Edit scripts/ and rebuild.
+ * Each module below is an isolated IIFE guarded by hostname.
+ * ========================================================================== */
+(function () {
+  "use strict";
+  var host = location.hostname;
+  function hostIn(list) {
+    for (var i = 0; i < list.length; i++) {
+      var hostname = list[i];
+      if (host === hostname || host.endsWith("." + hostname)) return true;
+    }
+    return false;
+  }
+${modules}
+})();
+`;
+fs.writeFileSync(path.join(distDir, "pack.user.js"), pack);
+
+const descriptions = {
+  crunchyroll: "Persistently hides scrollbars across all Crunchyroll routes.",
+  instagram: "Native video controls, unified mosaic feed, responsive grids, lightbox viewer, and saved-post tools for Instagram.",
+  reddit: "Custom Reddit control panel with layout controls, ad cleanup, video autoplay, sorting tabs, and a RedGIFs player.",
+  twitch: "Streamer top navigation plus a YouTube-style Clips and VOD theater with filtering, sorting, and native playback controls.",
+  twitter: "X/Twitter control panel for a wider layout, decluttered sidebars, live preferences, and sensitive-content handling.",
+};
+const cards = parsed.map(item => ({
+  id: item.name,
+  title: first(item.meta, "name") || item.name,
+  desc: descriptions[item.name] || first(item.meta, "description") || "",
+}));
+const truncate = (value, max) => {
+  const text = String(value || "");
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+};
+const rows = cards.map(card => {
+  const description = truncate(card.desc || card.title, 180)
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\|/g, "\\|");
+  return `| **${card.id}** | ${description} | [Install](${RAW}/${card.id}.user.js) |`;
+}).join("\n");
+const readme = `# Common Userscripts
+
+A collection of browser userscripts for common websites and social networks, maintained by oguilhermelima.
+
+## Install
+
+Install a userscript manager first, then choose either the complete pack or individual scripts:
+
+- [Violentmonkey](https://violentmonkey.github.io/)
+- [Tampermonkey](https://www.tampermonkey.net/)
+
+### All scripts
+
+Install the **[all-in-one pack](${RAW}/pack.user.js)** to run every common and social script from one userscript entry. Each site runs in its own isolated module.
+
+### Individual scripts
+
+| Script | Description | Install |
+|---|---|---|
+${rows}
+
+## Repository layout
+
+- \`scripts/*.user.js\` contains standalone userscript sources.
+- \`scripts/test-social-performance.mjs\` contains social performance scenarios.
+- \`dist/\` contains generated installable files and the all-in-one pack.
+
+## Development
+
+Edit the sources, then run:
+
+\`\`\`bash
+node build.mjs
+node scripts/test-social-performance.mjs
+\`\`\`
+
+The build regenerates every individual file, the all-in-one pack, and this README. Do not edit generated files in \`dist/\` directly. Every installable file includes its GitHub auto-update URL.
+`;
+fs.writeFileSync(path.join(__dirname, "README.md"), readme);
+
+console.log("\nOK — generated dist:");
+for (const item of parsed) console.log(`  ${item.name}.user.js`);
+console.log(`  pack.user.js  (${allMatch.length} @match, ${allGrant.length} @grant, ${allRequire.length} @require)`);
