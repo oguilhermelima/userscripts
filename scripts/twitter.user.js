@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X (Twitter) — Control Panel, Wide Layout & Age Bypass
 // @namespace    x-declutter-wide
-// @version      3.9.0
+// @version      3.10.6
 // @author       oguilhermelima
 // @description  X/Twitter control panel for a wider layout, decluttered sidebars, live preferences, and sensitive-content handling.
 // @match        https://x.com/*
@@ -48,7 +48,7 @@
     const GEAR = '<g><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84a.484.484 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.488.488 0 0 0-.59.22L2.74 8.87a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"></path></g>';
 
     // Ícones do rail de categorias do painel — ordem = ordem de GROUPS (Layout, Mídia, Sidebar esq.,
-    // Sidebar dir., Timeline, Compartilhar, Menu "Mais", Conteúdo). Cada um é o `d` de um <path> 24x24.
+    // Sidebar dir., Timeline, Compartilhar, Conteúdo). Cada um é o `d` de um <path> 24x24.
     const ICONS = [
         "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5zm2 0v14h6V5H5zm8 0v14h6V5h-6z",   // Layout (colunas)
         "M8 5v14l11-7z",                                                                                          // Mídia (play)
@@ -560,6 +560,207 @@
             height: 100% !important;
         }
 
+        /* ===================== Salvos (Bookmarks) ===================== */
+        /* Toolbar sticky dos salvos */
+        .tw-bm-bar {
+            position: sticky;
+            top: 106px;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: rgba(22, 24, 28, .88);
+            backdrop-filter: blur(12px) saturate(1.2);
+            border-bottom: 1px solid #2f3336;
+            margin-bottom: 8px;
+            box-sizing: border-box;
+            font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #e7e9ea;
+        }
+        html:not(:has([data-testid="primaryColumn"] [role="tablist"])) .tw-bm-bar {
+            top: 53px;
+        }
+        .tw-bm-sp { flex: 1 1 auto; }
+        .tw-bm-count { font-size: 13px; color: #71767b; font-weight: 500; }
+
+        .tw-bm-btn {
+            all: unset;
+            box-sizing: border-box;
+            cursor: pointer;
+            padding: 6px 14px;
+            border-radius: 999px;
+            font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #fff;
+            background: #1d9bf0;
+            transition: filter .15s ease, background .15s ease, opacity .15s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+        }
+        .tw-bm-btn:hover { filter: brightness(1.1); }
+        .tw-bm-btn[disabled] { opacity: .45; pointer-events: none; }
+        .tw-bm-ghost {
+            background: transparent;
+            color: #e7e9ea;
+            border: 1px solid #2f3336;
+        }
+        .tw-bm-ghost:hover {
+            background: rgba(255, 255, 255, .08);
+        }
+        .tw-bm-danger {
+            background: #f4212e;
+            color: #fff;
+        }
+        .tw-bm-danger:hover {
+            background: #dc1e29;
+        }
+
+        .tw-bm-prog {
+            display: none;
+            flex: 2 1 180px;
+            height: 6px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(128, 128, 128, .28);
+        }
+        .tw-bm-bar.busy .tw-bm-prog { display: block; }
+        .tw-bm-progfill {
+            height: 100%;
+            width: 0%;
+            border-radius: 999px;
+            background: #1d9bf0;
+            transition: width .18s ease;
+        }
+
+        /* Visibilidade de botões por modo */
+        .tw-bm-bar .tw-bm-all-btn,
+        .tw-bm-bar .tw-bm-cancel-btn,
+        .tw-bm-bar .tw-bm-remove-btn,
+        .tw-bm-bar .tw-bm-stop-btn,
+        .tw-bm-bar .tw-bm-count {
+            display: none;
+        }
+        .tw-bm-bar.on .tw-bm-sel-btn { display: none; }
+        .tw-bm-bar.on .tw-bm-all-btn,
+        .tw-bm-bar.on .tw-bm-cancel-btn,
+        .tw-bm-bar.on .tw-bm-remove-btn,
+        .tw-bm-bar.on .tw-bm-count {
+            display: inline-flex;
+        }
+        .tw-bm-bar.busy .tw-bm-sel-btn,
+        .tw-bm-bar.busy .tw-bm-all-btn,
+        .tw-bm-bar.busy .tw-bm-cancel-btn,
+        .tw-bm-bar.busy .tw-bm-remove-btn {
+            display: none;
+        }
+        .tw-bm-bar.busy .tw-bm-stop-btn {
+            display: inline-flex;
+        }
+        .tw-bm-bar.busy .tw-bm-count {
+            display: inline;
+        }
+
+        /* Cards no modo de seleção */
+        html.tw-bm-selecting [data-testid="primaryColumn"] [data-testid="cellInnerDiv"]:has(article):not(.tw-bm-gone) {
+            cursor: pointer !important;
+            user-select: none !important;
+        }
+        html.tw-bm-selecting [data-testid="primaryColumn"] [data-testid="cellInnerDiv"]:has(article):not(.tw-bm-gone):hover {
+            background: rgba(29, 155, 240, .04) !important;
+        }
+
+        /* Checkbox circular no canto superior direito */
+        .tw-bm-check {
+            display: none;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, .7);
+            background: rgba(0, 0, 0, .45);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, .5);
+            box-sizing: border-box;
+            z-index: 10;
+            pointer-events: none;
+            transition: background .15s ease, border-color .15s ease, transform .15s ease;
+        }
+        html.tw-bm-selecting .tw-bm-check {
+            display: block;
+        }
+        html.tw-bm-selecting [data-testid="cellInnerDiv"]:has(article):not(.tw-bm-gone):hover .tw-bm-check {
+            border-color: #1d9bf0;
+            transform: scale(1.08);
+        }
+        .tw-bm-sel {
+            outline: 2px solid #1d9bf0 !important;
+            outline-offset: -2px !important;
+        }
+        .tw-bm-sel .tw-bm-check {
+            background: #1d9bf0 !important;
+            border-color: #1d9bf0 !important;
+        }
+        .tw-bm-sel .tw-bm-check::after {
+            content: "";
+            position: absolute;
+            left: 7px;
+            top: 3px;
+            width: 5px;
+            height: 10px;
+            border: solid #fff;
+            border-width: 0 2.5px 2.5px 0;
+            transform: rotate(45deg);
+        }
+
+        /* REMOVIDO dos salvos: não sai do DOM, fica opaco com selo */
+        .tw-bm-gone {
+            opacity: .35 !important;
+            filter: grayscale(.75) !important;
+            pointer-events: none !important;
+            transition: opacity .25s ease, filter .25s ease !important;
+        }
+        .tw-bm-gone:hover { opacity: .5 !important; }
+        .tw-bm-gone::before {
+            content: "REMOVIDO";
+            position: absolute;
+            z-index: 10;
+            top: 10px;
+            left: 10px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            pointer-events: none;
+            background: rgba(0, 0, 0, .82);
+            color: #fff;
+            font: 700 11px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            letter-spacing: .03em;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, .4);
+        }
+        .tw-bm-gone .tw-bm-check { display: none !important; }
+
+        /* FALHOU na remoção */
+        .tw-bm-failed {
+            outline: 2px solid #f4212e !important;
+            outline-offset: -2px !important;
+        }
+        .tw-bm-failed::before {
+            content: "FALHOU";
+            position: absolute;
+            z-index: 10;
+            top: 10px;
+            left: 10px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            pointer-events: none;
+            background: #f4212e;
+            color: #fff;
+            font: 700 11px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            letter-spacing: .03em;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, .4);
+        }
+
         /* ===================== floating settings panel (revamp) ===================== */
         /* FAB: círculo flat no canto inferior direito, semi-visível e acende no hover (azul do X) + gira. */
         #tw-fab {
@@ -700,6 +901,7 @@
         applyBlurMedia();
         hideDiscover(true);   // mudança de setting → re-aplica display em todas as células "discover"
         applySidebar();       // gerenciador da sidebar (esconde/move/injeta itens conforme navConfig)
+        applyBookmarksClasses();
         // applyHomeTab() NÃO entra aqui: applySettings roda a CADA controle do painel, então forçaria
         // "Seguindo" de volta toda vez que você mexe em qualquer ajuste estando na home. Vai só na nav
         // (scheduleHomeTab) e nos dois controles que realmente importam (homeDefault/hideForYou).
@@ -905,7 +1107,9 @@
     const MORE_NATIVE_SEL = '[data-testid="AppTabBar_More_Menu"], header[role="banner"] nav[role="navigation"] button[aria-label="Mais"], header[role="banner"] nav[role="navigation"] button[aria-label="More"]';
     const TW_MORE_ID = "tw-our-more";
     const MORE_KEY = "_more";
+    const HIST_KEY = "p:/i/history";
     const DOTS_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><g><circle cx="5" cy="12" r="2.2"></circle><circle cx="12" cy="12" r="2.2"></circle><circle cx="19" cy="12" r="2.2"></circle></g></svg>';
+    const HIST_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><g><path d="M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5z"></path></g></svg>';
     let APPLIED = null;   // snapshot do config aplicado (estável na sessão; só muda em reload)
 
     // registro + config moram em settings (persistem no localStorage junto)
@@ -940,6 +1144,23 @@
             reg[info.key] = { label: info.label || prev.label, href: info.href || prev.href || "", testid: info.testid || prev.testid || "", icon };
             if (!cfg.some((c) => c.key === info.key)) { cfg.push({ key: info.key, place }); if (APPLIED) APPLIED.push({ key: info.key, place }); touched = true; }
         };
+
+        if (!reg[HIST_KEY] || !reg[HIST_KEY].label || !reg[HIST_KEY].icon) {
+            reg[HIST_KEY] = { label: "História", href: "/i/history", testid: "", icon: HIST_SVG };
+            touched = true;
+        }
+        if (!cfg.some((c) => c.key === HIST_KEY)) {
+            const moreIdx = cfg.findIndex((c) => c.key === MORE_KEY);
+            if (moreIdx !== -1) cfg.splice(moreIdx, 0, { key: HIST_KEY, place: "bar" });
+            else cfg.push({ key: HIST_KEY, place: "bar" });
+            if (APPLIED) {
+                const appMoreIdx = APPLIED.findIndex((c) => c.key === MORE_KEY);
+                if (appMoreIdx !== -1) APPLIED.splice(appMoreIdx, 0, { key: HIST_KEY, place: "bar" });
+                else APPLIED.push({ key: HIST_KEY, place: "bar" });
+            }
+            touched = true;
+        }
+
         const nav = document.querySelector(NAV_SEL);
         if (nav) for (const a of nav.querySelectorAll(NAV_ITEM_SEL)) {
             if (a.id === TW_MORE_ID || a.closest("[data-tw-inj]")) continue;          // ignora os nossos injetados
@@ -1169,6 +1390,320 @@
     }
 
     // ===================================================================== //
+    //  Salvos (Bookmarks) — Modo colunas, seleção e remoção em lote         //
+    // ===================================================================== //
+    const isBookmarks = () => location.pathname.startsWith("/i/bookmarks") || location.pathname.startsWith("/i/history");
+    const isSavedHistory = () => isBookmarks() && !location.pathname.startsWith("/i/history/likes");
+
+    const bmRemovedIds = new Set();
+    const bmSelected = new Map();   // id -> card DOM element
+    let bmSelectMode = false;
+    let bmBusy = false;
+    let bmStop = false;
+    let bmToolbarEl = null;
+    let bmSyncToolbarFn = null;
+
+    function tweetId(article) {
+        if (!article) return null;
+        const t = article.querySelector("time");
+        const a = t && t.closest('a[href*="/status/"]');
+        const href = a && a.getAttribute("href");
+        if (href) {
+            const m = href.match(/\/status\/(\d+)/);
+            if (m) return m[1];
+        }
+        const anyA = article.querySelector('a[href*="/status/"]');
+        if (anyA) {
+            const m = (anyA.getAttribute("href") || "").match(/\/status\/(\d+)/);
+            if (m) return m[1];
+        }
+        return article.dataset.twBmKey || (article.dataset.twBmKey = "bm-" + Math.random().toString(36).slice(2));
+    }
+
+    function findBookmarkButton(card) {
+        if (!card) return null;
+        let b = card.querySelector('button[data-testid="removeBookmark"], button[data-testid="bookmark"]');
+        if (b) return b;
+        b = card.querySelector('[data-testid="removeBookmark"] button, [data-testid="bookmark"] button');
+        if (b) return b;
+        b = card.querySelector('button[aria-label*="Bookmark" i], button[aria-label*="salvo" i], button[aria-label*="Salvo" i]');
+        if (b) return b;
+        const any = card.querySelector('[data-testid="removeBookmark"], [data-testid="bookmark"]');
+        if (any) return any.closest('button') || any;
+        return null;
+    }
+
+    function setBmSelectMode(on) {
+        if (on && !isSavedHistory()) return;
+        bmSelectMode = !!on;
+        if (!bmSelectMode) {
+            for (const c of bmSelected.values()) {
+                if (c && c.classList) c.classList.remove("tw-bm-sel");
+            }
+            bmSelected.clear();
+        }
+        document.documentElement.classList.toggle("tw-bm-selecting", bmSelectMode);
+        if (bmSyncToolbarFn) bmSyncToolbarFn();
+    }
+
+    function toggleSelectBookmark(id, card) {
+        if (!card.querySelector(".tw-bm-check")) {
+            card.appendChild(el("div", { class: "tw-bm-check" }));
+        }
+        if (bmSelected.has(id)) {
+            bmSelected.delete(id);
+            if (card) card.classList.remove("tw-bm-sel");
+        } else {
+            bmSelected.set(id, card);
+            if (card) {
+                card.classList.add("tw-bm-sel");
+                card.classList.remove("tw-bm-failed");
+            }
+        }
+        if (bmSyncToolbarFn) bmSyncToolbarFn();
+    }
+
+    function selectAllVisibleBookmarks() {
+        if (!isSavedHistory()) return;
+        const primary = document.querySelector('[data-testid="primaryColumn"]');
+        if (!primary) return;
+        const cells = primary.querySelectorAll('[data-testid="cellInnerDiv"]');
+        cells.forEach((card) => {
+            if (card.classList.contains("tw-bm-gone")) return;
+            const art = card.querySelector("article");
+            if (!art) return;
+            if (!card.querySelector(".tw-bm-check")) {
+                card.appendChild(el("div", { class: "tw-bm-check" }));
+            }
+            const id = tweetId(art);
+            if (id && !bmRemovedIds.has(id)) {
+                bmSelected.set(id, card);
+                card.classList.add("tw-bm-sel");
+                card.classList.remove("tw-bm-failed");
+            }
+        });
+        if (bmSyncToolbarFn) bmSyncToolbarFn();
+    }
+
+    async function removeSelectedBookmarks() {
+        if (!isSavedHistory() || bmBusy) return;
+        const entries = [...bmSelected.entries()];
+        if (!entries.length) return;
+
+        bmBusy = true;
+        bmStop = false;
+        if (bmSyncToolbarFn) bmSyncToolbarFn(0, entries.length);
+
+        let done = 0;
+        let fail = 0;
+
+        for (const [id, initialCard] of entries) {
+            if (bmStop) break;
+
+            let card = initialCard;
+            if (!card || !card.isConnected) {
+                const art = document.querySelector(`[data-testid="primaryColumn"] article:has(a[href*="/status/${id}"])`);
+                card = art ? art.closest('[data-testid="cellInnerDiv"]') : null;
+            }
+
+            if (card && card.isConnected) {
+                try {
+                    card.scrollIntoView({ block: "nearest" });
+                } catch (_) {}
+            }
+
+            await new Promise((r) => setTimeout(r, 50));
+            if (bmStop) break;
+
+            if (!card || !card.isConnected) {
+                const art = document.querySelector(`[data-testid="primaryColumn"] article:has(a[href*="/status/${id}"])`);
+                card = art ? art.closest('[data-testid="cellInnerDiv"]') : null;
+            }
+
+            let ok = false;
+            if (card) {
+                const btn = findBookmarkButton(card);
+                if (btn) {
+                    try {
+                        btn.click();
+                        ok = true;
+                    } catch (e) {
+                        ok = false;
+                    }
+                }
+            }
+
+            if (ok) {
+                bmRemovedIds.add(id);
+                bmSelected.delete(id);
+                if (card) {
+                    card.classList.remove("tw-bm-sel", "tw-bm-failed");
+                    card.classList.add("tw-bm-gone");
+                }
+                done++;
+            } else {
+                fail++;
+                if (card) {
+                    card.classList.remove("tw-bm-sel");
+                    card.classList.add("tw-bm-failed");
+                }
+            }
+
+            if (bmSyncToolbarFn) bmSyncToolbarFn(done + fail, entries.length);
+
+            // Pausa de segurança de ~250ms entre itens para evitar rate limits
+            await new Promise((r) => setTimeout(r, 250));
+        }
+
+        bmBusy = false;
+        const stopped = bmStop && (done + fail) < entries.length;
+        if (stopped) {
+            toast("Parado: " + done + " de " + entries.length + " processados");
+        } else if (fail) {
+            toast(done + " removido" + (done > 1 ? "s" : "") + " · " + fail + " falha" + (fail > 1 ? "s" : ""));
+        } else {
+            toast(done + (done > 1 ? " itens removidos dos salvos" : " item removido dos salvos"));
+        }
+
+        setBmSelectMode(false);
+    }
+
+    function buildBmToolbar() {
+        const bar = el("div", { class: "tw-bm-bar" });
+
+        const count = el("span", { class: "tw-bm-count" });
+        const fill = el("div", { class: "tw-bm-progfill" });
+        const prog = el("div", { class: "tw-bm-prog" }, fill);
+        const sp = el("span", { class: "tw-bm-sp" });
+
+        const selBtn = el("button", { class: "tw-bm-btn tw-bm-btn-primary tw-bm-sel-btn", type: "button" }, "Selecionar");
+        const allBtn = el("button", { class: "tw-bm-btn tw-bm-ghost tw-bm-all-btn", type: "button" }, "Todos");
+        const cancelBtn = el("button", { class: "tw-bm-btn tw-bm-ghost tw-bm-cancel-btn", type: "button" }, "Cancelar");
+        const removeBtn = el("button", { class: "tw-bm-btn tw-bm-danger tw-bm-remove-btn", type: "button" }, "Remover dos salvos");
+        const stopBtn = el("button", { class: "tw-bm-btn tw-bm-ghost tw-bm-stop-btn", type: "button" }, "Parar");
+
+        selBtn.addEventListener("click", () => setBmSelectMode(true));
+        cancelBtn.addEventListener("click", () => setBmSelectMode(false));
+        stopBtn.addEventListener("click", () => { bmStop = true; stopBtn.setAttribute("disabled", ""); });
+        allBtn.addEventListener("click", () => selectAllVisibleBookmarks());
+        removeBtn.addEventListener("click", () => removeSelectedBookmarks());
+
+        bar.append(count, sp, prog, selBtn, allBtn, cancelBtn, removeBtn, stopBtn);
+
+        bmSyncToolbarFn = (done, total) => {
+            const saved = isSavedHistory();
+            if (!saved && bmSelectMode) setBmSelectMode(false);
+
+            selBtn.style.display = saved ? "" : "none";
+
+            const activeOn = saved && (bmSelectMode || bmBusy);
+            const activeBusy = saved && bmBusy;
+
+            bar.classList.toggle("on", activeOn);
+            bar.classList.toggle("busy", activeBusy);
+            document.documentElement.classList.toggle("tw-bm-selecting", saved && bmSelectMode);
+
+            if (activeBusy) {
+                const t = total || 1;
+                const pct = Math.min(100, Math.round((done / t) * 100));
+                fill.style.width = pct + "%";
+                count.textContent = "Removendo " + done + " de " + t + "…";
+                if (!bmStop) stopBtn.removeAttribute("disabled");
+                return;
+            }
+
+            fill.style.width = "0%";
+            if (saved && bmSelectMode) {
+                const n = bmSelected.size;
+                count.textContent = n ? (n + " selecionado" + (n > 1 ? "s" : "")) : "Clique nos itens para selecionar";
+                if (n > 0) removeBtn.removeAttribute("disabled");
+                else removeBtn.setAttribute("disabled", "");
+            } else {
+                count.textContent = "";
+            }
+        };
+
+        bmSyncToolbarFn();
+        return bar;
+    }
+
+    function mountBmToolbar() {
+        if (!isBookmarks()) {
+            if (bmToolbarEl && bmToolbarEl.isConnected) bmToolbarEl.remove();
+            return;
+        }
+        const primary = document.querySelector('[data-testid="primaryColumn"]');
+        if (!primary) return;
+        const section = primary.querySelector("section");
+        if (!section || !section.parentElement) return;
+
+        if (!bmToolbarEl) bmToolbarEl = buildBmToolbar();
+        if (bmToolbarEl.parentElement !== section.parentElement || bmToolbarEl.nextElementSibling !== section) {
+            section.parentElement.insertBefore(bmToolbarEl, section);
+        }
+        if (bmSyncToolbarFn) bmSyncToolbarFn();
+    }
+
+    function syncCardState(card, id) {
+        if (!id) return;
+        if (bmRemovedIds.has(id)) {
+            card.classList.add("tw-bm-gone");
+            card.classList.remove("tw-bm-sel", "tw-bm-failed");
+            if (bmSelected.has(id)) bmSelected.delete(id);
+        } else {
+            card.classList.remove("tw-bm-gone");
+            if (bmSelected.has(id)) {
+                card.classList.add("tw-bm-sel");
+                bmSelected.set(id, card);
+            } else {
+                card.classList.remove("tw-bm-sel");
+            }
+        }
+    }
+
+    function syncBookmarkCards() {
+        if (!isBookmarks()) return;
+        const primary = document.querySelector('[data-testid="primaryColumn"]');
+        if (!primary) return;
+
+        if (!isSavedHistory()) return;
+
+        const cells = primary.querySelectorAll('[data-testid="cellInnerDiv"]');
+        cells.forEach((card) => {
+            const art = card.querySelector("article");
+            if (!art) return;
+            if (!card.querySelector(".tw-bm-check")) {
+                card.appendChild(el("div", { class: "tw-bm-check" }));
+            }
+            const id = tweetId(art);
+            if (id) syncCardState(card, id);
+        });
+    }
+
+    function applyBookmarksClasses() {
+        document.documentElement.classList.toggle("tw-bookmarks", isBookmarks());
+        if (bmSyncToolbarFn) bmSyncToolbarFn();
+    }
+
+    function syncBookmarks() {
+        if (!isBookmarks()) return;
+        applyBookmarksClasses();
+        mountBmToolbar();
+        syncBookmarkCards();
+    }
+
+    function syncBookmarksPageChange() {
+        applyBookmarksClasses();
+        if (isBookmarks()) {
+            mountBmToolbar();
+            syncBookmarkCards();
+        } else {
+            if (bmSelectMode) setBmSelectMode(false);
+            if (bmToolbarEl && bmToolbarEl.isConnected) bmToolbarEl.remove();
+        }
+    }
+
+    // ===================================================================== //
     //  The floating control panel                                           //
     // ===================================================================== //
     let panelClickBound = false;
@@ -1326,6 +1861,7 @@
             lastPath = location.pathname;
             document.documentElement.classList.toggle("tw-home", isHome());  // tw-home só muda com o path
             scheduleHomeTab();
+            syncBookmarksPageChange();
         }
         if (settings.ageBypass) installAgeBypass();   // re-tenta o patch do bypass (idempotente) até pegar — corrige a corrida do F5
         markShell();                                  // no-op se o shell já está marcado e vivo (só re-acha se o X remontou)
@@ -1333,6 +1869,7 @@
         if (!document.getElementById("tw-fab")) buildPanel();
         applySidebar();
         hideDiscover();
+        if (isBookmarks()) syncBookmarks();
     }, 200);
 
     // UM único observer de documento inteiro pra tudo (em vez de dois → 1 callback por mutação):
@@ -1368,6 +1905,25 @@
         } catch (err) {}
     }, true);
 
+    // Bookmarks: seleção por clique no card (capture phase para impedir abertura do post/links)
+    document.addEventListener("click", (e) => {
+        if (!isSavedHistory() || !bmSelectMode || !e.target.closest) return;
+        if (e.target.closest(".tw-bm-bar")) return;
+        const card = e.target.closest('[data-testid="cellInnerDiv"]');
+        if (!card) return;
+        const article = card.querySelector("article");
+        if (!article) return;
+        if (card.classList.contains("tw-bm-gone")) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        const id = tweetId(article);
+        if (!id) return;
+        toggleSelectBookmark(id, card);
+    }, true);
+
     // Remove tracking: tira os trackers de QUALQUER link x.com copiado (cobre o "Copiar link" nativo).
     try {
         const cb = navigator.clipboard;
@@ -1387,6 +1943,7 @@
             buildPanel();
             scheduleHomeTab();           // honor the default timeline on first home load
             applySidebar();              // monta/aplica a sidebar gerenciada
+            if (isBookmarks()) syncBookmarks();
         };
         if (typeof requestIdleCallback === "function") initialWorkTask = requestIdleCallback(run, { timeout: 500 });
         else initialWorkTask = setTimeout(run, 0);
