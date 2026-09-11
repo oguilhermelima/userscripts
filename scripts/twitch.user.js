@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch — Top Nav, Live Tab & Clips/VOD Playlist
 // @namespace    twitch-channel-rework
-// @version      1.4.3
+// @version      1.5.7
 // @author       oguilhermelima
 // @description  Streamer top navigation plus a YouTube-style Clips and VOD theater with filtering, sorting, and native playback controls.
 // @match        https://www.twitch.tv/*
@@ -139,7 +139,7 @@
     };
     // prefs não expiram — o TTL é pro cache de listas, não pra configuração.
     const prefs = Object.assign(
-        { loop: false, autoplay: true, quality: "1080", speed: 1, volume: 1, muted: false, sidebarOpen: true, favorites: [], navTab: 0 },
+        { loop: false, autoplay: true, quality: "1080", speed: 1, volume: 1, muted: false, sidebarOpen: true, favorites: [], navTab: "followed" },
         (store.get("prefs", { ignoreTTL: true }) || {}).v || {},
     );
     const savePrefs = debounce(() => store.set("prefs", { v: prefs }), 400);
@@ -573,20 +573,6 @@
         [data-a-target="prime-offers-icon"],
         [data-a-target="top-nav-get-bits-button"] { display: none !important; }
 
-        /* ocultação segura dos controles nativos de recolher/expandir da sidebar:
-           mantém os nós no DOM para clique programático sem quebrar layout */
-        [data-a-target="side-nav-arrow"],
-        [data-a-target="side-nav-expand-toggle"],
-        [data-a-target="side-nav-collapse-toggle"],
-        [data-test-selector="side-nav-arrow"] {
-            opacity: 0 !important;
-            pointer-events: none !important;
-            position: absolute !important;
-            width: 0 !important;
-            height: 0 !important;
-            overflow: hidden !important;
-        }
-
         /* ---------- sidebar esquerda: cabe na tela, cada seção rola sozinha ----------
            A sidebar inteira rolava numa barra só, e cada seção terminava num "Mostrar mais".
            Aqui ela vira uma coluna flex que ocupa exatamente a altura disponível, sem barra
@@ -595,78 +581,124 @@
            numa sidebar logada existem itens entre as seções ("For You", "Open stories"), então
            .side-nav-section nem sempre é filha direta daqui — e aí "flex: 1 1 0" não valia nada
            e a lista crescia até o fim da página. */
-        html[data-tvx-nav="1"] .side-nav__scrollable_content { overflow: hidden !important; }
+        html[data-tvx-nav="1"] .side-nav:not(.side-nav--collapsed) .side-nav__scrollable_content { overflow: hidden !important; }
         /* com abas, o cabeçalho de cada seção vira redundante — o rótulo já é a aba */
-        html[data-tvx-nav="1"] .side-nav-section > *:first-child:not(:last-child) { display: none !important; }
+        html[data-tvx-nav="1"] .side-nav:not(.side-nav--collapsed) .side-nav-section > *:first-child:not(:last-child) { display: none !important; }
         #tvx-favs .tvx-navsec-head { display: none; }
         #tvx-favs .tvx-navsec-head-antigo { display: none; }
+        .side-nav--collapsed #tvx-favs { display: none !important; }
 
-        /* abas da sidebar */
-        #tvx-navtabs {
-            display: flex; flex-wrap: nowrap; gap: 4px; overflow-x: auto;
-            scrollbar-width: none; flex: 1 1 auto; min-width: 0;
-            font-family: Inter, Roobert, "Helvetica Neue", system-ui, sans-serif;
+        /* Open stories na sidebar: ajuste de margens e z-index para não sobrepor dropdown */
+        .side-nav:not(.side-nav--collapsed) [style*="margin-top: 0.7rem"],
+        .side-nav:not(.side-nav--collapsed) [style*="margin-top:0.7rem"],
+        .side-nav:not(.side-nav--collapsed) [style*="margin-top: 1rem"],
+        .side-nav:not(.side-nav--collapsed) [class*="stories" i],
+        .side-nav:not(.side-nav--collapsed) [data-a-target*="stories" i] {
+            margin-top: 1rem !important;
+            margin-bottom: 1rem !important;
+            position: relative;
+            z-index: 1 !important;
         }
-        #tvx-navtabs::-webkit-scrollbar { display: none; }
+
+        /* .side-nav__title: transformado no container do dropdown */
+        .side-nav__title {
+            position: relative !important;
+            z-index: 50 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
+        }
+        .side-nav__title:has([aria-expanded="true"]) {
+            z-index: 1000 !important;
+        }
+        .side-nav--collapsed .side-nav__title { display: none !important; }
+
+        /* dropdown de navegação da sidebar */
         #tvx-navtabs-wrap {
-            position: relative; display: flex; align-items: center; padding: 6px 6px;
+            position: relative !important;
+            z-index: 50 !important;
+            display: flex; flex-direction: column;
+            width: 100%; box-sizing: border-box;
+            padding: 0 !important; margin-top: 0;
             border-bottom: 1px solid rgba(255,255,255,.08);
-            background: rgba(255,255,255,.02);
+            background: transparent;
             font-family: Inter, Roobert, "Helvetica Neue", system-ui, sans-serif;
         }
-        /* Sobrepostas às pontas da faixa, fora do fluxo: não roubam largura das abas nem
-           deslocam nada ao aparecer. Só surgem no hover. */
-        .tvx-navtab-arrow {
-            position: absolute; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; z-index: 2;
-            appearance: none; border: 1px solid rgba(255,255,255,.15); border-radius: 50%;
-            background: rgba(18,18,24,.92); color: #fff; cursor: pointer; font: 600 13px/1 inherit;
-            padding: 0; opacity: 0; pointer-events: none; transition: opacity .15s ease, background .15s ease;
-            display: flex; align-items: center; justify-content: center;
+        #tvx-navtabs-wrap:has([aria-expanded="true"]) {
+            z-index: 1000 !important;
         }
-        .tvx-navtab-arrow[data-dir="-1"] { left: 4px; }
-        .tvx-navtab-arrow[data-dir="1"] { right: 4px; }
-        #tvx-navtabs-wrap:hover .tvx-navtab-arrow { opacity: 1; pointer-events: auto; }
-        .tvx-navtab-arrow:hover { background: rgba(30,30,40,.96); border-color: rgba(255,255,255,.3); }
-        .tvx-navtab-arrow:disabled { cursor: default; }
-        /* a opacidade do desabilitado só entra COM hover: como regra solta ela vence o
-           opacity:0 por especificidade e a seta reaparecia sem o mouse em cima */
-        #tvx-navtabs-wrap:hover .tvx-navtab-arrow:disabled { opacity: .25; pointer-events: none; }
-        #tvx-navtabs-wrap[data-rola="0"] .tvx-navtab-arrow { display: none; }
-        .side-nav--collapsed #tvx-navtabs-wrap { display: none; }
+        .side-nav--collapsed #tvx-navtabs-wrap { display: none !important; }
+
+        .tvx-navdropdown-btn {
+            display: flex !important; align-items: center !important; justify-content: space-between !important; width: 100% !important;
+            border: 0 !important; outline: none !important; background: transparent !important; color: #efeff1 !important;
+            font-size: 15px !important; font-weight: 700 !important; line-height: 1.3 !important;
+            padding: 6px 8px !important; border-radius: 6px !important; cursor: pointer !important;
+            box-sizing: border-box !important; font-family: inherit !important;
+            transition: background .15s ease, color .15s ease !important;
+        }
+        .tvx-navdropdown-btn:hover { background: rgba(255,255,255,.06) !important; color: #fff !important; }
+        .tvx-navdropdown-label {
+            font-weight: 700 !important; font-size: 15px !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; flex: 1 1 auto !important; text-align: left !important;
+        }
+        .tvx-navdropdown-chevron {
+            flex: 0 0 auto !important; margin-left: auto !important; transition: transform .2s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; color: #adadb8 !important;
+        }
+        .tvx-navdropdown-btn:hover .tvx-navdropdown-chevron { color: #efeff1 !important; }
+        .tvx-navdropdown-btn[aria-expanded="true"] .tvx-navdropdown-chevron {
+            transform: rotate(180deg) !important;
+        }
+
+        .tvx-navdropdown-menu {
+            position: absolute; top: calc(100% + 2px); left: 8px; right: 8px; z-index: 2000 !important;
+            background: #18181b; border: 1px solid rgba(255,255,255,.14); border-radius: 8px;
+            box-shadow: 0 6px 20px rgba(0,0,0,.6); padding: 4px;
+            display: flex; flex-direction: column; gap: 2px;
+            box-sizing: border-box; max-height: 320px; overflow-y: auto;
+        }
+        .tvx-navdropdown-menu[hidden] { display: none !important; }
+        .tvx-navdropdown-menu::-webkit-scrollbar { width: 4px; }
+        .tvx-navdropdown-menu::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 4px; }
+
+        .tvx-navdropdown-item {
+            display: flex; align-items: center; justify-content: space-between; width: 100%;
+            border: 0; outline: none; background: transparent; color: #efeff1;
+            font-size: 14px; font-weight: 500; line-height: 1.3;
+            padding: 7px 10px; border-radius: 6px; cursor: pointer;
+            box-sizing: border-box; font-family: inherit; text-align: left;
+            transition: background .12s ease, color .12s ease;
+        }
+        .tvx-navdropdown-item:hover { background: rgba(255,255,255,.08); color: #fff; }
+        .tvx-navdropdown-item[aria-selected="true"] {
+            color: #a970ff; font-weight: 700; background: rgba(169,112,255,.12);
+        }
+        .tvx-navdropdown-item-label {
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto;
+        }
+        .tvx-navdropdown-check {
+            flex: 0 0 auto; margin-left: 8px; color: #a970ff; display: none; align-items: center; justify-content: center;
+        }
+        .tvx-navdropdown-item[aria-selected="true"] .tvx-navdropdown-check {
+            display: inline-flex;
+        }
         .tvx-favvazio { margin: 0; padding: 14px 12px; font-size: 12px; line-height: 1.5; color: #adadb8; }
         .tvx-favvazio b { color: var(--tvx-accent); }
-        .tvx-navtab {
-            appearance: none; border: 1px solid transparent; background: transparent; color: #adadb8; cursor: pointer;
-            font: 600 12px/1.2 inherit; padding: 6px 12px; white-space: nowrap; border-radius: 8px;
-            flex: 0 0 auto; max-width: 120px; overflow: hidden; text-overflow: ellipsis;
-            transition: all .15s ease;
-        }
-        .tvx-navtab:hover { background: rgba(255,255,255,.06); color: #fff; }
-        .tvx-navtab[aria-selected="true"] {
-            background: rgba(169,112,255,.16); color: #a970ff;
-            border-color: rgba(169,112,255,.35); font-weight: 700;
-        }
-        .side-nav--collapsed #tvx-navtabs { display: none; }
 
         /* atalhos de navegação, agora na sidebar */
-        #tvx-navlinks { display: flex; flex-direction: column; gap: 2px; padding: 6px 6px;
+        #tvx-navlinks { display: flex; flex-direction: column; gap: 4px; padding: 8px 8px;
             border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 2px;
             font-family: Inter, Roobert, "Helvetica Neue", system-ui, sans-serif; }
         #tvx-navlinks .tvx-navlink { display: block; width: 100%; box-sizing: border-box; text-align: left;
             appearance: none; border: 0; background: transparent; cursor: pointer;
-            padding: 7px 10px; border-radius: 8px; text-decoration: none; transition: all .14s ease;
+            padding: 9px 12px; border-radius: 8px; text-decoration: none; transition: all .14s ease;
             /* !important porque a Twitch tem regra de fonte mais forte pros links da sidebar */
             color: #dedee3; font-family: inherit; font-weight: 600 !important;
-            font-size: 13px !important; line-height: 1.2 !important; }
+            font-size: 15px !important; line-height: 1.3 !important; }
         #tvx-navlinks .tvx-navlink:hover { background: rgba(255,255,255,.07); color: var(--tvx-accent); }
-        .side-nav--collapsed #tvx-navlinks { display: none; }
-
-        /* botão de recolher, agora junto do logo */
-        .tvx-collapse { appearance: none; border: 0; background: transparent; color: #efeff1;
-            cursor: pointer; padding: 6px; border-radius: 6px; line-height: 0; margin-left: 2px;
-            display: inline-flex; align-items: center; justify-content: center; transition: all .15s ease; }
-        .tvx-collapse:hover { background: rgba(255,255,255,.14); color: #fff; }
-        .tvx-collapse[aria-pressed="true"] { color: var(--tvx-accent); }
+        .side-nav--collapsed #tvx-navlinks { display: none !important; }
         html[data-tvx-nav="1"] .side-nav-section > *:first-child {
             position: sticky; top: 0; z-index: 2; background: var(--color-background-body);
         }
@@ -699,11 +731,7 @@
         .tvx-fav[data-offline="1"] { opacity: .6; }
         .tvx-fav[data-offline="1"] .tvx-fav-live { color: #adadb8; }
         .tvx-fav[data-offline="1"] .tvx-fav-live i { background: #53535f; }
-        /* sidebar recolhida: a Twitch mostra só avatares — acompanhamos */
-        .side-nav--collapsed #tvx-favs .tvx-fav-txt,
-        .side-nav--collapsed #tvx-favs .tvx-fav-live,
-        .side-nav--collapsed #tvx-favs .tvx-fav-live i { display: none; }
-        .side-nav--collapsed #tvx-favs .tvx-fav { justify-content: center; }
+        .side-nav--collapsed #tvx-favs { display: none !important; }
 
         /* ---------- barra de navegação do canal ---------- */
         /* left/right saem de syncLayoutVars(): tudo que criamos vive ENTRE as sidebars da
@@ -1550,6 +1578,10 @@
     function mountFavs() {
         const host = document.querySelector(".side-nav__scrollable_content");
         if (!host) return;
+        if (document.querySelector(".side-nav--collapsed")) {
+            if (favsEl) favsEl.style.setProperty("display", "none", "important");
+            return;
+        }
         HTML.dataset.tvxNav = "1";
         if (!favsEl) {
             favCountEl = el("em", {});
@@ -1606,18 +1638,44 @@
     // e todos os wrappers no meio têm height:auto. Uma coluna flex no container não alcança
     // netos, e "height:100%" no meio da cadeia resolve contra um ancestral de altura automática
     // — não restringe nada. Por isso propagamos a altura nível a nível até o pai das seções.
-    let navTabsEl = null, navTabsWrapEl = null, navPanels = [];
+    // A sidebar deixa de empilhar as seções e passa a alterná-las por dropdown: só uma aparece por
+    // vez, ocupando a altura inteira. Some o problema de repartir espaço entre quatro listas.
+    let navTabsWrapEl = null, navDropdownTriggerEl = null, navDropdownMenuEl = null, isNavDropdownOpen = false, navPanels = [];
 
-    // As setas só aparecem quando há o que rolar pra aquele lado.
-    function updateTabArrows() {
-        if (!navTabsWrapEl || !navTabsEl) return;
-        const sobra = navTabsEl.scrollWidth - navTabsEl.clientWidth;
-        const x = navTabsEl.scrollLeft;
-        const setas = navTabsWrapEl.querySelectorAll(".tvx-navtab-arrow");
-        if (setas[0]) setas[0].disabled = x <= 1;
-        if (setas[1]) setas[1].disabled = x >= sobra - 1;
-        navTabsWrapEl.dataset.rola = sobra > 2 ? "1" : "0";
+    const CHEVRON_DOWN_SVG = '<svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>';
+    const CHECK_SVG = '<svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>';
+
+    function setNavDropdownOpen(open) {
+        isNavDropdownOpen = !!open;
+        if (!navDropdownTriggerEl || !navDropdownMenuEl) return;
+        navDropdownTriggerEl.setAttribute("aria-expanded", String(isNavDropdownOpen));
+        if (navTabsWrapEl) {
+            navTabsWrapEl.style.setProperty("z-index", isNavDropdownOpen ? "1000" : "50", "important");
+            if (navTabsWrapEl.parentElement) {
+                navTabsWrapEl.parentElement.style.setProperty("z-index", isNavDropdownOpen ? "1000" : "50", "important");
+            }
+        }
+        if (isNavDropdownOpen) {
+            navDropdownMenuEl.removeAttribute("hidden");
+        } else {
+            navDropdownMenuEl.setAttribute("hidden", "");
+        }
     }
+
+    // Fechar dropdown ao clicar fora ou pressionar Escape
+    document.addEventListener("click", (e) => {
+        if (!isNavDropdownOpen || !navTabsWrapEl) return;
+        if (!navTabsWrapEl.contains(e.target)) {
+            setNavDropdownOpen(false);
+        }
+    });
+    document.addEventListener("keydown", (e) => {
+        if (!isNavDropdownOpen) return;
+        if (e.key === "Escape" || e.key === "Esc") {
+            setNavDropdownOpen(false);
+            if (navDropdownTriggerEl) navDropdownTriggerEl.focus();
+        }
+    });
 
     // Rótulo curto: o cabeçalho da seção carrega junto o texto do botão de ordenar ("Sort"), e
     // as palavras genéricas ("Canais"/"Channels") e o nome do streamer se repetem em todas as
@@ -1645,26 +1703,113 @@
 
         const nome = ((state.channel && state.channel.displayName) || "").toLowerCase();
         const palavras = txt.split(" ").filter((w) => w && !GENERICO.test(w) && w.toLowerCase() !== nome);
-        const curto = palavras.join(" ") || txt || "Seção";
-        return { curto: curto.length > 12 ? `${curto.slice(0, 11)}…` : curto, completo: txt || curto };
+        let curto = palavras.join(" ") || txt || "Seção";
+        if (curto) curto = curto.charAt(0).toUpperCase() + curto.slice(1);
+        return { curto: curto.length > 22 ? `${curto.slice(0, 21)}…` : curto, completo: txt || curto };
     }
 
     // Rede de segurança: quando não conseguimos montar as abas, temos que DESFAZER o que já
-    // tínhamos escondido. Sem isso, uma passagem que sai cedo (sidebar ainda montando, remontagem
-    // do React) deixava as seções com display:none de uma passagem anterior e a sidebar ficava
-    // vazia — só os links de navegação. Aconteceu duas vezes; agora o caminho de saída limpa.
-    function restoreSideNavSections() {
-        for (const s of document.querySelectorAll(".side-nav-section")) s.style.removeProperty("display");
-        if (favsEl) favsEl.style.removeProperty("display");
+    // tínhamos escondido e os estilos de layout aplicados. Sem isso, uma passagem que sai cedo
+    // ou o colapso da sidebar deixava propriedades inline que quebravam a sidebar nativa.
+    function cleanupSidebarState() {
+        delete HTML.dataset.tvxNav;
+        if (isNavDropdownOpen) setNavDropdownOpen(false);
+
+        // Remove nós injetados da árvore React para evitar colisão na reconciliação nativa
+        if (navTabsWrapEl && navTabsWrapEl.parentNode) {
+            navTabsWrapEl.remove();
+        }
+        if (favsEl && favsEl.parentNode) {
+            favsEl.remove();
+        }
+
+        const host = document.querySelector(".side-nav__scrollable_content");
+        if (host) {
+            host.style.removeProperty("overflow");
+            host.style.removeProperty("display");
+            host.style.removeProperty("flex-direction");
+            for (const c of host.children) {
+                c.style.removeProperty("flex");
+                c.style.removeProperty("min-height");
+                c.style.removeProperty("overflow");
+                c.style.removeProperty("height");
+            }
+        }
+
+        // Limpa todo e qualquer estilo inline que aplicamos em wrappers, seções e filhos da sidebar
+        for (const el of document.querySelectorAll(".side-nav, .side-nav *, .side-bar-contents, .side-bar-contents *")) {
+            el.style.removeProperty("min-height");
+            el.style.removeProperty("overflow");
+            el.style.removeProperty("overflow-y");
+            el.style.removeProperty("flex");
+            el.style.removeProperty("height");
+            el.style.removeProperty("display");
+            el.style.removeProperty("flex-direction");
+            el.style.removeProperty("z-index");
+        }
+
+        // Garante que títulos nativos não fiquem com display: none inline
+        for (const h of document.querySelectorAll(".side-nav h1, .side-nav h2, .side-nav h3, .side-nav h4, .side-nav__title")) {
+            h.style.removeProperty("display");
+        }
+    }
+
+    function getActiveNavTabIndex() {
+        if (!navPanels.length) return 0;
+        const val = prefs.navTab;
+        if (val === "followed" || !val || val === 0) {
+            const idx = navPanels.findIndex((p) => /follow|seguid/i.test(p.curto) || /follow|seguid/i.test(p.completo));
+            if (idx !== -1) return idx;
+            const withCards = navPanels.findIndex((p) => p.el !== favsEl);
+            return withCards !== -1 ? withCards : 0;
+        }
+        if (typeof val === "string") {
+            const low = val.toLowerCase();
+            const idx = navPanels.findIndex((p) => p.curto.toLowerCase() === low || p.completo.toLowerCase() === low);
+            if (idx !== -1) return idx;
+        } else if (typeof val === "number") {
+            if (val >= 0 && val < navPanels.length) return val;
+        }
+        const withCards = navPanels.findIndex((p) => p.el !== favsEl);
+        return withCards !== -1 ? withCards : 0;
+    }
+
+    let sideNavObserver = null;
+    function observeSideNav() {
+        const side = document.querySelector(".side-nav");
+        if (!side) return;
+        if (sideNavObserver && sideNavObserver._target === side) return;
+        if (sideNavObserver) sideNavObserver.disconnect();
+        sideNavObserver = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+                if (m.type === "attributes" && m.attributeName === "class") {
+                    const isCollapsed = side.classList.contains("side-nav--collapsed");
+                    if (isCollapsed) {
+                        cleanupSidebarState();
+                    } else {
+                        tabifySideNav();
+                    }
+                    syncFor(600);
+                    break;
+                }
+            }
+        });
+        sideNavObserver._target = side;
+        sideNavObserver.observe(side, { attributes: true, attributeFilter: ["class"] });
     }
 
     function tabifySideNav() {
+        if (document.querySelector(".side-nav--collapsed")) {
+            cleanupSidebarState();
+            return;
+        }
+        HTML.dataset.tvxNav = "1";
         const host = document.querySelector(".side-nav__scrollable_content");
         const secs = [...document.querySelectorAll(".side-nav-section")];
-        if (!host || !secs.length || host.clientHeight < 200) { restoreSideNavSections(); return; }
+        if (!host || !secs.length || host.clientHeight < 200) { cleanupSidebarState(); return; }
 
         const parent = secs[0].parentElement;
-        if (!parent || !host.contains(parent)) { restoreSideNavSections(); return; }
+        if (!parent || !host.contains(parent)) { cleanupSidebarState(); return; }
 
         const set = (e, k, v) => e.style.setProperty(k, v, "important");
         set(host, "overflow", "hidden");
@@ -1691,77 +1836,92 @@
             ...(temFavs ? [{ el: favsEl, curto: "Favoritos", completo: "Favoritos" }] : []),
             ...secs.map((s) => Object.assign({ el: s }, sectionLabel(s))),
         ];
+        navPanels.forEach((p) => {
+            if (p.curto) p.curto = p.curto.charAt(0).toUpperCase() + p.curto.slice(1);
+        });
 
-        if (!navTabsEl) {
-            navTabsEl = el("div", { id: "tvx-navtabs" });
-            const seta = (dir, glifo) => {
-                const b = el("button", { class: "tvx-navtab-arrow", type: "button", "data-dir": String(dir),
-                    "aria-label": dir < 0 ? "Abas anteriores" : "Próximas abas" }, glifo);
-                b.addEventListener("click", () => {
-                    navTabsEl.scrollBy({ left: dir * Math.max(80, navTabsEl.clientWidth * 0.7), behavior: "smooth" });
-                    setTimeout(updateTabArrows, 320);
-                });
-                return b;
-            };
-            navTabsWrapEl = el("div", { id: "tvx-navtabs-wrap" },
-                seta(-1, "\u2039"), navTabsEl, seta(1, "\u203A"));
-            navTabsEl.addEventListener("scroll", updateTabArrows, { passive: true });
+        if (!navTabsWrapEl) {
+            navDropdownTriggerEl = el("button", {
+                class: "tvx-navdropdown-btn", type: "button",
+                "aria-haspopup": "listbox", "aria-expanded": "false",
+            }, el("span", { class: "tvx-navdropdown-label" }, "Seguidos"), el("span", { class: "tvx-navdropdown-chevron", html: CHEVRON_DOWN_SVG }));
+
+            navDropdownMenuEl = el("div", {
+                class: "tvx-navdropdown-menu", role: "listbox", hidden: "",
+            });
+
+            navDropdownTriggerEl.addEventListener("click", (e) => {
+                e.stopPropagation();
+                setNavDropdownOpen(!isNavDropdownOpen);
+            });
+
+            navTabsWrapEl = el("div", { id: "tvx-navtabs-wrap" }, navDropdownTriggerEl, navDropdownMenuEl);
         }
-        // Antes da primeira seção, e NÃO no topo do container: lá em cima flutua a seta de
-        // recolher da sidebar, que ficava por cima das abas.
-        const ancora = temFavs ? favsEl : secs[0];
-        if (navTabsWrapEl.nextElementSibling !== ancora || navTabsWrapEl.parentNode !== parent) {
-            parent.insertBefore(navTabsWrapEl, ancora);
+        // Transforma o container nativo .side-nav__title no nosso dropdown, ou insere antes da primeira seção
+        const titleContainer = host.querySelector(".side-nav__title") || parent.querySelector(".side-nav__title");
+        if (titleContainer) {
+            for (const h of titleContainer.querySelectorAll("h1, h2, h3, h4")) {
+                h.style.setProperty("display", "none", "important");
+            }
+            if (navTabsWrapEl.parentNode !== titleContainer) {
+                titleContainer.appendChild(navTabsWrapEl);
+            }
+        } else {
+            const ancora = temFavs ? favsEl : secs[0];
+            if (navTabsWrapEl.nextElementSibling !== ancora || navTabsWrapEl.parentNode !== parent) {
+                parent.insertBefore(navTabsWrapEl, ancora);
+            }
         }
         const sig = navPanels.map((p) => p.curto).join("|");
-        if (navTabsEl.dataset.sig !== sig) {
-            // Reconstruir zera o scrollLeft: era isso que "voltava sozinho pro começo" logo
-            // depois de você rolar com as setas (o rótulo da última aba traz o nome do canal,
-            // que chega assíncrono e dispara uma reconstrução).
-            const rolagem = navTabsEl.scrollLeft;
-            navTabsEl.dataset.sig = sig;
-            navTabsEl.textContent = "";
-            setTimeout(() => { navTabsEl.scrollLeft = rolagem; updateTabArrows(); }, 0);
+        if (navDropdownMenuEl.dataset.sig !== sig) {
+            navDropdownMenuEl.dataset.sig = sig;
+            navDropdownMenuEl.textContent = "";
+            const activeIdx = getActiveNavTabIndex();
             navPanels.forEach((p, i) => {
-                const b = el("button", { class: "tvx-navtab", type: "button", title: p.completo }, p.curto);
-                b.addEventListener("click", () => {
-                    prefs.navTab = i; savePrefs(); applyNavTab();
-                    b.scrollIntoView({ block: "nearest", inline: "nearest" });
-                });
-                navTabsEl.append(b);
-            });
-        }
+                const item = el("button", {
+                    class: "tvx-navdropdown-item", type: "button", role: "option",
+                    "aria-selected": String(i === activeIdx), title: p.completo,
+                }, el("span", { class: "tvx-navdropdown-item-label" }, p.curto), el("span", { class: "tvx-navdropdown-check", html: CHECK_SVG }));
 
-        // "Open stories" muda de lugar conforme a aba ativa, porque vive solto entre as seções.
-        // Levamos a linha inteira pros links de navegação, abaixo de "Mais": lugar fixo, fora do
-        // conteúdo que troca.
-        if (navLinksEl) {
-            const stories = host.querySelector('[class*="stories" i], [data-a-target*="stories" i]');
-            if (stories && !navLinksEl.contains(stories)) {
-                let linha = stories;
-                while (linha.parentElement && linha.parentElement !== parent && linha.parentElement !== host) {
-                    linha = linha.parentElement;
-                }
-                if (linha !== navLinksEl && !linha.contains(navLinksEl)) navLinksEl.appendChild(linha);
-            }
+                item.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    prefs.navTab = p.curto;
+                    savePrefs();
+                    applyNavTab();
+                    setNavDropdownOpen(false);
+                });
+                navDropdownMenuEl.append(item);
+            });
         }
 
         // "For You" e afins ficam no tamanho natural, acima das abas
         for (const child of parent.children) {
-            if (child === navTabsEl) { set(child, "flex", "0 0 auto"); continue; }
-            if (!navPanels.some((p) => p.el === child)) set(child, "flex", "0 0 auto");
+            if (child === navTabsWrapEl) { set(child, "flex", "0 0 auto"); continue; }
+            if (!navPanels.some((p) => p.el === child)) {
+                set(child, "flex", "0 0 auto");
+                const isStories = child.querySelector('[class*="stories" i], [data-a-target*="stories" i]')
+                    || child.matches('[class*="stories" i], [data-a-target*="stories" i]')
+                    || /stories/i.test(child.textContent || "")
+                    || (child.style.marginTop && child.style.marginTop.includes("0.7rem"));
+                if (isStories) {
+                    set(child, "margin-top", "1rem");
+                    set(child, "margin-bottom", "1rem");
+                    set(child, "position", "relative");
+                    set(child, "z-index", "1");
+                }
+            }
         }
         // Só entramos em modo abas depois de confirmar que a faixa REALMENTE renderizou.
         // Enquanto ela não estiver na tela, esconder painéis deixaria a sidebar vazia — pior
         // do que manter o empilhamento nativo por mais um ciclo.
-        if (navTabsWrapEl.getBoundingClientRect().width < 8) { restoreSideNavSections(); return; }
+        if (navTabsWrapEl.getBoundingClientRect().width < 8) { cleanupSidebarState(); return; }
         applyNavTab();
     }
 
     function applyNavTab() {
         if (!navPanels.length) return;
         const set = (e, k, v) => e.style.setProperty(k, v, "important");
-        const i = Math.min(Math.max(0, prefs.navTab | 0), navPanels.length - 1);
+        const i = getActiveNavTabIndex();
         navPanels.forEach((p, idx) => {
             const on = idx === i;
             set(p.el, "display", on ? "flex" : "none");
@@ -1774,12 +1934,17 @@
                 set(list, "flex", "1 1 auto"); set(list, "min-height", "0"); set(list, "overflow-y", "auto");
             }
         });
-        if (navTabsEl) {
-            // Sem scrollIntoView aqui. applyNavTab roda a cada tick de 1s, e trazer a aba ativa
-            // pra vista puxava a faixa de volta sempre que você rolava pra longe dela — a
-            // rolagem manual não durava um segundo. Quem rola é só o clique explícito na aba.
-            [...navTabsEl.children].forEach((b, idx) => b.setAttribute("aria-selected", String(idx === i)));
-            updateTabArrows();
+
+        const activePanel = navPanels[i];
+        if (navDropdownTriggerEl && activePanel) {
+            const lbl = navDropdownTriggerEl.querySelector(".tvx-navdropdown-label");
+            if (lbl) lbl.textContent = activePanel.curto;
+        }
+        if (navDropdownMenuEl) {
+            const items = navDropdownMenuEl.querySelectorAll(".tvx-navdropdown-item");
+            items.forEach((item, idx) => {
+                item.setAttribute("aria-selected", String(idx === i));
+            });
         }
 
         // Se o painel ativo não renderizou (altura ~0), devolvemos o empilhamento nativo: uma
@@ -1788,7 +1953,7 @@
         if (ativo && document.contains(ativo)) {
             requestAnimationFrame(() => {
                 if (navPanels[i] && navPanels[i].el === ativo && ativo.getBoundingClientRect().height < 8) {
-                    restoreSideNavSections();
+                    cleanupSidebarState();
                 }
             });
         }
@@ -1811,10 +1976,9 @@
         }
     }
 
-    // ---- Navegar/Seguindo na sidebar, recolher junto do logo ---------------
-    // Modelo da Kick: a barra superior fica só com busca e conta, os atalhos de navegação descem
-    // pra sidebar e o botão de recolher sobe pro topo. De quebra some a colisão da seta flutuante
-    // com as abas da sidebar, que era o pior sintoma do layout anterior.
+    // ---- Navegar/Seguindo na sidebar --------------------------------------
+    // A barra superior fica só com busca e conta; os atalhos de navegação descem
+    // pra sidebar. Os controles de recolher/expandir da sidebar permanecem nativos da Twitch.
     //
     // Não movemos os nós originais: são do React, que os remonta e desfaz qualquer transplante.
     // Escondemos os originais e criamos cópias que delegam neles (assim rótulo e destino seguem
@@ -1837,59 +2001,17 @@
         }
     }
 
-    let navLinksEl = null, collapseCloneEl = null;
+    let navLinksEl = null;
 
     function relocateNavControls() {
         repararOcultacoes();
+        document.querySelectorAll(".tvx-collapse").forEach((b) => b.remove());
+
         const topnav = document.querySelector('.top-nav, [data-a-target="top-nav-container"]');
         const side = document.querySelector(".side-nav");
-        if (!topnav) return;
+        if (!topnav || !side) return;
 
-        // 1) botão de recolher: cópia ao lado do logo
-        const logo = topnav.querySelector('[data-a-target="home-link"]');
-        if (logo && logo.parentElement) {
-            // Em vez de dar display: none no wrapper pai (o que ocultava o botão de expansão
-            // e impedia a Twitch de renderizar o toggle de volta), ocultamos apenas os botões
-            // nativos via estilo seguro, garantindo que continuem no DOM para acionamento programático.
-            const nativeToggles = document.querySelectorAll(
-                '[data-a-target="side-nav-arrow"], [data-a-target="side-nav-expand-toggle"], [data-a-target="side-nav-collapse-toggle"], .collapse-toggle button, [data-test-selector="side-nav-arrow"], button[aria-label*="Side Nav" i], button[aria-label*="barra lateral" i]'
-            );
-            for (const t of nativeToggles) {
-                t.style.setProperty("opacity", "0", "important");
-                t.style.setProperty("pointer-events", "none", "important");
-                t.style.setProperty("position", "absolute", "important");
-                t.style.setProperty("width", "0", "important");
-                t.style.setProperty("height", "0", "important");
-                t.style.setProperty("overflow", "hidden", "important");
-            }
-            if (!collapseCloneEl) {
-                collapseCloneEl = el("button", {
-                    class: "tvx-collapse", type: "button",
-                    // hambúrguer da Kick (três barras)
-                    html: '<svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true">'
-                        + '<path d="M16 12.519H0V14.5H16V12.519Z"/><path d="M16 7.25951H0V9.24049H16V7.25951Z"/>'
-                        + '<path d="M16 2H0V3.98098H16V2Z"/></svg>',
-                });
-                collapseCloneEl.addEventListener("click", () => {
-                    const btn = document.querySelector(
-                        '[data-a-target="side-nav-arrow"], [data-a-target="side-nav-expand-toggle"], [data-a-target="side-nav-collapse-toggle"], .collapse-toggle button, [data-test-selector="side-nav-arrow"], button[aria-label*="Side Nav" i], button[aria-label*="barra lateral" i]'
-                    );
-                    if (btn) btn.click();
-                    syncFor(800);
-                });
-            }
-            // à ESQUERDA do logo, como o hambúrguer da Kick
-            const caixaLogo = logo.closest("div") || logo;
-            if (collapseCloneEl.nextElementSibling !== caixaLogo) {
-                caixaLogo.parentElement.insertBefore(collapseCloneEl, caixaLogo);
-            }
-            const recolhida = !!document.querySelector(".side-nav--collapsed");
-            collapseCloneEl.setAttribute("aria-pressed", String(recolhida));
-            collapseCloneEl.title = recolhida ? "Expandir a barra lateral" : "Recolher a barra lateral";
-        }
-
-        // 2) Seguindo/Navegar descem pra sidebar, e o "⋮" vira um item "Mais" ali junto
-        if (!side) return;
+        // Seguindo/Navegar descem pra sidebar, e o "⋮" vira um item "Mais" ali junto
         const origem = ["following-link", "browse-link"]
             .map((t) => topnav.querySelector(`[data-a-target="${t}"]`)).filter(Boolean);
         const maisBtn = topnav.querySelector('[data-a-target="ellipsis-button"]');
@@ -1932,7 +2054,7 @@
 
         // O título "For You" vira ruído: a navegação agora é a nossa. Escondemos só cabeçalhos
         // SOLTOS — os que estão dentro de uma seção viraram rótulo de aba e já não aparecem.
-        if (host) {
+        if (host && !document.querySelector(".side-nav--collapsed")) {
             for (const h of host.querySelectorAll("h1, h2, h3, h4")) {
                 if (!h.closest(".side-nav-section")) h.style.setProperty("display", "none", "important");
             }
@@ -3144,6 +3266,7 @@
         relocateNavControls();
         mountFavs();
         refreshFavs();
+        observeSideNav();
         tabifySideNav();
         onRoute();
 
@@ -3169,6 +3292,17 @@
         document.addEventListener("mousedown", blockStreamerProfileClick, true);
         document.addEventListener("pointerdown", blockStreamerProfileClick, true);
 
+        document.addEventListener("click", (e) => {
+            const btn = e.target && e.target.closest && e.target.closest('.collapse-toggle, [data-a-target="side-nav-arrow"], [data-a-target="side-nav-collapse-toggle"], [data-a-target="side-nav-expand-toggle"]');
+            if (btn) {
+                syncFor(900);
+                requestAnimationFrame(() => {
+                    if (document.querySelector(".side-nav--collapsed")) cleanupSidebarState();
+                    else tabifySideNav();
+                });
+            }
+        }, true);
+
         // A Twitch é SPA: pushState não dispara evento. Polling é o que funciona igual em
         // Violentmonkey/Tampermonkey, Firefox e Chrome, sem patchar objeto da página.
         setInterval(() => {
@@ -3192,6 +3326,7 @@
         setInterval(() => {
             hideTopNavAds();   // a barra superior existe em toda página, não só nas de canal
             relocateNavControls();
+            observeSideNav();
             mountFavs();       // idem: a sidebar é global, não só das páginas de canal
             expandSideNavSections();
             tabifySideNav();
