@@ -1,18 +1,13 @@
 // ==UserScript==
 // @name         Reddit — Control Panel, Ad-Free
 // @namespace    reddit-tweaks
-// @version      2.76.0
+// @version      2.77.0
 // @author       oguilhermelima
-// @description  Custom Reddit control panel with layout controls, ad cleanup, video autoplay, sorting tabs, and a RedGIFs player.
+// @description  Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs.
 // @match        https://www.reddit.com/*
 // @match        https://sh.reddit.com/*
 // @require      https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js
 // @run-at       document-start
-// @grant        GM_xmlhttpRequest
-// @grant        GM.xmlHttpRequest
-// @connect      api.redgifs.com
-// @connect      media.redgifs.com
-// @connect      redgifs.com
 // ==/UserScript==
 
 (function () {
@@ -24,7 +19,7 @@
      *   Topbar (view) · Topbar antiga · Autoplay · Menus lazy (ads) ·
      *   Save/Hide na barra · Listings multiselect (+ toast/stripTrackers/copyText) ·
      *   Micro dock · Feed (filtro/unblur/matureBypass/noTranslate) ·
-     *   TikTok overlay (tok*) · RedGifs inline (rg*) · Galeria inline ·
+     *   TikTok overlay (tok*) · Galeria inline ·
      *   Navbar inferior (mobile) · Barra de logo + sheets · Busca full-screen ·
      *   Apply pipeline (runFeaturePipeline/applySettings/refreshWork) ·
      *   Control panel (FAB) · Default landing · Bootstrap.
@@ -238,8 +233,6 @@
             title: "Media",
             items: [
                 { key: "autoplay", label: "Autoplay videos", hint: "Plays/pauses videos (muted) as they scroll in/out of view. Experimental.", def: true },
-                { key: "redgifsPlayer", label: "Custom RedGifs player", hint: "Replaces every RedGifs embed on the site with our own player (real video, our controls, progress bar) — same as the TikTok feed.", def: true },
-                { key: "redgifsHd", label: "RedGifs HD", hint: "Loads RedGifs in HD (custom player + story feed). Off = SD — lighter / faster on slow connections (default). There's also an HD/SD button on the player itself. Applies to the next ones that load.", def: false },
                 { key: "galleryPlayer", label: "Custom gallery nav", hint: "On gallery posts in the feed, swaps Reddit's carousel for ours: a bottom ‹ 2/5 › bar + one-image-per-gesture scroll. Always on inside the TikTok feed.", def: true },
                 { key: "imageViewer", label: "Custom image viewer", hint: "Clicking a single image opens it in our own full-screen viewer (max size, open-raw button) instead of Reddit's media page.", def: true },
                 { key: "maxQuality", label: "Always max video quality", hint: "Locks Reddit videos to the highest resolution (no adaptive downscaling). Uses more data on slow connections. Off = Auto/adaptive; the quality button still lets you pick.", def: true },
@@ -271,14 +264,6 @@
     const NAV_DEFAULTS = { navHome: true, navPopular: false, navSearch: true, navStory: true, navCreate: false, navInbox: false, navNotifications: false, navSaved: true, navProfile: true, navMenu: false, navTop: false };
     const NAV_ORDER_DEFAULT = ["navHome", "navSearch", "navStory", "navSaved", "navProfile", "navPopular", "navInbox", "navNotifications", "navCreate", "navMenu", "navTop"];
 
-    // Links injected into the left sidebar (relative to /user/<username>).
-    const USER_LINKS = [
-        { label: "Saved", path: "/saved/", icon: PATH.saved },
-        { label: "Upvoted", path: "/upvoted/", icon: PATH.upvoted },
-        { label: "History", path: "/", icon: PATH.history },
-        { label: "Posts", path: "/submitted/", icon: PATH.posts },
-        { label: "Comments", path: "/comments/", icon: PATH.comments },
-    ];
 
     const ITEMS = GROUPS.flatMap((g) => g.items);
     const HIDE_KEYS = ITEMS.filter((i) => i.hide).map((i) => i.key);
@@ -376,13 +361,8 @@
         .rx-tok-vlayer { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; cursor: pointer; }
         .rx-tok-vflash { width: 76px; height: 76px; border-radius: 50%; background: rgba(0, 0, 0, .45); color: #fff; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .2s ease; pointer-events: none; }
         .rx-tok-slide.rx-paused .rx-tok-vflash { opacity: 1; }
-        .rx-tok-slide.rx-tok-loading .rx-tok-vflash { display: none; } /* carregando redgifs → some o ▶, mostra spinner */
-        .rx-tok-slide.rx-tok-loading::after { content: ""; position: absolute; inset: 0; margin: auto; width: 46px; height: 46px; z-index: 4; border: 4px solid rgba(255, 255, 255, .25); border-top-color: #ff4500; border-radius: 50%; animation: rx-tok-spin .8s linear infinite; }
         @keyframes rx-tok-spin { to { transform: rotate(360deg); } }
-        /* redgifs falhou (token/blob): some o ▶ e mostra um aviso no lugar do poster morto */
-        .rx-tok-slide.rx-tok-rgfail .rx-tok-vflash { display: none; }
-        .rx-tok-slide.rx-tok-rgfail::after { content: "RedGifs unavailable"; position: absolute; inset: 0; margin: auto; width: max-content; height: max-content; z-index: 4; color: #d7dadc; font: 600 13px/1 -apple-system, sans-serif; opacity: .7; }
-        /* vídeo (não-redgifs) sem fonte reproduzível — ex.: o @require do hls.js caiu e não há mp4 → evita quadro preto mudo */
+        /* vídeo sem fonte reproduzível — ex.: o @require do hls.js caiu e não há mp4 → evita quadro preto mudo */
         .rx-tok-slide.rx-tok-vidfail .rx-tok-vflash { display: none; }
         .rx-tok-slide.rx-tok-vidfail::after { content: "Video unavailable"; position: absolute; inset: 0; margin: auto; width: max-content; height: max-content; z-index: 4; color: #d7dadc; font: 600 13px/1 -apple-system, sans-serif; opacity: .7; }
         .rx-tok-vflash svg { width: 38px; height: 38px; margin-left: 3px; }
@@ -462,7 +442,6 @@
         .rx-tok-act.rx-on { color: #ff4500; }
         .rx-tok-act.rx-down.rx-on { color: #7193ff; }
         .rx-tok-act svg { width: 22px; height: 22px; }
-        .rx-tok-act.rx-rg-q { font: 800 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; letter-spacing: .5px; } /* botão de texto HD/SD do RedGifs */
         .rx-tok-votes { display: flex; flex-direction: column; align-items: center; gap: 1px; }
         .rx-tok-actwrap { display: flex; flex-direction: column; align-items: center; gap: 2px; }
         .rx-tok-cnt, .rx-tok-score { color: #fff; font: 700 11px/1 -apple-system, sans-serif; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .7)); }
@@ -503,16 +482,6 @@
         .rx-tok-close svg { width: 26px; height: 26px; }
         .rx-tok-sentinel { height: 1px; width: 100%; }
         .rx-tok-empty { color: #d7dadc; font: 14px -apple-system, sans-serif; text-align: center; margin: auto; padding: 24px; }
-
-        /* ===== Player de RedGifs inline (substitui o iframe em TODO o site) — reaproveita os controles do overlay ===== */
-        .rx-rg { position: relative; width: 100%; background: #000; overflow: hidden; border-radius: 8px; }
-        .rx-rg-v { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; cursor: pointer; }
-        .rx-rg.rx-rg-paused .rx-tok-vflash { opacity: 1; }
-        .rx-rg.rx-rg-loading .rx-tok-vflash { display: none; }
-        .rx-rg.rx-rg-loading::after { content: ""; position: absolute; inset: 0; margin: auto; width: 40px; height: 40px; z-index: 2; border: 4px solid rgba(255, 255, 255, .25); border-top-color: #ff4500; border-radius: 50%; animation: rx-tok-spin .8s linear infinite; }
-        /* mini-rail vertical à direita (flat, igual o overlay) */
-        .rx-rg-ctl { position: absolute; right: 8px; bottom: 26px; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: .72; transition: opacity .15s ease; }
-        .rx-rg:hover .rx-rg-ctl { opacity: 1; }
 
         /* ===== Layout: largura do conteúdo =====
            O wrapper externo é .subgrid-container (m:w-[1120px], mx-auto) — alargamos pra --rx-cw.
@@ -601,14 +570,16 @@
         html.rx-hideSidebarFooter faceplate-tracker[noun="privacy_policy_menu"],
         html.rx-hideSidebarFooter faceplate-tracker[noun="user_agreement_menu"],
         html.rx-hideSidebarFooter faceplate-tracker[noun="accessibility_menu"] { display: none !important; }
-        html.rx-hideSidebarFooter #left-sidebar nav[aria-label="Primary"] > div:has(> a[href*="redditinc.com"]) { display: none !important; }
+        html.rx-hideSidebarFooter #left-sidebar nav > div:has(> a[href*="redditinc.com"]) { display: none !important; }
 
         /* ===== Divisores das seções ===== Em vez dos <hr> nativos (que ficam órfãos quando a
            seção é escondida via display:none), escondemos todos e desenhamos o divisor como
            border-top de cada seção. Seção escondida não rende borda → sem órfão. A "Você"
            (clone) também é uma section, então ganha o divisor de cima de graça. */
-        #left-sidebar nav[aria-label="Primary"] hr.border-neutral-border-weak { display: none !important; }
-        #left-sidebar nav[aria-label="Primary"] faceplate-expandable-section-helper > details {
+        #left-sidebar nav hr.border-neutral-border-weak,
+        reddit-sidebar-nav nav hr.border-neutral-border-weak { display: none !important; }
+        #left-sidebar nav faceplate-expandable-section-helper > details,
+        reddit-sidebar-nav nav faceplate-expandable-section-helper > details {
             border-top: 1px solid var(--color-neutral-border-weak, rgba(255, 255, 255, .1)) !important;
             margin-top: 8px !important;
             padding-top: 8px !important;
@@ -915,8 +886,8 @@
            nav/img/input/textarea/video/iframe/section/p/ul/...  Isso empurrava nossos elementos — em
            especial a navbar (nav) ganhava 1rem embaixo e flutuava 16px acima do bottom:0. Zeramos a
            margin nos nossos containers e em qualquer dessas tags dentro deles. */
-        .rx-mnav, .rx-mtop, .rx-dock, .rx-panel, .rx-tok, .rx-lb, .rx-search, .rx-sheet, .rx-settings, .rx-rg,
-        :is(.rx-mnav, .rx-mtop, .rx-dock, .rx-panel, .rx-tok, .rx-lb, .rx-search, .rx-sheet, .rx-settings, .rx-rg, .rx-rg-galwrap)
+        .rx-mnav, .rx-mtop, .rx-dock, .rx-panel, .rx-tok, .rx-lb, .rx-search, .rx-sheet, .rx-settings,
+        :is(.rx-mnav, .rx-mtop, .rx-dock, .rx-panel, .rx-tok, .rx-lb, .rx-search, .rx-sheet, .rx-settings, .rx-rg-galwrap)
           :is(nav, img, input, textarea, select, video, iframe, audio, section, article, aside, p, ul, ol, dl,
               details, figure, form, fieldset, menu, output, progress, pre, blockquote, meter, ruby, area, datalist, optgroup, option) {
             margin: 0 !important;
@@ -1106,9 +1077,13 @@
      * ------------------------------------------------------------------ */
     function getUsername() {
         const tries = [
+            () => document.querySelector("shreddit-app")?.getAttribute("username"),
             () => document.querySelector("after-login-toast-dispatcher[username]")?.getAttribute("username"),
             () => document.querySelector('[multiredditpath^="/user/"]')?.getAttribute("multiredditpath")?.match(/^\/user\/([^/]+)/)?.[1],
             () => document.querySelector('a[href*="/user/"][href*="/m/"]')?.getAttribute("href")?.match(/\/user\/([^/]+)/)?.[1],
+            () => document.querySelector('#user-drawer-content a[href^="/user/"]')?.getAttribute("href")?.match(/\/user\/([^/]+)/)?.[1],
+            () => document.querySelector('faceplate-tracker[noun="user_profile"] a')?.getAttribute("href")?.match(/\/user\/([^/]+)/)?.[1],
+            () => document.querySelector('a[href^="/user/"]:not([href*="/m/"]):not([href*="/search"])')?.getAttribute("href")?.match(/\/user\/([^/]+)/)?.[1],
             () => document.querySelector('[data-faceplate-tracking-context*="/user/"]')?.getAttribute("data-faceplate-tracking-context")?.match(/\/user\/([^/]+)\//)?.[1],
         ];
         for (const t of tries) {
@@ -1122,9 +1097,11 @@
 
     function getSidebarNav() {
         return (
-            document.querySelector('reddit-sidebar-nav nav[aria-label="Primary"]') ||
-            document.querySelector('#left-sidebar nav[aria-label="Primary"]') ||
-            document.querySelector('nav[aria-label="Primary"]')
+            document.querySelector('reddit-sidebar-nav nav') ||
+            document.querySelector('#left-sidebar nav') ||
+            document.querySelector('nav[aria-label="Primary"]') ||
+            document.querySelector('nav[aria-label="Principal"]') ||
+            document.querySelector('nav[aria-label]')
         );
     }
 
@@ -1153,9 +1130,13 @@
     // Acha uma seção nativa pra servir de molde (Custom Feeds de preferência; cai pra
     // Communities/Resources). Retorna o <faceplate-expandable-section-helper>.
     function nativeSectionTemplate() {
-        return document
-            .querySelector('faceplate-tracker[noun="multireddits_menu"], faceplate-tracker[noun="communities_menu"], faceplate-tracker[noun="resources_menu"]')
-            ?.closest("faceplate-expandable-section-helper");
+        const nav = getSidebarNav();
+        return (
+            document.querySelector('faceplate-tracker[noun="multireddits_menu"], faceplate-tracker[noun="communities_menu"], faceplate-tracker[noun="resources_menu"]')
+                ?.closest("faceplate-expandable-section-helper") ||
+            (nav && nav.querySelector('faceplate-expandable-section-helper:not(.rx-user-section)')) ||
+            document.querySelector('faceplate-expandable-section-helper:not(.rx-user-section)')
+        );
     }
 
     // A "Você" é um CLONE de uma seção nativa — herda o chrome inteiro (cabeçalho, caret,
@@ -1163,8 +1144,7 @@
     function injectUserSection() {
         const nav = getSidebarNav();
         if (!nav || nav.querySelector(".rx-user-section")) return;
-        const user = getUsername();
-        if (!user) return;
+        const user = getUsername() || "me";
         const tmpl = nativeSectionTemplate();
         if (!tmpl) return; // seções nativas ainda não montaram — o MutationObserver tenta de novo
 
@@ -1176,12 +1156,20 @@
         sec.querySelectorAll("[noun]").forEach((n) => n.removeAttribute("noun"));
 
         // Rótulo do cabeçalho.
+        const isPt = /^pt\b/i.test(document.documentElement.lang || navigator.language || "");
         const title = sec.querySelector("summary .tracking-widest");
-        if (title) title.textContent = "YOU";
+        if (title) title.textContent = isPt ? "VOCÊ" : "YOU";
 
         // Corpo: substitui os itens nativos pelos atalhos do perfil.
         const base = "https://www.reddit.com/user/" + user;
-        const items = USER_LINKS.map((l) => nativeLinkRow(base + l.path, l.icon, l.label));
+        const userLinks = [
+            { label: isPt ? "Salvos" : "Saved", path: "/saved/", icon: PATH.saved },
+            { label: isPt ? "Com upvote" : "Upvoted", path: "/upvoted/", icon: PATH.upvoted },
+            { label: isPt ? "Histórico" : "History", path: "/", icon: PATH.history },
+            { label: isPt ? "Postagens" : "Posts", path: "/submitted/", icon: PATH.posts },
+            { label: isPt ? "Comentários" : "Comments", path: "/comments/", icon: PATH.comments },
+        ];
+        const items = userLinks.map((l) => nativeLinkRow(base + l.path, l.icon, l.label));
         const body = sec.querySelector("[faceplate-auto-height-animator-content]");
         if (!body) return; // estrutura inesperada — não injeta um clone com conteúdo nativo
         body.replaceChildren(...items);
@@ -1495,18 +1483,27 @@
     function syncBtn(btn, overflow, kind, icons) {
         const it = overflowItem(overflow, kind);
         if (!it) return;
+        const itId = it.id || "";
+        const tracker = it.querySelector("faceplate-tracker");
+        const noun = (tracker && tracker.getAttribute("noun")) || it.getAttribute("noun") || "";
+        const on = itId.includes("un" + kind) || noun === "un" + kind || itId.startsWith("post-overflow-un");
+
         const lblEl = it.querySelector(".text-body-2");
         const raw = ((lblEl ? lblEl.textContent : it.textContent) || "").replace(/\s+/g, " ").trim();
-        const base = kind === "save" ? "Save" : "Hide";
-        // ativo = o item não mostra mais o rótulo base "Save"/"Hide" (ex.: "Remove from saved")
-        const on = it.id.indexOf("un" + kind) >= 0 || (!!raw && raw.toLowerCase() !== base.toLowerCase());
-        const label = on ? "Un" + base.toLowerCase() : base; // Unsave/Unhide : Save/Hide — rótulo curto fixo
+        const isPt = /^pt\b/i.test(document.documentElement.lang || navigator.language || "");
+        const fallback = kind === "save"
+            ? (on ? (isPt ? "Salvo" : "Saved") : (isPt ? "Salvar" : "Save"))
+            : (on ? (isPt ? "Desocultar" : "Unhide") : (isPt ? "Ocultar" : "Hide"));
+        const label = raw || fallback;
+
         const path = btn.querySelector("svg path");
         if (path) path.setAttribute("d", on ? icons.on : icons.off);
         if (on) btn.style.setProperty("color", "#ff4500", "important"); // vence o button-secondary do Reddit
         else btn.style.removeProperty("color");
         const lbl = btn.querySelector(".rx-act-label");
         if (lbl) lbl.textContent = label;
+        const srEl = btn.querySelector("faceplate-screen-reader-content");
+        if (srEl) srEl.textContent = label;
         btn.setAttribute("aria-label", label);
     }
 
@@ -1514,13 +1511,15 @@
     // as stylesheets do shadow root), troca ícone/rótulo e dispara a ação nativa.
     function makeActionButton(ref, kind, label, overflow) {
         const icons = kind === "save" ? SAVE_ICON : HIDE_ICON;
+        const isPt = /^pt\b/i.test(document.documentElement.lang || navigator.language || "");
+        const initialLabel = label || (kind === "save" ? (isPt ? "Salvar" : "Save") : (isPt ? "Ocultar" : "Hide"));
         const btn = ref.cloneNode(true);
         btn.classList.add("rx-post-act");
         btn.dataset.rxKind = kind;
         ["href", "data-action-bar-action", "data-post-click-location", "name", "id"].forEach((a) => btn.removeAttribute(a));
         btn.setAttribute("role", "button");
         btn.setAttribute("tabindex", "0");
-        btn.setAttribute("aria-label", label);
+        btn.setAttribute("aria-label", initialLabel);
         const svg = btn.querySelector("svg");
         if (svg) {
             svg.removeAttribute("icon-name");
@@ -1530,9 +1529,9 @@
             svg.appendChild(p);
         }
         const num = btn.querySelector("faceplate-number");
-        if (num && num.parentElement) { num.parentElement.classList.add("rx-act-label"); num.parentElement.textContent = label; }
+        if (num && num.parentElement) { num.parentElement.classList.add("rx-act-label"); num.parentElement.textContent = initialLabel; }
         const srEl = btn.querySelector("faceplate-screen-reader-content");
-        if (srEl) srEl.textContent = label;
+        if (srEl) srEl.textContent = initialLabel;
         syncBtn(btn, overflow, kind, icons); // estado real, se o menu já montou
         btn.addEventListener("click", (e) => {
             e.preventDefault();
@@ -1611,8 +1610,9 @@
             if (wantBtns && overflow) {
                 const ref = bar.querySelector('[data-action-bar-action="comments"]'); // pílula de comentários (é <a> no feed, <button> na página do post)
                 if (ref && !bar.querySelector(".rx-post-act")) {
-                    bar.insertBefore(makeActionButton(ref, "save", "Save", overflow), anchor);
-                    bar.insertBefore(makeActionButton(ref, "hide", "Hide", overflow), anchor);
+                    const isPt = /^pt\b/i.test(document.documentElement.lang || navigator.language || "");
+                    bar.insertBefore(makeActionButton(ref, "save", isPt ? "Salvar" : "Save", overflow), anchor);
+                    bar.insertBefore(makeActionButton(ref, "hide", isPt ? "Ocultar" : "Hide", overflow), anchor);
                 }
                 toggleDropdownDupes(overflow, true);
                 const ofWrap = overflow.closest("shreddit-async-loader") || overflow;
@@ -1666,9 +1666,10 @@
     function readOnState(overflow, kind) {
         const it = overflowItem(overflow, kind);
         if (!it) return null;
-        const base = kind === "save" ? "save" : "hide";
-        const raw = ((it.querySelector(".text-body-2") || {}).textContent || "").trim().toLowerCase();
-        return it.id.indexOf("un" + base) >= 0 || (!!raw && raw !== base);
+        const itId = it.id || "";
+        const tracker = it.querySelector("faceplate-tracker");
+        const noun = (tracker && tracker.getAttribute("noun")) || it.getAttribute("noun") || "";
+        return itId.includes("un" + kind) || noun === "un" + kind || itId.startsWith("post-overflow-un");
     }
 
     function fabAct(label, iconEl, onClick) {
@@ -1991,8 +1992,6 @@
     let rxTokGalLock = false, rxTokGalIdle = null, rxTokTouchX = null, rxTokTouchT = null; // galeria: 1 imagem por gesto (h) + alvo do toque
     const rxTokSeen = new Set();
     const rxTokHls = []; // instâncias hls.js ativas → destruídas ao fechar
-    const rxTokBlobs = []; // objectURLs (blobs do redgifs no overlay) → revogados ao fechar
-    const rxRgBlobs = []; // {url,video} dos blobs do player inline — LRU (cap 14) p/ não vazar memória em feeds longos
     let rxTokMuted = (() => { try { return localStorage.getItem("rx-tok-muted") !== "0"; } catch (e) { return true; } })(); // mute GLOBAL (default mudo p/ autoplay; persiste)
     let rxTokVol = (() => { try { const v = parseFloat(localStorage.getItem("rx-tok-vol")); return isFinite(v) ? Math.min(1, Math.max(0, v)) : 1; } catch (e) { return 1; } })(); // volume GLOBAL persistido
     let rxTokAudioCtx = null; // AudioContext compartilhado (normalização de loudness)
@@ -2004,7 +2003,6 @@
     // maior URL do img (cobre lazy-load das galerias: data-lazy-src/srcset)
     const bestSrc = (img) => { const ss = img.getAttribute("srcset") || img.getAttribute("data-lazy-srcset") || ""; if (ss) { const last = ss.split(",").map((p) => p.trim().split(/\s+/)[0]).filter(Boolean).pop(); if (last) return last; } return img.getAttribute("src") || img.getAttribute("data-lazy-src") || ""; };
     const fmtNum = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M" : n >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, "") + "K" : "" + n);
-    const rgIdFrom = (s) => { const m = (s || "").match(/redgifs\.com\/(?:ifr|watch|gifs|i)\/([A-Za-z0-9]+)/i); return m ? m[1] : null; };
     const ytIdFrom = (s) => { const m = (s || "").match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:embed\/|shorts\/|live\/|v\/|watch\?(?:[^&]*&)*v=))([\w-]{11})/i); return m ? m[1] : null; };
     // link DIRETO da imagem: decodifica o wrapper reddit.com/media?url=<encoded> → a URL real (preview.redd.it/…)
     const directImg = (u) => { if (!u) return u; const m = u.match(/[?&]url=([^&]+)/); if (m && /reddit\.com\/media/i.test(u)) { try { return decodeURIComponent(m[1]); } catch (e) {} } return u; };
@@ -2016,12 +2014,11 @@
     };
     const posterFromArticle = (article) => { const i = article.querySelector("img.preview-img, img[alt^='r/'], zoomable-img img, img"); return i ? bestSrc(i) : ""; };
 
-    // Melhor mídia do post. Ordem: imagem direta > galeria > vídeo do Reddit (HLS + mp4 preview) > embed (redgifs) > preview no card.
+    // Melhor mídia do post. Ordem: imagem direta > galeria > vídeo do Reddit (HLS + mp4 preview) > embed > preview no card.
     function postMedia(article) {
         const sp = article.querySelector("shreddit-post") || article;
         const href = sp.getAttribute("content-href") || "";
         if (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(href)) return { kind: "img", src: href };
-        { const rid = rgIdFrom(href); if (rid) return { kind: "redgifs", id: rid, poster: posterFromArticle(article) }; } // redgifs pelo link do post
         { const yt = ytIdFrom(href); if (yt) return { kind: "youtube", id: yt }; } // youtube pelo link do post
         // galeria: detecta pelo ELEMENTO gallery-carousel (não só post-type) → cobre CROSSPOST (post-type="crosspost")
         if (sp.getAttribute("post-type") === "gallery" || article.querySelector("gallery-carousel")) {
@@ -2035,13 +2032,12 @@
             const hls = player.getAttribute("src") || "", mp4 = player.getAttribute("preview") || "";
             if (hls || mp4) return { kind: "video", hls, mp4, poster: player.getAttribute("poster") || "" };
         }
-        // embed externo: shreddit-embed[html] contém o <iframe src="…">. Redgifs→vídeo nativo, YouTube→embed limpo, resto→iframe.
+        // embed externo: shreddit-embed[html] contém o <iframe src="…">. YouTube→embed limpo, resto→iframe.
         const embed = article.querySelector("shreddit-embed");
         if (embed) {
             const html = embed.getAttribute("html") || "";
             const m = html.match(/src=["']([^"']+)["']/i);
             if (m) {
-                const rid = rgIdFrom(m[1]); if (rid) return { kind: "redgifs", id: rid, poster: posterFromArticle(article) };
                 const yt = ytIdFrom(m[1]) || ytIdFrom(html); if (yt) return { kind: "youtube", id: yt };
                 return { kind: "iframe", src: m[1] };
             }
@@ -2055,244 +2051,17 @@
         return null;
     }
 
-    // silencia os players do fundo enquanto o overlay está aberto (Reddit lembra "unmute"; e o player inline de redgifs)
+    // silencia os players do fundo enquanto o overlay está aberto (Reddit lembra "unmute")
     function tokHushBackground() {
         document.querySelectorAll("shreddit-player").forEach((p) => {
             if (p.closest(".rx-tok")) return; // não mexe nos players movidos pro overlay
             const v = p.shadowRoot && p.shadowRoot.querySelector("video");
             if (v) { v.muted = true; try { v.pause(); } catch (e) {} }
         });
-        document.querySelectorAll("video.rx-rg-v").forEach((v) => { v.muted = true; }); // player inline de redgifs → sem áudio atrás do overlay
     }
 
     const tokVideoEl = (mediaEl) => (mediaEl && mediaEl.tagName === "VIDEO" ? mediaEl : null);
     const tokAllVideos = (track) => [...track.querySelectorAll("video.rx-tok-media")];
-
-    // ---- Redgifs nativo (exclusivo do Reddit): pega o mp4 direto da API e toca num <video> nosso (sem iframe). ----
-    // A API do redgifs bloqueia CORS de outra origem → usa GM_xmlhttpRequest (precisa do @grant + @connect).
-    const GMX = (typeof GM_xmlhttpRequest !== "undefined") ? GM_xmlhttpRequest : (typeof GM !== "undefined" && GM.xmlHttpRequest ? GM.xmlHttpRequest.bind(GM) : null);
-    function gmGetJSON(url, headers) {
-        return new Promise((resolve, reject) => {
-            if (!GMX) { reject(new Error("no GM_xmlhttpRequest")); return; }
-            GMX({ method: "GET", url, headers: headers || {}, timeout: 12000,
-                onload: (r) => { if (r.status >= 200 && r.status < 300) { try { resolve(JSON.parse(r.responseText)); } catch (e) { reject(e); } } else reject(new Error("HTTP " + r.status)); },
-                onerror: () => reject(new Error("neterror")), ontimeout: () => reject(new Error("timeout")) });
-        });
-    }
-    let rxRgToken = null, rxRgTokenAt = 0;
-    async function rgToken() {
-        if (rxRgToken && (Date.now() - rxRgTokenAt) < 3e6) return rxRgToken; // token temporário (~reuso 50min)
-        const j = await gmGetJSON("https://api.redgifs.com/v2/auth/temporary");
-        rxRgToken = j && j.token; rxRgTokenAt = Date.now();
-        if (!rxRgToken) throw new Error("no token");
-        return rxRgToken;
-    }
-    const rxRgCache = new Map();
-    async function rgVideo(id) {
-        const key = id.toLowerCase();
-        if (rxRgCache.has(key)) return rxRgCache.get(key);
-        const tok = await rgToken();
-        const j = await gmGetJSON("https://api.redgifs.com/v2/gifs/" + key, { Authorization: "Bearer " + tok });
-        const u = j && j.gif && j.gif.urls;
-        if (!u || !(u.hd || u.sd)) throw new Error("no urls");
-        const out = { hd: u.hd || u.sd, sd: u.sd || u.hd, poster: u.poster || u.thumbnail || "", w: (j.gif && j.gif.width) || 0, h: (j.gif && j.gif.height) || 0 };
-        rxRgCache.set(key, out);
-        return out;
-    }
-    // escolhe a URL por qualidade: HD (padrão) ou SD quando "RedGifs HD" está off (mais leve em net lenta).
-    // O cache guarda as duas, então o toggle vale pros próximos loads sem refazer a request.
-    const rgPickUrl = (r) => (settings.redgifsHd === false ? r.sd : r.hd);
-    // baixa o mp4 via GM (forjando Referer redgifs) → fura o hotlink/CORS do media.redgifs.com (o <video> direto dá tela preta)
-    function rgBlob(url) {
-        return new Promise((resolve, reject) => {
-            if (!GMX) { reject(new Error("no GMX")); return; }
-            GMX({ method: "GET", url, responseType: "blob", timeout: 30000, headers: { Referer: "https://www.redgifs.com/", Origin: "https://www.redgifs.com" },
-                onload: (r) => { if (r.status >= 200 && r.status < 300 && r.response) resolve(r.response); else reject(new Error("HTTP " + r.status)); },
-                onerror: () => reject(new Error("neterror")), ontimeout: () => reject(new Error("timeout")) });
-        });
-    }
-    // Poster do redgifs: media.redgifs.com BLOQUEIA o Referer do reddit (403) e <video referrerpolicy> não é honrado p/ o poster
-    // → o atributo `poster=…media.redgifs.com…` carrega vazio (quadro preto até o vídeo tocar). Busca via GM (referer redgifs → 200),
-    // usa objectURL e revoga quando o vídeo já tem frame próprio (loadeddata). Fire-and-forget: não atrasa o mp4.
-    function rgSetPoster(video, posterUrl) {
-        if (!posterUrl) return;
-        rgBlob(posterUrl).then((b) => {
-            if (!video.isConnected) return; // sumiu (falha/eviction) → não cria objectURL à toa
-            const u = URL.createObjectURL(b);
-            video.poster = u;
-            video.addEventListener("loadeddata", () => { try { URL.revokeObjectURL(u); } catch (e) {} }, { once: true });
-        }).catch(() => {}); // poster é cosmético → ignora falha
-    }
-    // carrega o redgifs do slide (lazy, no foco): API → mp4 → blob → objectURL. Mostra spinner; toca se ainda for o slide ativo.
-    async function rgLoad(video) {
-        if (!video || video.dataset.rgLoaded || !video.dataset.rgid) return;
-        video.dataset.rgLoaded = "1";
-        const slide = video.closest(".rx-tok-slide");
-        if (slide) slide.classList.add("rx-tok-loading");
-        try {
-            const r = await rgVideo(video.dataset.rgid);
-            rgSetPoster(video, r.poster);
-            const src = rgPickUrl(r);
-            let url = src;
-            try { const blob = await rgBlob(src); url = URL.createObjectURL(blob); rxTokBlobs.push(url); video._rxNorm = true; } // blob = mesma origem → pode normalizar
-            catch (e) { video.referrerPolicy = "no-referrer"; } // blob falhou → tenta o mp4 direto (no-referrer, sem normalização)
-            video.src = url;
-            if (slide) slide.classList.remove("rx-tok-loading");
-            if (rxTokActiveSlide === slide) { video.muted = rxTokMuted; video.play().catch(() => { video.muted = true; video.play().catch(() => {}); }); }
-        } catch (e) {
-            if (slide) { slide.classList.remove("rx-tok-loading"); slide.classList.add("rx-tok-rgfail"); }
-            video.dataset.rgLoaded = ""; // permite retry no próximo foco
-            console.warn("[rx-tok] redgifs falhou:", video.dataset.rgid, e && e.message);
-        }
-    }
-
-    /* ------------------------------------------------------------------ *
-     * Player de RedGifs INLINE — substitui o iframe do redgifs em TODO o site (reaproveita rgVideo/rgBlob).
-     * embed-IO: constrói perto da viewport. video-IO: autoplay mudo em vista / pausa fora + carrega o blob lazy.
-     * ------------------------------------------------------------------ */
-    let rxRgVidIO = null, rxRgEmbedIO = null;
-    function rgVidIO() {
-        if (rxRgVidIO) return rxRgVidIO;
-        rxRgVidIO = new IntersectionObserver((es) => es.forEach((e) => {
-            const v = e.target;
-            if (e.isIntersecting && e.intersectionRatio >= 0.45) { if (!v.dataset.rgLoaded) rgInlineLoad(v); else { const p = v.play(); if (p && p.catch) p.catch(() => {}); } }
-            else { try { v.pause(); } catch (x) {} }
-        }), { threshold: [0, 0.45] });
-        return rxRgVidIO;
-    }
-    function rgInlineSolo(video) { document.querySelectorAll("video.rx-rg-v").forEach((o) => { if (o !== video) o.muted = true; }); } // só um com áudio
-    async function rgInlineLoad(video) {
-        if (!video || video.dataset.rgLoaded || !video.dataset.rgid) return;
-        video.dataset.rgLoaded = "1";
-        const wrap = video.closest(".rx-rg");
-        if (wrap) wrap.classList.add("rx-rg-loading");
-        try {
-            const r = await rgVideo(video.dataset.rgid);
-            rgSetPoster(video, r.poster);
-            const src = rgPickUrl(r);
-            let url = src;
-            try {
-                const blob = await rgBlob(src); url = URL.createObjectURL(blob); video._rxNorm = true;
-                rxRgBlobs.push({ url, video });
-                // LRU: libera blobs antigos (recarregam ao voltar). PULA vídeo ainda em/perto da viewport — senão
-                // rolar >14 redgifs e voltar despejaria o clipe que você está assistindo (piscava/recarregava).
-                // Re-enfileira o visível e tenta o próximo; o contador `scan` (≤ length) evita loop se TODOS visíveis.
-                let scan = rxRgBlobs.length;
-                while (rxRgBlobs.length > 14 && scan-- > 0) {
-                    const old = rxRgBlobs.shift();
-                    const ov = old.video;
-                    if (ov && ov !== video) {
-                        const r = ov.getBoundingClientRect();
-                        if (r.bottom > -200 && r.top < (window.innerHeight || 0) + 200) { rxRgBlobs.push(old); continue; } // visível → mantém
-                    }
-                    try { URL.revokeObjectURL(old.url); } catch (x) {}
-                    if (ov && ov !== video) { try { ov.pause(); } catch (x) {} ov.removeAttribute("src"); ov.load(); ov.dataset.rgLoaded = ""; }
-                }
-            } catch (e) { video.referrerPolicy = "no-referrer"; } // blob falhou → mp4 direto (no-referrer)
-            video.src = url;
-            // mantém a ALTURA NATIVA do embed (já é a certa p/ vertical/horizontal); object-fit:contain encaixa o vídeo.
-            // NÃO setar aspect-ratio aqui: em vídeo vertical virava largura100%×proporção = bloco gigante (quebrava).
-            if (wrap) wrap.classList.remove("rx-rg-loading");
-            const rect = video.getBoundingClientRect();
-            if (rect.bottom > 0 && rect.top < (window.innerHeight || 0)) { const p = video.play(); if (p && p.catch) p.catch(() => {}); } // ainda em vista → toca
-        } catch (e) {
-            console.warn("[rx-rg] redgifs inline falhou (restaurando embed):", video.dataset.rgid, e && e.message);
-            if (wrap) { const emb = wrap._rxEmbed; if (emb) emb.style.display = ""; wrap.remove(); } // falhou → volta o embed nativo do redgifs
-        }
-    }
-    // mesmos controles/visual do overlay (flat): flash ▶, barra de progresso, volume (mute+flyout), fullscreen
-    // Botão HD/SD direto no player do RedGifs (overlay story + inline): alterna o setting redgifsHd e
-    // RECARREGA o vídeo atual na nova qualidade (o cache já tem as duas urls, só refaz o blob).
-    function rgReload(video) {
-        if (!video || !video.dataset.rgid) return;
-        video.dataset.rgLoaded = ""; // libera pra recarregar
-        try { video.pause(); } catch (e) {}
-        video.removeAttribute("src"); video.load();
-        if (video.classList.contains("rx-rg-v")) rgInlineLoad(video); else rgLoad(video);
-    }
-    function rgSyncQ() { document.querySelectorAll(".rx-rg-q").forEach((b) => { b.textContent = settings.redgifsHd === false ? "SD" : "HD"; }); }
-    function rgQualityBtn(video) {
-        const btn = el("button", { className: "rx-tok-act rx-rg-q", type: "button", title: "Quality (HD/SD)", "aria-label": "Quality" }, settings.redgifsHd === false ? "SD" : "HD");
-        btn.addEventListener("click", (e) => {
-            e.preventDefault(); e.stopPropagation();
-            settings.redgifsHd = settings.redgifsHd === false; // toggle SD↔HD
-            save();
-            rgSyncQ();      // atualiza todos os botões na tela
-            rgReload(video); // recarrega este vídeo já na nova qualidade
-        });
-        return btn;
-    }
-
-    function rgInlineControls(wrap, video) {
-        wrap.appendChild(video);
-        wrap.appendChild(el("div", { className: "rx-tok-vflash" }, icon(PATH.playFill, 24)));
-        video.addEventListener("click", () => { if (video.paused) { const p = video.play(); if (p && p.catch) p.catch(() => {}); } else video.pause(); });
-        video.addEventListener("play", () => { wrap.classList.remove("rx-rg-paused"); if (!video.muted) rgInlineSolo(video); });
-        video.addEventListener("pause", () => { wrap.classList.add("rx-rg-paused"); });
-        // barra de progresso — classes do overlay
-        const fill = el("div", { className: "rx-tok-vfill" });
-        const bar = el("div", { className: "rx-tok-vbar" }, fill);
-        const prog = el("div", { className: "rx-tok-vprog" }, bar);
-        prog.addEventListener("click", (e) => { e.stopPropagation(); if (!video.duration) return; const rr = bar.getBoundingClientRect(); video.currentTime = Math.max(0, Math.min(1, (e.clientX - rr.left) / rr.width)) * video.duration; });
-        video.addEventListener("timeupdate", () => { if (video.duration) fill.style.width = (video.currentTime / video.duration * 100) + "%"; });
-        wrap.appendChild(prog);
-        // volume (mute global persistido + flyout horizontal) — classes do overlay
-        const mute = el("button", { className: "rx-tok-act rx-tok-mute", type: "button", title: "Mute/unmute", "aria-label": "Mute/unmute" }, icon(video.muted ? PATH.volumeOff : PATH.volumeOn, 24));
-        const slider = el("input", { className: "rx-tok-vol", type: "range", min: "0", max: "1", step: "0.01", "aria-label": "Volume" });
-        const syncVol = () => { const v = video.muted ? 0 : video.volume; slider.value = v; slider.style.setProperty("--val", v * 100 + "%"); mute.replaceChildren(icon(video.muted ? PATH.volumeOff : PATH.volumeOn, 24)); };
-        const persistVol = (val) => { rxTokVol = val; try { localStorage.setItem("rx-tok-vol", String(val)); } catch (x) {} };
-        mute.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); tokAudioContext(); video.muted = !video.muted; if (!video.muted) { if (video.volume === 0) { video.volume = rxTokVol || 1; } tokNormalize(video); rgInlineSolo(video); const p = video.play(); if (p && p.catch) p.catch(() => {}); } syncVol(); });
-        slider.addEventListener("input", (e) => { e.stopPropagation(); const val = parseFloat(slider.value); video.volume = val; video.muted = val === 0; persistVol(val); if (val > 0) { tokAudioContext(); tokNormalize(video); rgInlineSolo(video); } syncVol(); });
-        ["click", "pointerdown", "mousedown"].forEach((ev) => slider.addEventListener(ev, (e) => e.stopPropagation()));
-        video.addEventListener("volumechange", syncVol);
-        const volwrap = el("div", { className: "rx-tok-volwrap" }, el("div", { className: "rx-tok-volflyout" }, slider), mute);
-        // copiar o link direto do RedGifs + abrir numa nova guia (link original)
-        const watchUrl = "https://www.redgifs.com/watch/" + video.dataset.rgid;
-        const copy = el("button", { className: "rx-tok-act", type: "button", title: "Copiar link do RedGifs", "aria-label": "Copy RedGifs link" }, icon(PATH.copy, 24));
-        copy.addEventListener("click", (e) => {
-            e.preventDefault(); e.stopPropagation();
-            copyText(watchUrl, () => flashCopied(copy, PATH.copy));
-        });
-        const open = el("a", { className: "rx-tok-act", href: watchUrl, target: "_blank", rel: "noopener", title: "Abrir no RedGifs", "aria-label": "Open on RedGifs" }, icon(PATH.external, 24));
-        open.addEventListener("click", (e) => e.stopPropagation());
-        const fs = el("button", { className: "rx-tok-act", type: "button", title: "Fullscreen", "aria-label": "Fullscreen" }, icon(PATH.expand, 24));
-        fs.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); try { document.fullscreenElement ? document.exitFullscreen() : wrap.requestFullscreen(); } catch (x) {} });
-        wrap.appendChild(el("div", { className: "rx-rg-ctl" }, volwrap, rgQualityBtn(video), copy, open, fs));
-        setTimeout(syncVol, 200);
-    }
-    function rgProcessEmbed(embed, tries) {
-        if (!embed || embed.dataset.rxRg === "done" || !settings.redgifsPlayer) return;
-        const id = rgIdFrom(embed.getAttribute("html") || "");
-        if (!id) { embed.dataset.rxRg = "skip"; return; }
-        // o iframe do redgifs costuma estar no shadow DOM do shreddit-embed (inacessível) → escondemos o EMBED inteiro
-        // e medimos por ele (tem aspect-ratio reservado). Bem mais robusto que caçar o iframe.
-        const h = embed.offsetHeight;
-        if (!h && (tries || 0) < 8) { setTimeout(() => rgProcessEmbed(embed, (tries || 0) + 1), 300); return; } // sem layout → espera; depois segue com fallback
-        embed.dataset.rxRg = "done";
-        if (rxRgEmbedIO) rxRgEmbedIO.unobserve(embed);
-        const wrap = el("div", { className: "rx-rg" });
-        wrap.style.height = (h || 360) + "px"; // placeholder até a API dar o aspecto real
-        const video = el("video", { className: "rx-rg-v", loop: "", playsinline: "", preload: "none" });
-        video.muted = true; video.volume = rxTokVol; video.dataset.rgid = id;
-        rgInlineControls(wrap, video);
-        wrap._rxEmbed = embed; // guardado p/ restaurar na falha
-        embed.style.display = "none";
-        embed.parentNode.insertBefore(wrap, embed);
-        rgVidIO().observe(video);
-        rgInlineLoad(video); // carrega o blob JÁ (perto da viewport) → sem delay ao chegar; o vídeo-IO só dá play quando visível
-    }
-    // Enfileira os embeds de redgifs (barato) — a embed-IO constrói o player quando chegam perto da viewport.
-    function applyRedgifsInline() {
-        if (!settings.redgifsPlayer) return;
-        const embeds = document.querySelectorAll("shreddit-embed:not([data-rx-rg])");
-        if (!embeds.length) return;
-        if (!rxRgEmbedIO) rxRgEmbedIO = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) rgProcessEmbed(e.target, 0); }), { rootMargin: "1000px" });
-        embeds.forEach((embed) => {
-            if (!rgIdFrom(embed.getAttribute("html") || "")) { embed.dataset.rxRg = "skip"; return; }
-            embed.dataset.rxRg = "queued";
-            rxRgEmbedIO.observe(embed);
-        });
-    }
 
     /* ------------------------------------------------------------------ *
      * Galeria INLINE (site inteiro): troca o <gallery-carousel> nativo pela nossa (faixa + barra ‹ 2/5 › + 1-por-gesto).
@@ -2340,7 +2109,7 @@
     function rxImgClick(e) {
         if (!settings.imageViewer || e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return; // respeita ctrl/cmd-click (abrir em nova guia)
         const img = e.target.closest && e.target.closest("img.media-lightbox-img");
-        if (!img || img.closest("gallery-carousel") || img.closest(".rx-lb, .rx-tok, .rx-rg, .rx-rg-galwrap")) return; // pula galeria e nossos overlays
+        if (!img || img.closest("gallery-carousel") || img.closest(".rx-lb, .rx-tok, .rx-rg-galwrap")) return; // pula galeria e nossos overlays
         const src = bestSrc(img);
         if (!src || !/(redd\.it|redditmedia)/.test(src)) return;
         e.preventDefault(); e.stopPropagation();
@@ -2428,7 +2197,7 @@
         if (rxTokAudioCtx && rxTokAudioCtx.state === "suspended") rxTokAudioCtx.resume().catch(() => {});
         return rxTokAudioCtx;
     }
-    // Normalização de loudness: compressor + makeup gain. SÓ em fontes não-tainted (hls.js MSE / blob do redgifs),
+    // Normalização de loudness: compressor + makeup gain. SÓ em fontes não-tainted (hls.js MSE),
     // senão o MediaElementSource zera o áudio. video.volume/muted continuam valendo (ficam antes do source node).
     function tokNormalize(video) {
         if (!video || !video._rxNorm || video._rxNormDone) return;
@@ -2487,11 +2256,8 @@
         rxTokActiveSlide = active; rxTokActiveV = activeV;
         if (activeV) {
             activeV.muted = rxTokMuted;
-            if (activeV.dataset.rgid && !activeV.dataset.rgLoaded) rgLoad(activeV); // redgifs lazy: carrega o blob e toca quando pronto
-            else { const p = activeV.play(); if (p && p.catch) p.catch(() => { activeV.muted = true; activeV.play().catch(() => {}); }); }
+            const p = activeV.play(); if (p && p.catch) p.catch(() => { activeV.muted = true; activeV.play().catch(() => {}); });
         }
-        const nextV = slides[idx + 1] && slides[idx + 1].querySelector("video[data-rgid]"); // prefetch do próximo redgifs (scroll suave)
-        if (nextV && !nextV.dataset.rgLoaded) rgLoad(nextV);
         // youtube (iframe via jsapi): toca o do slide ativo, pausa os outros (senão fica som tocando ao rolar)
         slides.forEach((s, i) => { const yt = s.querySelector("iframe.rx-tok-yt"); if (yt) { try { yt.contentWindow.postMessage('{"event":"command","func":"' + (i === idx ? "playVideo" : "pauseVideo") + '","args":""}', "*"); } catch (e) {} } });
     }
@@ -2784,11 +2550,6 @@
             mediaEl = el("video", { className: "rx-tok-media", loop: "", playsinline: "", preload: "metadata", poster: media.poster || "" });
             mediaEl.muted = rxTokMuted;
             tokAttachVideo(mediaEl, media);
-        } else if (media.kind === "redgifs") {
-            // redgifs nativo (sem iframe): <video> nosso; o mp4 é carregado lazy no foco (rgLoad) → herda controles/mute/nav/single-play
-            mediaEl = el("video", { className: "rx-tok-media", loop: "", playsinline: "", preload: "none", poster: media.poster || "" });
-            mediaEl.muted = rxTokMuted; mediaEl.volume = rxTokVol;
-            mediaEl.dataset.rgid = media.id;
         } else if (media.kind === "youtube") {
             // embed nocookie limpo + autoplay + jsapi (pra pausar quando sair do slide). referrer correto (no-referrer quebrava).
             mediaEl = el("iframe", { className: "rx-tok-media rx-tok-yt", src: "https://www.youtube-nocookie.com/embed/" + media.id + "?autoplay=1&playsinline=1&rel=0&enablejsapi=1", loading: "lazy", allowfullscreen: "", referrerpolicy: "strict-origin-when-cross-origin", allow: "autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write" });
@@ -2806,12 +2567,11 @@
             sub ? el("a", { className: "rx-tok-sub", href: location.origin + "/" + sub + "/", target: "_blank", rel: "noopener" }, sub) : null,
             el("a", { className: "rx-tok-title", href: postUrl, target: "_blank", rel: "noopener" }, title),
         );
-        const isVid = media.kind === "video" || media.kind === "redgifs";
+        const isVid = media.kind === "video";
         let slide;
         const rail = tokRail(article, () => slide);
         if (isVid) rail.appendChild(tokVolWrap()); // volume horizontal + mute global
         if (media.kind === "video") rail.appendChild(tokQualityBtn(mediaEl)); // qualidade só p/ vídeo do Reddit (níveis HLS)
-        else if (media.kind === "redgifs") rail.appendChild(rgQualityBtn(mediaEl)); // HD/SD do RedGifs
         else if (media.kind === "iframe") rail.appendChild(tokMuteBtn());
         slide = el("div", { className: "rx-tok-slide" }, mediaEl, cap, rail);
         if (isVid) tokAddVideoControls(slide, mediaEl); // camada de play/pause + barra de progresso próprias
@@ -2877,8 +2637,6 @@
     function closeTok() {
         rxTokHls.forEach((h) => { try { h.destroy(); } catch (e) {} }); // libera os players hls.js
         rxTokHls.length = 0;
-        rxTokBlobs.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) {} }); // libera os blobs do redgifs
-        rxTokBlobs.length = 0;
         document.querySelector(".rx-tok")?.remove();
         document.removeEventListener("keydown", tokKey, true);
         if (rxTokObs) { rxTokObs.disconnect(); rxTokObs = null; }
@@ -3269,7 +3027,6 @@
         applyFilter();
         applyUnblur();
         applyMatureBypass();
-        applyRedgifsInline();
         applyGalleryInline();
         injectMobileTop();
         buildMobileNav();

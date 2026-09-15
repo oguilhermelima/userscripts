@@ -26,7 +26,7 @@ If **Allow User Scripts** is not available, update the browser and userscript ma
 |---|---|---|
 | **crunchyroll** | Persistently hides scrollbars across all Crunchyroll routes. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/crunchyroll.user.js) |
 | **instagram** | Native video controls, unified mosaic feed, responsive grids, lightbox viewer, and saved-post tools for Instagram. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/instagram.user.js) |
-| **reddit** | Custom Reddit control panel with layout controls, ad cleanup, video autoplay, sorting tabs, and a RedGIFs player. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/reddit.user.js) |
+| **reddit** | Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/reddit.user.js) |
 | **twitch** | Streamer top navigation plus a YouTube-style Clips and VOD theater with filtering, sorting, and native playback controls. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/twitch.user.js) |
 | **twitter** | X/Twitter control panel for a wider layout, decluttered sidebars, live preferences, and sensitive-content handling. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/twitter.user.js) |
 

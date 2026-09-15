@@ -83,7 +83,7 @@ for (const entry of entries) {
 const descriptions = {
   crunchyroll: "Persistently hides scrollbars across all Crunchyroll routes.",
   instagram: "Native video controls, unified mosaic feed, responsive grids, lightbox viewer, and saved-post tools for Instagram.",
-  reddit: "Custom Reddit control panel with layout controls, ad cleanup, video autoplay, sorting tabs, and a RedGIFs player.",
+  reddit: "Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs.",
   twitch: "Streamer top navigation plus a YouTube-style Clips and VOD theater with filtering, sorting, and native playback controls.",
   twitter: "X/Twitter control panel for a wider layout, decluttered sidebars, live preferences, and sensitive-content handling.",
 };
