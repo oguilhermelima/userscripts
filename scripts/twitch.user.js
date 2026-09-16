@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch — Top Nav, Live Tab & Clips/VOD Playlist
 // @namespace    twitch-channel-rework
-// @version      1.5.7
+// @version      1.6.1
 // @author       oguilhermelima
 // @description  Streamer top navigation plus a YouTube-style Clips and VOD theater with filtering, sorting, and native playback controls.
 // @match        https://www.twitch.tv/*
@@ -100,6 +100,62 @@
         return h ? `${h}:${String(m).padStart(2, "0")}:${String(ss).padStart(2, "0")}`
                  : `${m}:${String(ss).padStart(2, "0")}`;
     };
+    function formatTwitchTimestamp(totalSeconds) {
+        const s = Math.max(0, Math.floor(totalSeconds || 0));
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = s % 60;
+        if (h > 0) return `${h}h${String(m).padStart(2, "0")}m${String(sec).padStart(2, "0")}s`;
+        if (m > 0) return `${m}m${String(sec).padStart(2, "0")}s`;
+        return `${sec}s`;
+    }
+    function parseTwitchTimestamp(t) {
+        if (!t) return 0;
+        t = String(t).trim();
+        if (/^\d+$/.test(t)) return parseInt(t, 10);
+        let total = 0;
+        const h = t.match(/(\d+)\s*h/i);
+        const m = t.match(/(\d+)\s*m/i);
+        const s = t.match(/(\d+)\s*s/i);
+        if (h) total += parseInt(h[1], 10) * 3600;
+        if (m) total += parseInt(m[1], 10) * 60;
+        if (s) total += parseInt(s[1], 10);
+        return total;
+    }
+    let vodSeekTimer = null;
+    function enforceNativeVodSeek(targetSec) {
+        if (!targetSec || targetSec <= 0) return;
+        if (vodSeekTimer) clearInterval(vodSeekTimer);
+
+        let tries = 0;
+        let confirmed = 0;
+        const maxTries = 40; // 40 * 200ms = 8s
+
+        vodSeekTimer = setInterval(() => {
+            tries++;
+            const video = document.querySelector(".video-player video, .persistent-player video, [data-a-target='video-player'] video, video");
+            if (video && video.readyState >= 1 && video.duration && !isNaN(video.duration)) {
+                const diff = Math.abs(video.currentTime - targetSec);
+                if (diff > 2) {
+                    try {
+                        video.currentTime = targetSec;
+                        confirmed = 0;
+                    } catch {}
+                } else {
+                    confirmed++;
+                    // Must confirm position for at least 3 checks (600ms) to ensure Twitch's resume logic didn't override it
+                    if (confirmed >= 3 || tries >= 25) {
+                        clearInterval(vodSeekTimer);
+                        vodSeekTimer = null;
+                    }
+                }
+            }
+            if (tries >= maxTries) {
+                clearInterval(vodSeekTimer);
+                vodSeekTimer = null;
+            }
+        }, 200);
+    }
     const UNITS = [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]];
     const ago = (iso) => {
         const diff = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -294,6 +350,34 @@
         const login = d && d.video && d.video.owner && d.video.owner.login;
         if (login) vodOwners.set(String(id), login);
         return login || null;
+    }
+
+    const vodAvailableCache = new Map();
+    async function isVodAvailable(vodId) {
+        if (!vodId) return false;
+        const idStr = String(vodId);
+        if (vodAvailableCache.has(idStr)) return vodAvailableCache.get(idStr);
+        const videoPool = (state.pools && state.pools.videos) || (state.pool && state.pool.kind === "videos" ? state.pool : null);
+        if (videoPool && videoPool.items.some((v) => String(v.id) === idStr)) {
+            vodAvailableCache.set(idStr, true);
+            return true;
+        }
+        try {
+            const d = await gql(`query { video(id: "${q(idStr)}") { id status } }`);
+            const ok = !!(d && d.video && d.video.id);
+            vodAvailableCache.set(idStr, ok);
+            return ok;
+        } catch {
+            vodAvailableCache.set(idStr, false);
+            return false;
+        }
+    }
+
+    async function fetchSingleClip(slug) {
+        try {
+            const d = await gql(`query { clip(slug: "${q(slug)}") { ${CLIP_FIELDS} } }`);
+            return d && d.clip ? normalizeClip(d.clip) : null;
+        } catch { return null; }
     }
 
     const tokenCache = new Map();
@@ -506,6 +590,7 @@
     //  CSS                                                                  //
     // ===================================================================== //
     const ICON = {
+        vod: "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6H4zm6 2.5 6 3.5-6 3.5v-7z",
         live: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 5a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z",
         search: "M11 4a7 7 0 1 0 4.2 12.6l3.6 3.6 1.4-1.4-3.6-3.6A7 7 0 0 0 11 4Zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z",
         close: "M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7l1.4-1.4L10.6 10.6l6.3-6.3 1.4 1.4Z",
@@ -622,7 +707,7 @@
             z-index: 50 !important;
             display: flex; flex-direction: column;
             width: 100%; box-sizing: border-box;
-            padding: 0 !important; margin-top: 0;
+            padding: 0 0 8px !important; margin-top: 0;
             border-bottom: 1px solid rgba(255,255,255,.08);
             background: transparent;
             font-family: Inter, Roobert, "Helvetica Neue", system-ui, sans-serif;
@@ -1093,12 +1178,15 @@
         .tvx-under { flex: 0 0 auto; max-height: 42%; overflow-y: auto; padding: 14px 20px 20px; border-top: 1px solid rgba(255,255,255,.08); }
         .tvx-under-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 10px; }
         .tvx-under-header h1 { font-size: 19px; line-height: 1.3; margin: 0; font-weight: 700; color: #fff; flex: 1 1 auto; word-break: break-word; }
+        .tvx-under-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
         .tvx-share-btn {
             flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px;
             border-radius: 8px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06);
             color: #efeff1; font: 600 13px/1 inherit; cursor: pointer; transition: all .15s ease;
         }
         .tvx-share-btn:hover { background: rgba(255,255,255,.14); border-color: rgba(169,112,255,.5); color: #fff; }
+        .tvx-vod-btn { text-decoration: none; }
+        .tvx-vod-btn:hover { background: rgba(255,255,255,.14); border-color: rgba(169,112,255,.5); color: #fff; }
         .tvx-facts { display: flex; flex-wrap: wrap; gap: 6px; }
         .tvx-fact { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,.07); font-size: 12px; color: #dedee3; }
         .tvx-fact b { font-weight: 700; color: #fff; }
@@ -2236,6 +2324,17 @@
             applyAndRender(true);
             renderScreen();
         }
+        const params = new URLSearchParams(location.search);
+        const clipOrId = params.get("clip") || params.get("id") || (state.route && state.route.clipSlug);
+        if (poolKind === "clips" && clipOrId && !pool.items.some((i) => i.slug === clipOrId || String(i.id) === String(clipOrId))) {
+            fetchSingleClip(clipOrId).then((clip) => {
+                if (clip && (state.pool && state.pool.kind === "clips")) {
+                    pool.add([clip]);
+                    applyAndRender(false);
+                    play(clip, { updateUrl: true });
+                }
+            });
+        }
         onPoolUpdate(pool);
     }
 
@@ -2254,6 +2353,18 @@
             if (clipOrId) {
                 wanted = filtered.find((i) => i.slug === clipOrId || String(i.id) === String(clipOrId))
                     || pool.items.find((i) => i.slug === clipOrId || String(i.id) === String(clipOrId));
+                if (!wanted && pool.kind === "clips") {
+                    fetchSingleClip(clipOrId).then((clip) => {
+                        if (clip && (state.pool && state.pool.kind === "clips")) {
+                            pool.add([clip]);
+                            applyAndRender(false);
+                            play(clip, { updateUrl: true });
+                        } else if (!state.current && filtered.length) {
+                            play(filtered[0], { updateUrl: true });
+                        }
+                    });
+                    return;
+                }
             }
             if (!wanted && indexStr != null && indexStr !== "") {
                 const rawIdx = parseInt(indexStr, 10);
@@ -2324,8 +2435,10 @@
         }
 
         if (item.kind === "video") {
+            const tOffset = item.initialTime || item.vodOffset;
+            const timeParam = tOffset ? `&time=${formatTwitchTimestamp(tOffset)}` : "";
             const iframe = el("iframe", {
-                src: `https://player.twitch.tv/?video=${encodeURIComponent(item.id)}&parent=${location.hostname}&autoplay=true&muted=${prefs.muted}`,
+                src: `https://player.twitch.tv/?video=${encodeURIComponent(item.id)}&parent=${location.hostname}&autoplay=true&muted=${prefs.muted}${timeParam}`,
                 allowfullscreen: "true", allow: "autoplay; fullscreen; picture-in-picture",
             });
 
@@ -2738,6 +2851,38 @@
         const itemUrl = item.kind === "clip" ? clipURL : `https://www.twitch.tv/videos/${item.id}`;
 
         const titleEl = el("h1", { title: item.title }, item.title);
+        const actions = el("div", { class: "tvx-under-actions" });
+
+        if (item.kind === "clip" && item.vodId) {
+            const vodUrl = `https://www.twitch.tv/videos/${item.vodId}?t=${formatTwitchTimestamp(item.vodOffset)}`;
+            const vodBtn = el("a", {
+                class: "tvx-share-btn tvx-vod-btn",
+                href: vodUrl,
+                title: `Assistir à transmissão completa a partir de ${fmtDur(item.vodOffset)}`,
+                style: { display: "none" },
+                html: `${svg(ICON.vod, 18)}<span>Ir para a stream (${fmtDur(item.vodOffset)})</span>`,
+            });
+            vodBtn.addEventListener("click", (e) => {
+                try {
+                    sessionStorage.setItem("tvx:vod_target", JSON.stringify({
+                        vodId: String(item.vodId),
+                        offset: item.vodOffset,
+                        time: Date.now(),
+                    }));
+                } catch {}
+                if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
+                    enforceNativeVodSeek(item.vodOffset);
+                }
+            });
+            actions.append(vodBtn);
+
+            isVodAvailable(item.vodId).then((ok) => {
+                if (ok && state.current === item) {
+                    vodBtn.style.display = "inline-flex";
+                }
+            });
+        }
+
         const shareBtn = el("button", {
             class: "tvx-share-btn",
             type: "button",
@@ -2762,8 +2907,9 @@
                 shareBtn.style.color = "";
             }, 1600);
         });
+        actions.append(shareBtn);
 
-        const header = el("div", { class: "tvx-under-header" }, titleEl, shareBtn);
+        const header = el("div", { class: "tvx-under-header" }, titleEl, actions);
         underEl.append(header);
 
         const facts = el("div", { class: "tvx-facts" },
@@ -3212,6 +3358,25 @@
         HTML.dataset.tvxPage = "channel";
         buildNav();
         syncLayoutVars();
+
+        if (route.videoId) {
+            const params = new URLSearchParams(location.search);
+            const tParam = params.get("t") || params.get("time");
+            let target = parseTwitchTimestamp(tParam);
+            try {
+                const raw = sessionStorage.getItem("tvx:vod_target");
+                if (raw) {
+                    const stored = JSON.parse(raw);
+                    if (stored && String(stored.vodId) === String(route.videoId) && (Date.now() - (stored.time || 0) < 300000)) {
+                        target = stored.offset || target;
+                    }
+                    sessionStorage.removeItem("tvx:vod_target");
+                }
+            } catch {}
+            if (target > 0) {
+                enforceNativeVodSeek(target);
+            }
+        }
 
         // Numa página de VOD a URL não diz de quem é o canal; descobrimos e reprocessamos.
         if (route.videoId && !route.login) {
