@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X (Twitter) — Control Panel, Wide Layout & Age Bypass
 // @namespace    x-declutter-wide
-// @version      3.10.6
+// @version      3.11.0
 // @author       oguilhermelima
 // @description  X/Twitter control panel for a wider layout, decluttered sidebars, live preferences, and sensitive-content handling.
 // @match        https://x.com/*
@@ -80,15 +80,16 @@
             { key: "blurMedia",   label: "Imagem única: centrar + fundo blur", type: "toggle", def: false, hide: true },
         ] },
         { title: "Sidebar esquerda", items: [
+            { key: "hideLeftSidebar", label: "Sidebar esquerda compacta (só ícones)", type: "toggle", def: false },
             { key: "sidebarMgr",      label: "Itens da sidebar",            type: "sidebar" },
             { key: "leftFont",        label: "Ampliar (esta sidebar)",      type: "toggle", def: false },
             { key: "leftScale",       label: "Tamanho (%)",                 type: "slider", min: 100, max: 160, def: 120, dep: "leftFont" },
         ] },
         { title: "Sidebar direita", items: [
+            { key: "hideRightSidebar",  label: "Ocultar sidebar direita",      type: "toggle", def: false, hide: true },
             { key: "hidePremiumRight",  label: "Esconder card Premium",        type: "toggle", def: false, hide: true },
             { key: "hideTrending",      label: "Esconder Assuntos do momento", type: "toggle", def: false, hide: true },
             { key: "hideWhoToFollow",   label: "Esconder Quem seguir",         type: "toggle", def: false, hide: true },
-            { key: "hideRightSidebar",  label: "Esconder sidebar inteira",     type: "toggle", def: false, hide: true },
             { key: "rightFont",         label: "Ampliar (esta sidebar)",       type: "toggle", def: false },
             { key: "rightScale",        label: "Tamanho (%)",                  type: "slider", min: 100, max: 160, def: 120, dep: "rightFont" },
         ] },
@@ -415,52 +416,471 @@
            Dois seletores pro shell: data-tw-shell (achado por JS = menor ancestral comum de
            header+main, vale pra qualquer árvore) e o :has() equivalente, que já casa no
            PRIMEIRO paint, antes de o JS achar o nó. */
-        @media (min-width: 1280px) {
+        /* ---------- SIDEBAR ESQUERDA COMPACTA (SÓ ÍCONES) ---------- */
+        html.tw-hideLeftSidebar [data-tw-navcol],
+        html.tw-hideLeftSidebar header[role="banner"] {
+            box-sizing: border-box !important;
+            flex: 0 0 var(--tw-navcol-w, 88px) !important;
+            width: var(--tw-navcol-w, 88px) !important;
+            max-width: var(--tw-navcol-w, 88px) !important;
+            min-width: var(--tw-navcol-w, 88px) !important;
+            margin-right: var(--tw-left-gap, 28px) !important;
+            padding-right: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            z-index: 5 !important;
+        }
+        html.tw-hideLeftSidebar [data-tw-navcol] header[role="banner"] {
+            width: 100% !important;
+            max-width: none !important;
+            flex: 1 1 auto !important;
+            margin-right: 0 !important;
+        }
+        /* Estrutura vertical da nav compacta */
+        html.tw-hideLeftSidebar header[role="banner"] > div {
+            box-sizing: border-box !important;
+            width: var(--tw-navcol-w, 88px) !important;
+            max-width: var(--tw-navcol-w, 88px) !important;
+            min-width: var(--tw-navcol-w, 88px) !important;
+            height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-end !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] > div > div {
+            box-sizing: border-box !important;
+            width: 100% !important;
+            height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            align-items: flex-end !important;
+        }
+
+        /* Topo: Logo, Nav e Botão Postar alinhados na mesma coluna de 50px à direita */
+        html.tw-hideLeftSidebar header[role="banner"] div:has(> h1) {
+            width: 50px !important;
+            min-width: 50px !important;
+            max-width: 50px !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            align-self: flex-end !important;
+            margin-left: auto !important;
+            margin-right: 0 !important;
+            padding: 0 !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] h1 {
+            width: 50px !important;
+            min-width: 50px !important;
+            max-width: 50px !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            align-self: flex-end !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] h1 a {
+            box-sizing: border-box !important;
+            width: 50px !important;
+            height: 50px !important;
+            min-width: 50px !important;
+            max-width: 50px !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            margin: 4px 0 !important;
+            padding: 0 !important;
+            border-radius: 9999px !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] h1 a > div {
+            box-sizing: border-box !important;
+            width: 50px !important;
+            height: 50px !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] h1 a svg {
+            width: 26px !important;
+            height: 26px !important;
+            max-width: 26px !important;
+            max-height: 26px !important;
+            margin: auto !important;
+            display: block !important;
+        }
+
+        /* Nav de navegação: mesma coluna de 50px */
+        html.tw-hideLeftSidebar header[role="banner"] nav[role="navigation"] {
+            align-items: flex-end !important;
+            align-self: flex-end !important;
+            width: 50px !important;
+            min-width: 50px !important;
+            max-width: 50px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            margin-left: auto !important;
+            margin-right: 0 !important;
+            padding: 0 !important;
+        }
+
+        /* Itens da navegação: apenas ícone centralizado nos 50px */
+        html.tw-hideLeftSidebar header[role="banner"] nav a span,
+        html.tw-hideLeftSidebar header[role="banner"] nav button span,
+        html.tw-hideLeftSidebar header[role="banner"] nav div[dir] {
+            display: none !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] nav a,
+        html.tw-hideLeftSidebar header[role="banner"] nav button,
+        html.tw-hideLeftSidebar header[role="banner"] nav div[role="button"] {
+            box-sizing: border-box !important;
+            width: 50px !important;
+            height: 50px !important;
+            min-width: 50px !important;
+            max-width: 50px !important;
+            margin: 4px 0 !important;
+            padding: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            border-radius: 9999px !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] nav a > div,
+        html.tw-hideLeftSidebar header[role="banner"] nav button > div {
+            width: 50px !important;
+            height: 50px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] nav svg {
+            width: 26px !important;
+            height: 26px !important;
+            margin: 0 auto !important;
+            display: block !important;
+        }
+
+        /* Botão Novo Post: redondo com ícone de pena proporcional aos ícones */
+        html.tw-hideLeftSidebar header[role="banner"] div:has(> [data-testid="SideNav_NewTweet_Button"]),
+        html.tw-hideLeftSidebar header[role="banner"] div:has(> a[href$="/compose/post"]),
+        html.tw-hideLeftSidebar header[role="banner"] div:has(> a[href$="/compose/tweet"]) {
+            width: 50px !important;
+            min-width: 50px !important;
+            max-width: 50px !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            align-self: flex-end !important;
+            margin-left: auto !important;
+            margin-right: 0 !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"],
+        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"],
+        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"] {
+            box-sizing: border-box !important;
+            position: relative !important;
+            width: 44px !important;
+            height: 44px !important;
+            min-width: 44px !important;
+            max-width: 44px !important;
+            min-height: 44px !important;
+            max-height: 44px !important;
+            margin: 10px auto !important;
+            padding: 0 !important;
+            border-radius: 50% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            background-color: #1d9bf0 !important;
+            overflow: hidden !important;
+            transition: background-color 0.15s ease, transform 0.15s ease !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"]:hover,
+        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"]:hover,
+        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"]:hover {
+            background-color: #1a8cd8 !important;
+            transform: scale(1.04) !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"] span,
+        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"] span,
+        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"] span {
+            display: none !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"] svg,
+        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"] svg,
+        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"] svg {
+            display: block !important;
+            width: 22px !important;
+            height: 22px !important;
+            fill: #ffffff !important;
+            color: #ffffff !important;
+            margin: auto !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"]:not(:has(svg))::after,
+        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"]:not(:has(svg))::after,
+        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"]:not(:has(svg))::after {
+            content: "" !important;
+            position: absolute !important;
+            inset: 0 !important;
+            margin: auto !important;
+            width: 20px !important;
+            height: 20px !important;
+            background-color: #ffffff !important;
+            -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M23 3c-6.62-.1-10.38 2.41-13.05 6.08C7.29 12.61 6 17.35 6 22h2c0-.77.1-1.53.25-2.27 4.14-1.12 7.74-3.8 9.94-7.53C19.78 9.21 21.94 5.38 23 3zm-7.69 7.69c-.93 1.25-2.02 2.37-3.23 3.32-.48-1.59-1.28-3.04-2.33-4.26 1.48-.92 2.92-1.63 4.31-2.13.43 1.05.85 2.1 1.25 3.07zM3 21H1v-6c0-3.31 2.69-6 6-6v2c-2.21 0-4 1.79-4 4v6z'/%3E%3C/svg%3E") no-repeat center / contain !important;
+            mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M23 3c-6.62-.1-10.38 2.41-13.05 6.08C7.29 12.61 6 17.35 6 22h2c0-.77.1-1.53.25-2.27 4.14-1.12 7.74-3.8 9.94-7.53C19.78 9.21 21.94 5.38 23 3zm-7.69 7.69c-.93 1.25-2.02 2.37-3.23 3.32-.48-1.59-1.28-3.04-2.33-4.26 1.48-.92 2.92-1.63 4.31-2.13.43 1.05.85 2.1 1.25 3.07zM3 21H1v-6c0-3.31 2.69-6 6-6v2c-2.21 0-4 1.79-4 4v6z'/%3E%3C/svg%3E") no-repeat center / contain !important;
+        }
+
+        /* Quando a sidebar está aberta: esconde o ícone de pena (o texto tem prioridade) */
+        html:not(.tw-hideLeftSidebar) header[role="banner"] [data-testid="SideNav_NewTweet_Button"] svg,
+        html:not(.tw-hideLeftSidebar) header[role="banner"] a[href$="/compose/post"] svg,
+        html:not(.tw-hideLeftSidebar) header[role="banner"] a[href$="/compose/tweet"] svg {
+            display: none !important;
+        }
+        html:not(.tw-hideLeftSidebar) header[role="banner"] [data-testid="SideNav_NewTweet_Button"]::after,
+        html:not(.tw-hideLeftSidebar) header[role="banner"] a[href$="/compose/post"]::after,
+        html:not(.tw-hideLeftSidebar) header[role="banner"] a[href$="/compose/tweet"]::after {
+            display: none !important;
+        }
+
+        /* Card de Conta/Perfil no rodapé: avatar circular limpo e alinhado */
+        html.tw-hideLeftSidebar header[role="banner"] div:has(> [data-testid="SideNav_AccountSwitcher_Button"]) {
+            width: 50px !important;
+            min-width: 50px !important;
+            max-width: 50px !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            align-self: flex-end !important;
+            margin-left: auto !important;
+            margin-right: 0 !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] {
+            box-sizing: border-box !important;
+            width: 44px !important;
+            height: 44px !important;
+            min-width: 44px !important;
+            max-width: 44px !important;
+            min-height: 44px !important;
+            max-height: 44px !important;
+            margin: 8px auto 14px auto !important;
+            padding: 0 !important;
+            border-radius: 50% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            overflow: hidden !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] img {
+            width: 36px !important;
+            height: 36px !important;
+            min-width: 36px !important;
+            min-height: 36px !important;
+            border-radius: 50% !important;
+            margin: auto !important;
+            display: block !important;
+        }
+        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] svg,
+        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] span,
+        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] div[dir] {
+            display: none !important;
+        }
+
+        html.tw-hideRightSidebar [data-testid="sidebarColumn"],
+        html.tw-wide.tw-nosb [data-testid="sidebarColumn"] {
+            display: none !important;
+            width: 0 !important;
+            max-width: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        /* ---------- BOTÕES NOS DIVISORES ESTILO REDDIT ---------- */
+        [data-testid="primaryColumn"] {
+            position: relative !important;
+            z-index: 20 !important;
+        }
+
+        .tw-divider-track {
+            position: absolute !important;
+            inset: 0 !important;
+            pointer-events: none !important;
+            z-index: 9999 !important;
+        }
+        .tw-divider-bar {
+            position: sticky !important;
+            top: 12px !important;
+            display: flex !important;
+            justify-content: space-between !important;
+            width: 100% !important;
+            pointer-events: none !important;
+            z-index: 10000 !important;
+        }
+        .tw-divider-btn {
+            all: unset !important;
+            box-sizing: border-box !important;
+            position: relative !important;
+            z-index: 10001 !important;
+            pointer-events: auto !important;
+            cursor: pointer !important;
+            width: 32px !important;
+            height: 32px !important;
+            border-radius: 50% !important;
+            background: #000000 !important;
+            border: 1px solid #2f3336 !important;
+            color: #eff3f4 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6) !important;
+            transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease !important;
+            user-select: none !important;
+            padding: 0 !important;
+        }
+        .tw-divider-btn::before {
+            content: "" !important;
+            position: absolute !important;
+            inset: -6px !important;
+            border-radius: 50% !important;
+            pointer-events: auto !important;
+        }
+        .tw-divider-btn:hover {
+            background: #16181c !important;
+            border-color: #1d9bf0 !important;
+            color: #1d9bf0 !important;
+            transform: scale(1.1) !important;
+        }
+        .tw-divider-btn svg {
+            width: 16px !important;
+            height: 16px !important;
+            display: block !important;
+            pointer-events: none !important;
+        }
+        .tw-divider-btn-left {
+            margin-left: -16px !important;
+        }
+        .tw-divider-btn-right {
+            margin-right: -16px !important;
+        }
+
+        @media (max-width: 999px) {
+            .tw-divider-btn-right {
+                display: none !important;
+            }
+        }
+
+        /* ---------- LARGURA (desktop; mobile/tablet ficam nativos) ---------- */
+        @media (min-width: 1000px) {
             html.tw-wide [data-tw-shell],
             html.tw-wide div:has(> header[role="banner"]):has(> main[role="main"]) {
-                width: min(100%, calc(var(--tw-lat, 748px) + var(--tw-center-w, 700px))) !important;
-                max-width: min(100%, calc(var(--tw-lat, 748px) + var(--tw-center-w, 700px))) !important;
-                margin-left: auto !important; margin-right: auto !important;
+                box-sizing: border-box !important;
+                width: min(100%, var(--tw-shell-w, 1340px)) !important;
+                max-width: 100% !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
             }
             /* wrappers ACIMA do shell não podem recapar a largura que acabamos de definir */
             html.tw-wide [data-tw-shellup] { max-width: none !important; }
-            /* COLUNA DA NAV: item rígido, com a MESMA reserva da coluna da direita (side + gap).
-               Sem isso o flex-grow:1 nativo do header come a folga do shell e empurra a nav pra
-               dentro da tela. A nav é alinhada à direita da coluna (justify-content/margin auto —
-               o X já faz isso sozinho, aqui é só garantia), então ela encosta na timeline com o
-               mesmo respiro que a sidebar direita tem do outro lado; a folga (nav é mais estreita
-               que a sidebar) fica na borda externa. data-tw-navcol é o FILHO do shell que contém
-               o header — pode ser o próprio header ou um wrapper, se o X mudar a árvore. */
-            html.tw-wide [data-tw-navcol],
-            html.tw-wide header[role="banner"] {
+
+            /* COLUNA DA NAV: alinhada à direita e encostada na timeline com respiro controlado */
+            html.tw-wide:not(.tw-hideLeftSidebar) [data-tw-navcol],
+            html.tw-wide:not(.tw-hideLeftSidebar) header[role="banner"] {
                 box-sizing: border-box !important;
-                flex: 0 0 var(--tw-navcol-w, 374px) !important;
-                width: var(--tw-navcol-w, 374px) !important; max-width: var(--tw-navcol-w, 374px) !important;
-                padding-right: var(--tw-gap, 24px) !important;
-                justify-content: flex-end !important;
+                flex: 0 0 var(--tw-navcol-w, 275px) !important;
+                width: var(--tw-navcol-w, 275px) !important; max-width: var(--tw-navcol-w, 275px) !important;
+                margin-right: var(--tw-gap, 20px) !important;
+                padding-right: 0 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: flex-end !important;
+                justify-content: flex-start !important;
             }
-            html.tw-wide header[role="banner"] > * { margin-left: auto !important; }
-            /* header ANINHADO na coluna: quem carrega largura/padding é a coluna, ele só preenche
-               (senão o padding entraria duas vezes e a nav sairia do lugar) */
-            html.tw-wide [data-tw-navcol] header[role="banner"] {
-                width: 100% !important; max-width: none !important; flex: 1 1 auto !important; padding-right: 0 !important;
+            html.tw-wide:not(.tw-hideLeftSidebar) header[role="banner"] > div {
+                align-items: flex-end !important;
+                width: 100% !important;
             }
-            /* main: elástico, e sem nenhum cap nativo no meio do caminho (a largura vem do shell) */
+            html.tw-wide:not(.tw-hideLeftSidebar) [data-tw-navcol] header[role="banner"] {
+                width: 100% !important; max-width: none !important; flex: 1 1 auto !important; margin-right: 0 !important;
+            }
+
+            /* COLUNA DA NAV (Compacta: só ícones) */
+            html.tw-wide.tw-hideLeftSidebar [data-tw-navcol],
+            html.tw-wide.tw-hideLeftSidebar header[role="banner"] {
+                box-sizing: border-box !important;
+                flex: 0 0 var(--tw-navcol-w, 88px) !important;
+                width: var(--tw-navcol-w, 88px) !important; max-width: var(--tw-navcol-w, 88px) !important;
+                min-width: var(--tw-navcol-w, 88px) !important;
+                margin-right: var(--tw-left-gap, 28px) !important;
+                padding-right: 0 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: flex-end !important;
+                justify-content: flex-start !important;
+                z-index: 5 !important;
+            }
+            html.tw-wide.tw-hideLeftSidebar [data-tw-navcol] header[role="banner"] {
+                width: 100% !important; max-width: none !important; flex: 1 1 auto !important; margin-right: 0 !important;
+            }
+            html.tw-wide.tw-hideLeftSidebar header[role="banner"] > div {
+                box-sizing: border-box !important;
+                width: var(--tw-navcol-w, 88px) !important; max-width: var(--tw-navcol-w, 88px) !important;
+                min-width: var(--tw-navcol-w, 88px) !important;
+                height: 100% !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: flex-end !important;
+            }
+            html.tw-wide.tw-hideLeftSidebar header[role="banner"] > div > div {
+                box-sizing: border-box !important;
+                width: 100% !important;
+                height: 100% !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: space-between !important;
+                align-items: flex-end !important;
+            }
+
+            /* main: flex container contendo primaryColumn e sidebarColumn */
             html.tw-wide [data-tw-maincol],
-            html.tw-wide main[role="main"] { max-width: none !important; flex: 1 1 auto !important; min-width: 0 !important; }
-            html.tw-wide main[role="main"] > div { width: 100% !important; max-width: 100% !important; }
-            /* primaryColumn: elástico (min-width:0 = pode encolher em vez de estourar o shell) */
-            html.tw-wide [data-testid="primaryColumn"] {
-                max-width: none !important; width: auto !important; flex: 1 1 auto !important; min-width: 0 !important;
+            html.tw-wide main[role="main"] {
+                position: relative !important;
+                z-index: 20 !important;
+                max-width: none !important;
+                flex: 1 1 auto !important;
+                min-width: 0 !important;
+                display: flex !important;
+                flex-direction: row !important;
             }
-            /* COLUNA DA DIREITA: fica na largura NATIVA (é ela que serve de medida pra esquerda —
-               ver measureSide; forçar um número aqui só estreitaria os cards à toa). Só o gap é
-               nosso, e é o mesmo dos dois lados. */
-            html.tw-wide [data-testid="sidebarColumn"] { margin-left: var(--tw-gap, 24px) !important; flex-shrink: 0 !important; }
-            /* sidebar não cabe no shell (ou foi desligada): a coluna da nav volta ao tamanho da
-               nav — manter os 350 ali deixaria uma folga sem par do outro lado */
-            html.tw-wide.tw-nosb [data-testid="sidebarColumn"] { display: none !important; }
+            html.tw-wide main[role="main"] > div {
+                width: 100% !important;
+                max-width: 100% !important;
+                display: flex !important;
+                flex-direction: row !important;
+            }
+            /* primaryColumn: largura controlada */
+            html.tw-wide [data-testid="primaryColumn"] {
+                box-sizing: border-box !important;
+                width: var(--tw-center-w, 700px) !important;
+                max-width: 100% !important;
+                flex: 1 1 auto !important;
+                min-width: 320px !important;
+            }
+            /* COLUNA DA DIREITA */
+            html.tw-wide:not(.tw-hideRightSidebar):not(.tw-nosb) [data-testid="sidebarColumn"] {
+                box-sizing: border-box !important;
+                width: var(--tw-side-w, 350px) !important;
+                max-width: var(--tw-side-w, 350px) !important;
+                margin-left: var(--tw-gap, 20px) !important;
+                flex-shrink: 0 !important;
+            }
             html.tw-wide [data-testid="primaryColumn"] div:has(> section) { max-width: none !important; }
+        }
             /* PERFIL: a regra acima tira o cap de 600px do container que, no perfil, também embrulha o
                BANNER (capa). Sem cap, o banner 3:1 (padding-bottom:33%) estica até a largura inteira e
                domina a tela. Recapa só a ALTURA do banner: a aspect-box reserva 3:1, mas max-height +
@@ -890,6 +1310,7 @@
         de.classList.toggle("tw-home", isHome());     // scopes the "For You" hide to the home timeline
         HIDE_KEYS.forEach((k) => de.classList.toggle("tw-" + k, !!settings[k]));
         de.classList.toggle("tw-wide", !!settings.wide);
+        de.classList.toggle("tw-hideLeftSidebar", !!settings.hideLeftSidebar);
         de.classList.toggle("tw-centerFont", !!settings.centerFont);   // 3 regiões, MESMO modelo de % (calc(1em*scale) no texto-folha): central / esquerda / direita
         de.classList.toggle("tw-leftFont", !!settings.leftFont);
         de.classList.toggle("tw-rightFont", !!settings.rightFont);
@@ -902,24 +1323,16 @@
         hideDiscover(true);   // mudança de setting → re-aplica display em todas as células "discover"
         applySidebar();       // gerenciador da sidebar (esconde/move/injeta itens conforme navConfig)
         applyBookmarksClasses();
+        syncSidebarButtons();
         // applyHomeTab() NÃO entra aqui: applySettings roda a CADA controle do painel, então forçaria
         // "Seguindo" de volta toda vez que você mexe em qualquer ajuste estando na home. Vai só na nav
         // (scheduleHomeTab) e nos dois controles que realmente importam (homeDefault/hideForYou).
     }
 
     // ---- LARGURA: shell = laterais + coluna central (px), centrado --------- //
-    // SIDE_BASE/GAP: as duas laterais reservam a MESMA largura (side + gap) — é isso que joga a
-    // coluna central no centro EXATO do shell. Como a nav (~276) é mais estreita que a sidebar
-    // (350), a folga sobra na borda esquerda e a nav encosta na timeline, igual ao X nativo.
-    // TIMELINE_HARD: piso da coluna de leitura. É o único critério pra sidebar sair sozinha, e o
-    // teste é contra a JANELA (espaço realmente disponível), nunca contra a largura escolhida —
-    // numa tela >= 1280 isso praticamente não dispara: quem tira a sidebar é o toggle do painel.
     const SIDE_BASE = 350;
-    const GAP = 24;
+    const GAP = 20;
     const TIMELINE_HARD = 320;
-    // O shell é laterais + coluna central, limitado à janela — tudo em px, resolvido pelo CSS
-    // (min(100%, calc(--tw-lat + --tw-center-w))), então reage a resize e zoom sem JS. O JS só
-    // publica as duas parcelas: --tw-center-w aqui, --tw-lat em applyColumns.
     let centerW = 700;
     function applyWidth() {
         centerW = Math.min(2400, Math.max(320, Number(settings.centerW) || 700));
@@ -929,30 +1342,168 @@
         widthHint();
     }
 
-    // Uma fonte de verdade pras duas laterais: mesma reserva dos dois lados (side + gap), com a
-    // nav alinhada à direita da sua coluna e a sidebar à esquerda da dela → gaps internos iguais
-    // e coluna central centrada. Sem sidebar (toggle ou aperto), a coluna da nav volta ao
-    // tamanho da nav: manter os 350 ali deixaria uma folga sem par do outro lado.
     let colsKey = "", latW = 748;
     function applyColumns() {
         const de = document.documentElement;
         measureNav();
         measureSide();
-        const side = Math.max(navW, sideW);
-        const both = (side + GAP) + (sideW + GAP);   // o que as DUAS colunas laterais ocupam juntas
-        // a sidebar só sai se a JANELA não comportar o layout (ou se o toggle pedir) — a largura
-        // escolhida nunca amputa nada: quando não cabe, a coluna central é que cede
-        const roomy = !settings.hideRightSidebar && window.innerWidth >= both + TIMELINE_HARD;
-        const lat = roomy ? both : navW;
-        const navcol = roomy ? side + GAP : navW;
-        const key = navcol + "|" + lat + "|" + roomy;
-        if (key === colsKey) return;      // chamado a cada refresh/resize: sem mudança, não suja estilo
+
+        const isLeftHidden = !!settings.hideLeftSidebar;
+        const isRightHidden = !!settings.hideRightSidebar;
+
+        const effectiveNavW = isLeftHidden ? 88 : navW;
+        const leftGap = isLeftHidden ? 28 : GAP;
+        const minNeed = effectiveNavW + leftGap + TIMELINE_HARD + (isRightHidden ? 0 : (GAP + sideW));
+        const roomy = !isRightHidden && window.innerWidth >= minNeed;
+        const effectiveSideW = roomy ? sideW : 0;
+        const rightGap = roomy ? GAP : 0;
+
+        // Limita ao que realmente cabe na viewport para evitar qualquer overflow horizontal
+        const maxAvailCenter = Math.max(TIMELINE_HARD, window.innerWidth - (effectiveNavW + leftGap + (roomy ? (rightGap + effectiveSideW) : 0)) - 32);
+        const effCenterW = Math.min(centerW, maxAvailCenter);
+        const shellW = effectiveNavW + leftGap + effCenterW + (roomy ? (rightGap + effectiveSideW) : 0);
+
+        const key = effectiveNavW + "|" + effectiveSideW + "|" + effCenterW + "|" + roomy + "|" + isLeftHidden + "|" + isRightHidden + "|" + leftGap;
+        if (key === colsKey) return;
         colsKey = key;
-        latW = lat;
+        latW = effectiveNavW + (roomy ? (GAP + effectiveSideW) : 0);
+
         de.classList.toggle("tw-nosb", !roomy);
-        de.style.setProperty("--tw-navcol-w", navcol + "px");
-        de.style.setProperty("--tw-gap", (roomy ? GAP : 0) + "px");
-        de.style.setProperty("--tw-lat", lat + "px");
+        de.classList.toggle("tw-hideLeftSidebar", isLeftHidden);
+        de.classList.toggle("tw-hideRightSidebar", isRightHidden || !roomy);
+
+        de.style.setProperty("--tw-navcol-w", effectiveNavW + "px");
+        de.style.setProperty("--tw-side-w", effectiveSideW + "px");
+        de.style.setProperty("--tw-left-gap", leftGap + "px");
+        de.style.setProperty("--tw-gap", GAP + "px");
+        de.style.setProperty("--tw-shell-w", Math.round(shellW) + "px");
+        de.style.setProperty("--tw-center-w", Math.round(effCenterW) + "px");
+
+        syncSidebarButtons();
+    }
+
+    // Botões nos divisores estilo Reddit (em cima das linhas divisórias da timeline)
+    function syncSidebarButtons() {
+        const primary = document.querySelector('[data-testid="primaryColumn"]');
+        if (!primary) return;
+
+        let track = primary.querySelector(".tw-divider-track");
+        if (!track) {
+            track = el("div", { class: "tw-divider-track" });
+            const bar = el("div", { class: "tw-divider-bar" });
+
+            const leftBtn = el("button", {
+                id: "tw-toggle-left-btn",
+                class: "tw-divider-btn tw-divider-btn-left",
+                type: "button",
+                html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>',
+                onclick: (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    settings.hideLeftSidebar = !settings.hideLeftSidebar;
+                    save();
+                    applySettings();
+                }
+            });
+
+            const rightBtn = el("button", {
+                id: "tw-toggle-right-btn",
+                class: "tw-divider-btn tw-divider-btn-right",
+                type: "button",
+                html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><line x1="15" y1="4" x2="15" y2="20"/></svg>',
+                onclick: (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    settings.hideRightSidebar = !settings.hideRightSidebar;
+                    save();
+                    applySettings();
+                }
+            });
+
+            bar.append(leftBtn, rightBtn);
+            track.append(bar);
+            primary.prepend(track);
+        }
+
+        const leftBtn = document.getElementById("tw-toggle-left-btn");
+        if (leftBtn) {
+            leftBtn.title = settings.hideLeftSidebar ? "Expandir menu lateral" : "Recolher menu lateral (apenas ícones)";
+            leftBtn.setAttribute("aria-label", leftBtn.title);
+        }
+
+        const rightBtn = document.getElementById("tw-toggle-right-btn");
+        if (rightBtn) {
+            rightBtn.title = settings.hideRightSidebar ? "Expandir barra lateral" : "Recolher barra lateral";
+            rightBtn.setAttribute("aria-label", rightBtn.title);
+        }
+
+        ensurePostButtonText();
+
+        // Remove botões antigos do DOM se existirem
+        ["tw-close-left-btn", "tw-open-left-btn", "tw-sb-close-wrap", "tw-open-right-btn"].forEach((id) => {
+            const oldEl = document.getElementById(id);
+            if (oldEl) oldEl.remove();
+        });
+    }
+
+    // Garante que o botão Postar nunca perca seu texto ao expandir a sidebar
+    function ensurePostButtonText() {
+        const isLeftHidden = !!settings.hideLeftSidebar;
+        const postBtn = document.querySelector('header[role="banner"] [data-testid="SideNav_NewTweet_Button"], header[role="banner"] a[href$="/compose/post"], header[role="banner"] a[href$="/compose/tweet"]');
+        if (!postBtn) return;
+
+        let fb = postBtn.querySelector(".tw-post-fallback-label");
+
+        if (isLeftHidden) {
+            if (fb) fb.remove();
+            return;
+        }
+
+        // Calcula cor de contraste adequada ao fundo do botão (ou tema do X)
+        let textColor = "#0f1419";
+        try {
+            const bg = window.getComputedStyle(postBtn).backgroundColor || "";
+            const m = bg.match(/\d+/g);
+            if (m && m.length >= 3) {
+                const lum = 0.299 * Number(m[0]) + 0.587 * Number(m[1]) + 0.114 * Number(m[2]);
+                if (lum <= 150) textColor = "#ffffff";
+            } else {
+                const bodyBg = window.getComputedStyle(document.body).backgroundColor || "";
+                if (!bodyBg.includes("0, 0, 0") && !bodyBg.includes("21, 32, 43")) textColor = "#ffffff";
+            }
+        } catch (e) {}
+
+        // Força cor de contraste nos spans nativos do botão para evitar texto branco sobre fundo branco
+        const spans = postBtn.querySelectorAll("span:not(.tw-post-fallback-label)");
+        let hasVisibleNativeText = false;
+        spans.forEach((s) => {
+            const txt = (s.textContent || "").trim();
+            if (txt) {
+                s.style.setProperty("color", textColor, "important");
+                if (s.offsetWidth > 0 && s.offsetHeight > 0) {
+                    try {
+                        const st = window.getComputedStyle(s);
+                        if (st.display !== "none" && st.visibility !== "hidden" && st.opacity !== "0") {
+                            hasVisibleNativeText = true;
+                        }
+                    } catch (e) {
+                        hasVisibleNativeText = true;
+                    }
+                }
+            }
+        });
+
+        // Se o texto nativo não estiver visível (ex: breakpoint de tela ou React unmounted), exibe fallback centralizado
+        if (!hasVisibleNativeText) {
+            postBtn.style.setProperty("position", "relative", "important");
+            if (!fb) {
+                fb = el("span", { class: "tw-post-fallback-label" }, "Postar");
+                postBtn.appendChild(fb);
+            }
+            fb.style.cssText = "position: absolute !important; inset: 0 !important; display: flex !important; align-items: center !important; justify-content: center !important; font-weight: 700 !important; font-size: 17px !important; color: " + textColor + " !important; pointer-events: none !important; z-index: 10 !important; user-select: none !important;";
+        } else if (fb) {
+            fb.remove();
+        }
     }
 
     // Se a janela não comporta a largura pedida, a coluna central encolhe até caber (o CSS faz
@@ -1866,6 +2417,7 @@
         if (settings.ageBypass) installAgeBypass();   // re-tenta o patch do bypass (idempotente) até pegar — corrige a corrida do F5
         markShell();                                  // no-op se o shell já está marcado e vivo (só re-acha se o X remontou)
         applyColumns();                               // a nav só existe depois que o shell hidrata (no-op se nada mudou)
+        syncSidebarButtons();
         if (!document.getElementById("tw-fab")) buildPanel();
         applySidebar();
         hideDiscover();
