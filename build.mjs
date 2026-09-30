@@ -81,7 +81,7 @@ for (const entry of entries) {
 }
 
 const descriptions = {
-  crunchyroll: "Persistently hides scrollbars across all Crunchyroll routes.",
+  crunchyroll: "Full-height player mode, direct speed and episode controls, official auto-skip for intros and credits without redirects, and clean UI.",
   instagram: "Native video controls, unified mosaic feed, responsive grids, lightbox viewer, and saved-post tools for Instagram.",
   reddit: "Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs.",
   twitch: "Streamer top navigation plus a YouTube-style Clips and VOD theater with filtering, sorting, and native playback controls.",

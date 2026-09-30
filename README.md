@@ -24,7 +24,7 @@ If **Allow User Scripts** is not available, update the browser and userscript ma
 
 | Script | Description | Install |
 |---|---|---|
-| **crunchyroll** | Persistently hides scrollbars across all Crunchyroll routes. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/crunchyroll.user.js) |
+| **crunchyroll** | Full-height player mode, direct speed and episode controls, official auto-skip for intros and credits without redirects, and clean UI. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/crunchyroll.user.js) |
 | **instagram** | Native video controls, unified mosaic feed, responsive grids, lightbox viewer, and saved-post tools for Instagram. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/instagram.user.js) |
 | **reddit** | Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/reddit.user.js) |
 | **twitch** | Streamer top navigation plus a YouTube-style Clips and VOD theater with filtering, sorting, and native playback controls. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/twitch.user.js) |
