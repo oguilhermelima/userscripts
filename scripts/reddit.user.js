@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit — Control Panel, Ad-Free
 // @namespace    reddit-tweaks
-// @version      2.77.0
+// @version      2.77.1
 // @author       oguilhermelima
 // @description  Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs.
 // @match        https://www.reddit.com/*
@@ -2009,8 +2009,34 @@
     // imagem ORIGINAL (sem o preview deles): preview.redd.it/…-<id>.jpg?… → i.redd.it/<id>.jpg (último segmento do path, sem query)
     const rawImg = (u) => {
         u = directImg(u);
-        try { const url = new URL(u, location.href); if (/(^|\.)preview\.redd\.it$/i.test(url.hostname) && !/external-preview/i.test(url.hostname)) { const last = url.pathname.split("-").pop().replace(/^\//, ""); if (last) return "https://i.redd.it/" + last; } } catch (e) {}
+        try {
+            const url = new URL(u, location.href);
+            if (/(^|\.)preview\.redd\.it$/i.test(url.hostname) && !/external-preview/i.test(url.hostname)) {
+                const filename = url.pathname.split("/").filter(Boolean).pop() || "";
+                let last = filename.split("-").pop().replace(/^\//, "");
+                const fmt = url.searchParams.get("format");
+                if (last && !/\.[a-z0-9]+$/i.test(last) && fmt) {
+                    last += (fmt === "pjpg" ? ".jpg" : "." + fmt);
+                }
+                if (last) return "https://i.redd.it/" + last;
+            }
+        } catch (e) {}
         return u;
+    };
+    // Extrai o ID canônico da imagem do Reddit (ignora subdomínios preview/cf.preview/i, query e extensões)
+    const canonicalImgId = (u) => {
+        if (!u) return "";
+        try {
+            const url = new URL(directImg(u), location.href);
+            const filename = url.pathname.split("/").filter(Boolean).pop() || "";
+            const last = filename.split("-").pop() || filename;
+            const id = last.replace(/\.[a-z0-9]+$/i, "");
+            if (id) return id.toLowerCase();
+            return (filename || url.pathname || u).toLowerCase();
+        } catch (e) {
+            const m = (u || "").match(/(?:^|\/|-)([a-z0-9]{6,})(?:\.[a-z0-9]+)?(?:\?|$)/i);
+            return m ? m[1].toLowerCase() : u;
+        }
     };
     const posterFromArticle = (article) => { const i = article.querySelector("img.preview-img, img[alt^='r/'], zoomable-img img, img"); return i ? bestSrc(i) : ""; };
 
@@ -2067,12 +2093,38 @@
      * Galeria INLINE (site inteiro): troca o <gallery-carousel> nativo pela nossa (faixa + barra ‹ 2/5 › + 1-por-gesto).
      * ------------------------------------------------------------------ */
     let rxGalIO = null;
-    // Dedup das melhores srcs de imagem de uma galeria: descarta o filtro de fundo, pega a maior versão
-    // (bestSrc) e fica só com mídia real do Reddit (ignora os thumbs de 140px). Usado por postMedia e galImgs.
+    // Dedup das melhores srcs de imagem de uma galeria: descarta filtros de fundo e imagens de apresentação,
+    // normaliza via rawImg(bestSrc) e deduplica pelo ID canônico da imagem (evita duplicatas entre srcset e src).
     function galleryImgSrcs(imgs) {
-        return [...new Set([...imgs]
-            .filter((i) => !i.classList.contains("post-background-image-filter"))
-            .map(bestSrc).filter((s) => s && /(redd\.it|redditmedia)/.test(s) && !/(width|height)=140\b/.test(s)))];
+        if (!imgs) return [];
+        const seen = new Set();
+        const result = [];
+        for (const img of imgs) {
+            if (!img) continue;
+            if (
+                (img.classList && img.classList.contains("post-background-image-filter")) ||
+                img.getAttribute("role") === "presentation" ||
+                img.getAttribute("aria-hidden") === "true"
+            ) {
+                continue;
+            }
+            const src = bestSrc(img);
+            if (!src || !/(redd\.it|redditmedia)/.test(src) || /(width|height)=140\b/.test(src)) {
+                continue;
+            }
+            const norm = rawImg(src);
+            if (!norm) continue;
+            const key = canonicalImgId(norm);
+            if (key) {
+                if (seen.has(key)) continue;
+                seen.add(key);
+            } else {
+                if (seen.has(norm)) continue;
+                seen.add(norm);
+            }
+            result.push(norm);
+        }
+        return result;
     }
     function galImgs(gal) {
         return galleryImgSrcs(gal.querySelectorAll("img"));
@@ -2298,8 +2350,9 @@
     // galeria: 1 imagem por gesto (mesma ideia do vertical) — alinhado por índice
     function tokGalStep(gal, dir) {
         const w = gal.clientWidth; if (!w) return;
+        const maxIdx = gal.children.length ? gal.children.length - 1 : 0;
         const idx = Math.round(gal.scrollLeft / w);
-        gal.scrollTo({ left: Math.max(0, idx + dir) * w, behavior: "smooth" });
+        gal.scrollTo({ left: Math.max(0, Math.min(maxIdx, idx + dir)) * w, behavior: "smooth" });
     }
     function tokGalWheel(gal, deltaX) {
         if (Math.abs(deltaX) < 2) return;
@@ -2322,6 +2375,7 @@
         openA.addEventListener("click", (e) => e.stopPropagation());
         const close = el("button", { className: "rx-lb-btn", type: "button", title: "Close (Esc)", "aria-label": "Close", onClick: closeLb }, icon(PATH.close, 20));
         const lb = el("div", { className: "rx-lb", role: "dialog", "aria-label": "Image viewer" }, img);
+        let prevBtn, nextBtn;
         const ZOOMS = [1, 2, 3];
         let zoomIndex = 0, loadToken = 0;
         const applyZoom = () => {
@@ -2342,7 +2396,7 @@
             next.src = rawImg(src);
         };
         const show = (i) => {
-            idx = (i + srcs.length) % srcs.length;
+            idx = Math.max(0, Math.min(srcs.length - 1, i));
             const raw = rawImg(srcs[idx]), prev = directImg(srcs[idx]); // i.redd.it original (com fallback pro preview se 404)
             const token = ++loadToken;
             let fallbackUsed = false;
@@ -2364,14 +2418,18 @@
             img.src = raw; openA.href = raw;
             count.textContent = (idx + 1) + "/" + srcs.length;
             if (multi) {
-                preload(srcs[(idx + 1) % srcs.length]);
-                preload(srcs[(idx + srcs.length - 1) % srcs.length]);
+                if (prevBtn) prevBtn.style.display = idx <= 0 ? "none" : "";
+                if (nextBtn) nextBtn.style.display = idx >= srcs.length - 1 ? "none" : "";
+                if (idx < srcs.length - 1) preload(srcs[idx + 1]);
+                if (idx > 0) preload(srcs[idx - 1]);
             }
         };
         if (multi) {
             lb.appendChild(count); // contador EM CIMA
-            lb.appendChild(el("button", { className: "rx-lb-nav rx-lb-prev", type: "button", "aria-label": "Previous", onClick: (e) => { e.stopPropagation(); show(idx - 1); } }, icon(CHEV_L, 20)));
-            lb.appendChild(el("button", { className: "rx-lb-nav rx-lb-next", type: "button", "aria-label": "Next", onClick: (e) => { e.stopPropagation(); show(idx + 1); } }, icon(CHEV_R, 20)));
+            prevBtn = el("button", { className: "rx-lb-nav rx-lb-prev", type: "button", "aria-label": "Previous", onClick: (e) => { e.stopPropagation(); if (idx > 0) show(idx - 1); } }, icon(CHEV_L, 20));
+            nextBtn = el("button", { className: "rx-lb-nav rx-lb-next", type: "button", "aria-label": "Next", onClick: (e) => { e.stopPropagation(); if (idx < srcs.length - 1) show(idx + 1); } }, icon(CHEV_R, 20));
+            lb.appendChild(prevBtn);
+            lb.appendChild(nextBtn);
         }
         lb.appendChild(el("div", { className: "rx-lb-top" }, openA, close)); // abrir + fechar juntos no canto
         lb.addEventListener("click", (e) => { if (e.target === lb) closeLb(); }); // fundo fecha; clique na imagem alterna o zoom
@@ -2382,17 +2440,28 @@
                 if (Math.abs(d) < 2) return;
                 e.preventDefault();
                 clearTimeout(idle); idle = setTimeout(() => { lock = false; }, 180);
-                if (lock) return; lock = true; show(idx + (d > 0 ? 1 : -1));
+                if (lock) return;
+                if (d > 0 && idx < srcs.length - 1) { lock = true; show(idx + 1); }
+                else if (d < 0 && idx > 0) { lock = true; show(idx - 1); }
             }, { passive: false });
             lb.addEventListener("touchstart", (e) => { tx = e.touches && e.touches[0] ? e.touches[0].clientX : null; }, { passive: true });
-            lb.addEventListener("touchend", (e) => { if (tx == null) return; const c = e.changedTouches && e.changedTouches[0]; const dx = tx - (c ? c.clientX : tx); tx = null; if (Math.abs(dx) > 35) show(idx + (dx > 0 ? 1 : -1)); }, { passive: true });
+            lb.addEventListener("touchend", (e) => {
+                if (tx == null) return;
+                const c = e.changedTouches && e.changedTouches[0];
+                const dx = tx - (c ? c.clientX : tx);
+                tx = null;
+                if (Math.abs(dx) > 35) {
+                    if (dx > 0 && idx < srcs.length - 1) show(idx + 1);
+                    else if (dx < 0 && idx > 0) show(idx - 1);
+                }
+            }, { passive: true });
         }
         show(idx);
         (document.body || document.documentElement).appendChild(lb);
         rxLbKey = (e) => {
             if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeLb(); }
-            else if (multi && e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); show(idx + 1); }
-            else if (multi && e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); show(idx - 1); }
+            else if (multi && e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); if (idx < srcs.length - 1) show(idx + 1); }
+            else if (multi && e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); if (idx > 0) show(idx - 1); }
         };
         document.addEventListener("keydown", rxLbKey, true); // captura → não vaza p/ o tokKey do overlay
     }
@@ -2417,25 +2486,57 @@
             return slide;
         });
         const strip = el("div", { className: "rx-tok-gallery" }, ...slides);
+        // setas nas bordas da imagem
+        const garrow = (path, label, dir, cls) => el("button", { className: "rx-tok-garrow " + cls, type: "button", "aria-label": label, onClick: (e) => { e.preventDefault(); e.stopPropagation(); tokGalStep(strip, dir); } }, icon(path, 20));
+        const prevBtn = garrow(CHEV_L, "Previous image", -1, "rx-gprev");
+        const nextBtn = garrow(CHEV_R, "Next image", 1, "rx-gnext");
+
+        const updateArrows = (i) => {
+            if (n <= 1) {
+                prevBtn.style.display = "none";
+                nextBtn.style.display = "none";
+                return;
+            }
+            prevBtn.style.display = i <= 0 ? "none" : "";
+            nextBtn.style.display = i >= n - 1 ? "none" : "";
+        };
+
         // indicador estilo Reddit: bolinhas centradas embaixo; galeria grande (>8) cai pra contador "n/N"
         let cur = 0, setActive, dotbar;
         if (n > 8) {
             const counter = el("span", { className: "rx-tok-gcount" }, "1/" + n);
             dotbar = el("div", { className: "rx-tok-gdots" }, counter);
-            setActive = (i) => { if (i === cur) return; cur = i; counter.textContent = (i + 1) + "/" + n; };
+            setActive = (i) => {
+                updateArrows(i);
+                if (i === cur) return;
+                cur = i;
+                counter.textContent = (i + 1) + "/" + n;
+            };
         } else {
             const dots = srcs.map(() => el("span", { className: "rx-tok-gdot" }));
-            dots[0].classList.add("rx-on");
+            if (dots[0]) dots[0].classList.add("rx-on");
             dotbar = el("div", { className: "rx-tok-gdots" }, ...dots);
-            setActive = (i) => { if (i === cur) return; dots[cur] && dots[cur].classList.remove("rx-on"); cur = i; dots[i] && dots[i].classList.add("rx-on"); };
+            setActive = (i) => {
+                updateArrows(i);
+                if (i === cur) return;
+                dots[cur] && dots[cur].classList.remove("rx-on");
+                cur = i;
+                dots[i] && dots[i].classList.add("rx-on");
+            };
         }
-        const upd = () => { const w = strip.clientWidth; if (w) setActive(Math.max(0, Math.min(n - 1, Math.round(strip.scrollLeft / w)))); };
+        const upd = () => {
+            const w = strip.clientWidth;
+            if (w) {
+                const idx = Math.max(0, Math.min(n - 1, Math.round(strip.scrollLeft / w)));
+                setActive(idx);
+                updateArrows(idx);
+            }
+        };
         strip.addEventListener("scroll", upd, { passive: true });
-        // setas nas bordas da imagem
-        const garrow = (path, label, dir, cls) => el("button", { className: "rx-tok-garrow " + cls, type: "button", "aria-label": label, onClick: (e) => { e.preventDefault(); e.stopPropagation(); tokGalStep(strip, dir); } }, icon(path, 20));
+        updateArrows(0);
         return el("div", { className: "rx-tok-gwrap" }, strip,
-            garrow(CHEV_L, "Previous image", -1, "rx-gprev"),
-            garrow(CHEV_R, "Next image", 1, "rx-gnext"),
+            prevBtn,
+            nextBtn,
             dotbar);
     }
     function tokWheel(e) {
