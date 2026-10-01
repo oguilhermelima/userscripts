@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X (Twitter) — Control Panel, Wide Layout & Age Bypass
 // @namespace    x-declutter-wide
-// @version      3.11.0
+// @version      3.11.1
 // @author       oguilhermelima
 // @description  X/Twitter control panel for a wider layout, decluttered sidebars, live preferences, and sensitive-content handling.
 // @match        https://x.com/*
@@ -965,19 +965,79 @@
            Em tela cheia o CONTAINER do player vai pro top-layer e preenche, mas nossos caps
            (capMedia/blurMedia: max-height 80vh + overflow hidden nas aspect-box) continuam
            valendo no <video> e nos wrappers internos → o vídeo ficava preso pequeno no topo.
-           Aqui zeramos QUALQUER cap dentro de um :fullscreen (e no próprio elemento) pra deixar
-           o sizing nativo do X assumir. As regras de cap usam :has() (especificidade alta), então
-           subimos a NOSSA pro nível de id com :not(#_) — vence todas sem depender de qual toggle
-           está ligado. Fora do @media: fullscreen acontece em qualquer largura. */
+           Além disso, correções para Chromium/WebKit e bug recente do X (popover manual vazio
+           no top-layer que restringe o vídeo a metade da tela ou a um quadrado central):
+           1. Zeramos caps e garantimos 100% de largura e altura nos containers e no <video>;
+           2. Suporte tanto a :fullscreen quanto a :-webkit-full-screen;
+           3. Ocultamos popovers manuais espúrios do X que sequestram o top-layer. */
         :fullscreen:not(#_),
         :fullscreen:not(#_) * {
-            max-width: none !important; max-height: none !important; overflow: visible !important;
+            max-width: none !important; max-height: none !important;
         }
+        :-webkit-full-screen:not(#_),
+        :-webkit-full-screen:not(#_) * {
+            max-width: none !important; max-height: none !important;
+        }
+
+        /* Player, wrappers intermediários e <video> ocupam a tela cheia inteira */
+        :fullscreen:not(#_),
+        :fullscreen:not(#_) [data-testid="videoComponent"],
+        :fullscreen:not(#_) [data-testid="videoPlayer"],
+        :fullscreen:not(#_) [data-testid="videoPlayer"] > div,
+        :fullscreen:not(#_) [data-testid="videoComponent"] > div,
+        :fullscreen:not(#_) video {
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 100vw !important;
+            max-height: 100vh !important;
+        }
+
+        :-webkit-full-screen:not(#_),
+        :-webkit-full-screen:not(#_) [data-testid="videoComponent"],
+        :-webkit-full-screen:not(#_) [data-testid="videoPlayer"],
+        :-webkit-full-screen:not(#_) [data-testid="videoPlayer"] > div,
+        :-webkit-full-screen:not(#_) [data-testid="videoComponent"] > div,
+        :-webkit-full-screen:not(#_) video {
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 100vw !important;
+            max-height: 100vh !important;
+        }
+
+        :fullscreen:not(#_) video,
+        :-webkit-full-screen:not(#_) video {
+            object-fit: contain !important;
+            position: absolute !important;
+            inset: 0 !important;
+            margin: auto !important;
+        }
+
         /* blur força height fixo (80vh) nos wrappers → em fullscreen deixa preencher */
         :fullscreen:not(#_) [data-testid="tweetPhoto"].tw-blur-bg,
         [data-testid="tweetPhoto"].tw-blur-bg:fullscreen:not(#_),
-        :fullscreen:not(#_) [data-testid="tweetPhoto"].tw-blur-bg video {
+        :fullscreen:not(#_) [data-testid="tweetPhoto"].tw-blur-bg video,
+        :-webkit-full-screen:not(#_) [data-testid="tweetPhoto"].tw-blur-bg,
+        [data-testid="tweetPhoto"].tw-blur-bg:-webkit-full-screen:not(#_),
+        :-webkit-full-screen:not(#_) [data-testid="tweetPhoto"].tw-blur-bg video {
+            width: 100% !important;
             height: 100% !important;
+        }
+
+        /* Bug do X / Chromium: popovers manuais vazios no top-layer quebram o layout
+           do player em tela cheia, deixando o vídeo ocupando apenas metade da tela */
+        div[popover="manual"],
+        [popover="manual"].contents,
+        .contents:has(> section:empty),
+        :fullscreen:not(#_) [popover="manual"],
+        :-webkit-full-screen:not(#_) [popover="manual"] {
+            display: none !important;
+        }
+        [popover="manual"] {
+            border: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: transparent !important;
+            pointer-events: none !important;
         }
 
         /* ===================== Salvos (Bookmarks) ===================== */
@@ -2485,6 +2545,17 @@
             cb.__twPatch = true;
         }
     } catch (e) {}
+
+    // Fecha popovers manuais espúrios do X ao entrar em tela cheia
+    const onFullscreenChange = () => {
+        const fs = document.fullscreenElement || document.webkitFullscreenElement;
+        if (!fs) return;
+        fs.querySelectorAll?.('[popover="manual"]').forEach((p) => {
+            try { if (p.matches?.(":popover-open")) p.hidePopover?.(); } catch (e) {}
+        });
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 
     let initialWorkTask = null;
     function scheduleInitialWork() {
