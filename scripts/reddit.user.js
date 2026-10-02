@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit — Control Panel, Ad-Free
 // @namespace    reddit-tweaks
-// @version      2.77.1
+// @version      2.78.0
 // @author       oguilhermelima
 // @description  Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs.
 // @match        https://www.reddit.com/*
@@ -404,9 +404,10 @@
         .rx-lb::after { content: ""; position: absolute; width: 42px; height: 42px; border: 3px solid rgba(255,255,255,.2); border-top-color: #ff4500; border-radius: 50%; opacity: 0; pointer-events: none; }
         .rx-lb.rx-lb-loading::after { opacity: 1; animation: rx-tok-spin .8s linear infinite; }
         .rx-lb.rx-lb-error::after { content: "Image unavailable"; width: auto; height: auto; border: 0; color: rgba(255,255,255,.72); font: 600 13px/1 -apple-system, sans-serif; animation: none; }
-        .rx-lb-img { position: relative; z-index: 0; max-width: 100vw; max-height: 100vh; width: 100%; height: 100%; object-fit: contain; user-select: none; opacity: 0; cursor: zoom-in; transform-origin: center center; will-change: transform, opacity; transition: opacity .16s ease, transform .18s ease; }
+        .rx-lb-img { position: relative; z-index: 0; max-width: 100vw; max-height: 100vh; width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; opacity: 0; cursor: zoom-in; transform-origin: center center; will-change: transform, opacity; transition: opacity .16s ease, transform .18s ease; touch-action: none; }
         .rx-lb.rx-lb-ready .rx-lb-img { opacity: 1; }
-        .rx-lb.rx-lb-zoomed .rx-lb-img { cursor: zoom-out; }
+        .rx-lb.rx-lb-zoomed .rx-lb-img { cursor: grab; }
+        .rx-lb.rx-lb-zoomed.rx-lb-dragging .rx-lb-img { cursor: grabbing !important; transition: none !important; }
         .rx-lb-nav { position: fixed; top: 50%; transform: translateY(-50%); z-index: 2; width: 46px; height: 46px; border: none; cursor: pointer; padding: 0; border-radius: 50%; background: rgba(0, 0, 0, .5); color: #fff; display: flex; align-items: center; justify-content: center; transition: background .12s ease, transform .12s ease; }
         .rx-lb-nav:hover { background: #ff4500; transform: translateY(-50%) scale(1.1); }
         .rx-lb-prev { left: 14px; } .rx-lb-next { right: 14px; }
@@ -418,6 +419,25 @@
         .rx-lb-btn { width: 42px; height: 42px; border: none; cursor: pointer; padding: 0; border-radius: 50%; background: rgba(0, 0, 0, .5); color: #fff; display: flex; align-items: center; justify-content: center; text-decoration: none; transition: background .12s ease, transform .12s ease; }
         .rx-lb-btn:hover { background: #ff4500; transform: scale(1.08); }
         .rx-lb-btn svg { width: 22px; height: 22px; }
+        /* Actionbar: botões icon-only e fix de elevação para dropdown de overflow */
+        shreddit-post-share-button button,
+        shreddit-post-share-button a {
+            width: 32px !important; min-width: 32px !important; max-width: 32px !important;
+            height: 32px !important; padding: 0 !important; border-radius: 9999px !important;
+            display: inline-flex !important; align-items: center !important; justify-content: center !important;
+            box-sizing: border-box !important; flex-shrink: 0 !important;
+        }
+        shreddit-post-share-button button span:not([slot="icon"]):not(:has(svg)),
+        shreddit-post-share-button a span:not([slot="icon"]):not(:has(svg)),
+        shreddit-post-share-button .text-body-2,
+        shreddit-post-share-button [data-testid="share-text"] {
+            display: none !important;
+        }
+        shreddit-post:has(shreddit-post-overflow-menu[open]),
+        shreddit-post:has(faceplate-dropdown-menu[open]),
+        shreddit-post:has([aria-expanded="true"]) {
+            z-index: 25 !important; position: relative !important;
+        }
         /* legenda (sub + título): canto superior esquerdo, menor */
         .rx-tok-cap {
             position: absolute; top: 12px; left: 14px; right: auto; bottom: auto; z-index: 5; max-width: min(58%, 460px); padding: 0;
@@ -1505,6 +1525,7 @@
         const srEl = btn.querySelector("faceplate-screen-reader-content");
         if (srEl) srEl.textContent = label;
         btn.setAttribute("aria-label", label);
+        btn.setAttribute("title", label);
     }
 
     // Botão da barra: clona o link de comentários da MESMA barra (herda o estilo de pílula e
@@ -1520,6 +1541,7 @@
         btn.setAttribute("role", "button");
         btn.setAttribute("tabindex", "0");
         btn.setAttribute("aria-label", initialLabel);
+        btn.setAttribute("title", initialLabel);
         const svg = btn.querySelector("svg");
         if (svg) {
             svg.removeAttribute("icon-name");
@@ -1545,6 +1567,7 @@
     function observeOverflow(overflow, bar) {
         if (!overflow.shadowRoot) return;
         const resync = () => {
+            toggleDropdownDupes(overflow, true);
             const s = bar.querySelector('.rx-post-act[data-rx-kind="save"]');
             const h = bar.querySelector('.rx-post-act[data-rx-kind="hide"]');
             if (s) syncBtn(s, overflow, "save", SAVE_ICON);
@@ -1595,12 +1618,35 @@
             if (post.dataset.rxBar === sig && (!wantBtns || (sr && sr.querySelector(".rx-post-act")))) return;
             const bar = sr && sr.querySelector('[data-testid="action-row"]');
             if (!bar) return;
-            // icon-only no mobile: o CSS do documento não fura o shadow root, então injetamos um <style>
-            // dentro dele escondendo os rótulos (Save/Hide) abaixo de 768px / em touch.
-            if (sr && !sr.getElementById("rx-bar-mobile-css")) {
+            // icon-only na barra: o CSS do documento não fura o shadow root, então injetamos um <style>
+            // dentro dele escondendo os rótulos (Save/Hide) e garantindo overflow visível para o menu "..."
+            if (sr && !sr.getElementById("rx-bar-action-css")) {
                 const st = document.createElement("style");
-                st.id = "rx-bar-mobile-css";
-                st.textContent = "@media (max-width:768px),(pointer:coarse){.rx-act-label{display:none!important}}";
+                st.id = "rx-bar-action-css";
+                st.textContent = `
+                    :host { overflow: visible !important; }
+                    [data-testid="action-row"] { overflow: visible !important; gap: 4px !important; }
+                    .rx-act-label { display: none !important; }
+                    .rx-post-act {
+                        display: inline-flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                        width: 32px !important;
+                        min-width: 32px !important;
+                        max-width: 32px !important;
+                        height: 32px !important;
+                        padding: 0 !important;
+                        border-radius: 9999px !important;
+                        box-sizing: border-box !important;
+                        flex-shrink: 0 !important;
+                    }
+                    shreddit-async-loader, shreddit-post-overflow-menu {
+                        overflow: visible !important;
+                        position: relative !important;
+                        display: inline-flex !important;
+                        align-items: center !important;
+                    }
+                `;
                 sr.appendChild(st);
             }
             const anchor = bar.querySelector(".ms-auto"); // bloco alinhado à direita (mod/promote)
@@ -1618,9 +1664,47 @@
                 const ofWrap = overflow.closest("shreddit-async-loader") || overflow;
                 if (ofWrap.parentElement !== bar || ofWrap.nextElementSibling !== anchor) bar.insertBefore(ofWrap, anchor);
                 observeOverflow(overflow, bar); // espelha o estado do menu nos botões
+
+                if (!ofWrap.__rxBound) {
+                    ofWrap.__rxBound = true;
+                    ofWrap.addEventListener("click", (e) => {
+                        const path = e.composedPath ? e.composedPath() : [];
+                        const isMenuItem = path.some((n) => n && n.getAttribute && (n.getAttribute("role") === "menuitem" || (n.closest && n.closest('[role="menuitem"], button[data-testid]'))));
+                        if (!isMenuItem) {
+                            e.stopPropagation();
+                        } else {
+                            setTimeout(() => {
+                                const dd = overflow.shadowRoot?.querySelector("faceplate-dropdown-menu") || overflow.querySelector("faceplate-dropdown-menu");
+                                if (dd) {
+                                    if (typeof dd.close === "function") dd.close();
+                                    else dd.removeAttribute("open");
+                                }
+                            }, 120);
+                        }
+                    });
+                }
             } else if (!wantBtns) {
                 bar.querySelectorAll(".rx-post-act").forEach((n) => n.remove());
                 toggleDropdownDupes(overflow, false);
+            }
+
+            // Share icon-only no shadowRoot do componente
+            const shareBtn = post.querySelector("shreddit-post-share-button") || (sr && sr.querySelector("shreddit-post-share-button"));
+            if (shareBtn && shareBtn.shadowRoot && !shareBtn.shadowRoot.getElementById("rx-share-icon-only")) {
+                const s = document.createElement("style");
+                s.id = "rx-share-icon-only";
+                s.textContent = `
+                    button, a {
+                        width: 32px !important; min-width: 32px !important; max-width: 32px !important;
+                        height: 32px !important; padding: 0 !important; border-radius: 9999px !important;
+                        display: inline-flex !important; align-items: center !important; justify-content: center !important;
+                        box-sizing: border-box !important; flex-shrink: 0 !important;
+                    }
+                    span:not([slot="icon"]):not(:has(svg)), .text-body-2, [data-testid="share-text"] {
+                        display: none !important;
+                    }
+                `;
+                shareBtn.shadowRoot.appendChild(s);
             }
 
             // Esconder award
@@ -1641,6 +1725,21 @@
             if (!wantBtns || bar.querySelector(".rx-post-act")) post.dataset.rxBar = sig;
         });
     }
+
+    // Fecha dropdown de overflow ao clicar fora de qualquer shreddit-post-overflow-menu
+    document.addEventListener("click", (e) => {
+        const path = e.composedPath ? e.composedPath() : [];
+        if (!path.some((n) => n && n.tagName && n.tagName.toLowerCase() === "shreddit-post-overflow-menu")) {
+            document.querySelectorAll("shreddit-post").forEach((p) => {
+                const ov = p.shadowRoot?.querySelector("shreddit-post-overflow-menu") || p.querySelector("shreddit-post-overflow-menu");
+                const dd = ov?.shadowRoot?.querySelector("faceplate-dropdown-menu") || ov?.querySelector("faceplate-dropdown-menu");
+                if (dd && (dd.hasAttribute("open") || dd.open)) {
+                    if (typeof dd.close === "function") dd.close();
+                    else dd.removeAttribute("open");
+                }
+            });
+        }
+    }, true);
 
     /* ------------------------------------------------------------------ *
      * Saved / listings: multiselect + ações em lote (na visão padrão do Reddit).
@@ -2369,26 +2468,122 @@
         closeLb();
         let idx = start || 0;
         const multi = srcs.length > 1;
-        const img = el("img", { className: "rx-lb-img", alt: "" });
+        const img = el("img", { className: "rx-lb-img", alt: "", draggable: "false" });
+        img.addEventListener("dragstart", (e) => e.preventDefault());
         const count = el("span", { className: "rx-lb-count" });
         const openA = el("a", { className: "rx-lb-btn", target: "_blank", rel: "noopener", title: "Abrir imagem (raw)", "aria-label": "Open raw image" }, icon(PATH.external, 24));
         openA.addEventListener("click", (e) => e.stopPropagation());
         const close = el("button", { className: "rx-lb-btn", type: "button", title: "Close (Esc)", "aria-label": "Close", onClick: closeLb }, icon(PATH.close, 20));
         const lb = el("div", { className: "rx-lb", role: "dialog", "aria-label": "Image viewer" }, img);
+        lb.addEventListener("dragstart", (e) => e.preventDefault());
         let prevBtn, nextBtn;
         const ZOOMS = [1, 2, 3];
         let zoomIndex = 0, loadToken = 0;
+        let panX = 0, panY = 0;
+
+        const getMaxPan = (z) => {
+            const zoom = z || ZOOMS[zoomIndex];
+            if (zoom <= 1) return { x: 0, y: 0 };
+            const W = window.innerWidth;
+            const H = window.innerHeight;
+            const nw = img.naturalWidth || W;
+            const nh = img.naturalHeight || H;
+            const fitScale = Math.min(W / nw, H / nh);
+            const rw = nw * fitScale;
+            const rh = nh * fitScale;
+            const mx = Math.max(0, (rw * zoom - W) / 2 + 50);
+            const my = Math.max(0, (rh * zoom - H) / 2 + 50);
+            return { x: mx, y: my };
+        };
+        const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+
         const applyZoom = () => {
             const zoom = ZOOMS[zoomIndex];
-            img.style.transform = zoom === 1 ? "" : `scale(${zoom})`;
+            if (zoom === 1) {
+                panX = 0;
+                panY = 0;
+                img.style.transform = "";
+            } else {
+                const max = getMaxPan(zoom);
+                panX = clamp(panX, -max.x, max.x);
+                panY = clamp(panY, -max.y, max.y);
+                img.style.transform = `translate(${Math.round(panX)}px, ${Math.round(panY)}px) scale(${zoom})`;
+            }
             lb.classList.toggle("rx-lb-zoomed", zoom !== 1);
-            img.title = zoom === 1 ? "Click to zoom" : `Zoom ${zoom}x (click to change)`;
+            img.title = zoom === 1 ? "Click to zoom" : `Zoom ${zoom}x (drag to pan, click to change)`;
         };
-        img.addEventListener("click", (e) => {
-            e.preventDefault(); e.stopPropagation();
+
+        const zoomAt = (clientX, clientY) => {
+            const oldZoom = ZOOMS[zoomIndex];
             zoomIndex = (zoomIndex + 1) % ZOOMS.length;
+            const newZoom = ZOOMS[zoomIndex];
+            if (newZoom === 1) {
+                panX = 0;
+                panY = 0;
+            } else {
+                const cx0 = window.innerWidth / 2;
+                const cy0 = window.innerHeight / 2;
+                const mx = (clientX - cx0 - panX) / oldZoom;
+                const my = (clientY - cy0 - panY) / oldZoom;
+                panX = (clientX - cx0) - (mx * newZoom);
+                panY = (clientY - cy0) - (my * newZoom);
+            }
             applyZoom();
+        };
+
+        let ptrDown = false, isDragging = false, startX = 0, startY = 0, startPanX = 0, startPanY = 0;
+        img.addEventListener("pointerdown", (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            ptrDown = true;
+            isDragging = false;
+            startX = e.clientX;
+            startY = e.clientY;
+            startPanX = panX;
+            startPanY = panY;
+            try { img.setPointerCapture(e.pointerId); } catch (_) {}
         });
+
+        img.addEventListener("pointermove", (e) => {
+            if (!ptrDown) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            if (!isDragging && Math.hypot(dx, dy) > 4) {
+                if (ZOOMS[zoomIndex] > 1) {
+                    isDragging = true;
+                    lb.classList.add("rx-lb-dragging");
+                }
+            }
+            if (isDragging) {
+                e.preventDefault();
+                const max = getMaxPan();
+                panX = clamp(startPanX + dx, -max.x, max.x);
+                panY = clamp(startPanY + dy, -max.y, max.y);
+                img.style.transform = `translate(${Math.round(panX)}px, ${Math.round(panY)}px) scale(${ZOOMS[zoomIndex]})`;
+            }
+        });
+
+        const onPointerEnd = (e) => {
+            if (!ptrDown) return;
+            ptrDown = false;
+            try { img.releasePointerCapture(e.pointerId); } catch (_) {}
+            lb.classList.remove("rx-lb-dragging");
+            if (!isDragging) {
+                zoomAt(e.clientX, e.clientY);
+            }
+            isDragging = false;
+        };
+        img.addEventListener("pointerup", onPointerEnd);
+        img.addEventListener("pointercancel", () => {
+            ptrDown = false;
+            isDragging = false;
+            lb.classList.remove("rx-lb-dragging");
+        });
+        img.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+
         const preload = (src) => {
             if (!src) return;
             const next = new Image();
@@ -2401,6 +2596,8 @@
             const token = ++loadToken;
             let fallbackUsed = false;
             zoomIndex = 0;
+            panX = 0;
+            panY = 0;
             applyZoom();
             lb.classList.remove("rx-lb-ready", "rx-lb-error");
             lb.classList.add("rx-lb-loading");
@@ -2436,6 +2633,14 @@
         if (multi) { // scroll horizontal (+ vertical) e swipe → navega 1 por gesto
             let lock = false, idle = null, tx = null;
             lb.addEventListener("wheel", (e) => {
+                if (ZOOMS[zoomIndex] > 1) {
+                    e.preventDefault();
+                    const max = getMaxPan();
+                    panX = clamp(panX - e.deltaX, -max.x, max.x);
+                    panY = clamp(panY - e.deltaY, -max.y, max.y);
+                    img.style.transform = `translate(${Math.round(panX)}px, ${Math.round(panY)}px) scale(${ZOOMS[zoomIndex]})`;
+                    return;
+                }
                 const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
                 if (Math.abs(d) < 2) return;
                 e.preventDefault();
@@ -2444,9 +2649,12 @@
                 if (d > 0 && idx < srcs.length - 1) { lock = true; show(idx + 1); }
                 else if (d < 0 && idx > 0) { lock = true; show(idx - 1); }
             }, { passive: false });
-            lb.addEventListener("touchstart", (e) => { tx = e.touches && e.touches[0] ? e.touches[0].clientX : null; }, { passive: true });
+            lb.addEventListener("touchstart", (e) => {
+                if (ZOOMS[zoomIndex] > 1) return;
+                tx = e.touches && e.touches[0] ? e.touches[0].clientX : null;
+            }, { passive: true });
             lb.addEventListener("touchend", (e) => {
-                if (tx == null) return;
+                if (ZOOMS[zoomIndex] > 1 || tx == null) return;
                 const c = e.changedTouches && e.changedTouches[0];
                 const dx = tx - (c ? c.clientX : tx);
                 tx = null;
@@ -2460,6 +2668,14 @@
         (document.body || document.documentElement).appendChild(lb);
         rxLbKey = (e) => {
             if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeLb(); }
+            else if (ZOOMS[zoomIndex] > 1) {
+                const STEP = 60;
+                const max = getMaxPan();
+                if (e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); panX = clamp(panX - STEP, -max.x, max.x); applyZoom(); }
+                else if (e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); panX = clamp(panX + STEP, -max.x, max.x); applyZoom(); }
+                else if (e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); panY = clamp(panY - STEP, -max.y, max.y); applyZoom(); }
+                else if (e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); panY = clamp(panY + STEP, -max.y, max.y); applyZoom(); }
+            }
             else if (multi && e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); if (idx < srcs.length - 1) show(idx + 1); }
             else if (multi && e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); if (idx > 0) show(idx - 1); }
         };
