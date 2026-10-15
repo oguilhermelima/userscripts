@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instagram — Native Video Controls & Mosaic Feed
 // @namespace    instagram-native-player
-// @version      3.23.0
+// @version      3.24.0
 // @description  Camada aditiva sobre a interface do Instagram. (1) Player de vídeo integrado (feed, reels, explore, stories): progresso scrubável, play/pause, mudo+volume, velocidade, PiP, fullscreen e atalhos — SEMPRE ligado. (2) Feed da home em MASONRY com DOM próprio (OPCIONAL, off por padrão): lê os posts da lista nativa (harvest) e renderiza cards nossos em multicolunas estáveis (altura reservada por aspect-ratio), stories alinhadas, right rail escondida e nav esquerdo fixo. v3.0: TODAS as funcionalidades (menos o player) viram FLAGS num painel de ajustes flutuante (mesmo modelo do reddit/twitter: FAB de engrenagem no canto inferior-direito → painel com toggles/sliders agrupados). v3.1+: polish visual do mosaico — paleta própria (PRETO premium no escuro com texto mais legível; claro no light, detectado por luminância do fundo), cards com hover (eleva + zoom da mídia), tray de stories emoldurada, skeleton neutro. Colunas (Auto/2/3/4), densidade, sombra/legenda/contadores são FLAGS no painel. Galeria navega por scroll horizontal do mouse/trackpad. Em STORIES o player vira só a barra de progresso (scrub) — o post original fica intacto (nada de subir o reply). v3.5: o MESMO mosaico (proporção real) também no /explore/ e nos perfis (/usuario/) — tiles só-mídia, reels com preview no hover, clique abre em modal; flags Grid no Explore / Grid no perfil / Grid nos salvos (off por padrão; EXPLORE e SALVOS usam o MESMO card da home (header + barra de ação like/comentar/compartilhar/salvar + legenda), clicar abre modal; perfil segue como tile só-mídia. Salvos: o "salvar" vira REMOVER, + MULTISSELEÇÃO no header pra remover/mover vários pra coleção de uma vez. Ações do grid via API (like/save). v3.6: largura/colunas/densidade viram ajustes de CONTEÚDO que valem pra home, explore E perfil (a coluna toda do perfil acompanha a largura); thumbnails dos tiles usam a versão pequena da API (carregam bem mais rápido). v3.12: o mosaico vira GRADE UNIFORME — todos os itens com a MESMA altura (mídia em 4:5, faixas de altura fixa), em CSS Grid. O motor de masonry em JS (posicionamento absoluto, medição por card, congelamento de coluna, re-empacotamento a cada imagem que carregava) foi REMOVIDO: o layout não tem mais custo proporcional ao tamanho da sessão. Carregamento reescrito junto: content-visibility pula layout/paint/decode do que está fora da tela, srcset+sizes baixam a variante do tamanho da coluna em vez da imagem cheia, render em lote por DocumentFragment, e o carregar-mais ficou menos agressivo (3 páginas por disparo, lookahead de ~2 telas). v3.13: proporção 4:6 (mais vertical) e o MESMO card completo — header com avatar/nome, barra de ação (curtir, comentar, repostar, copiar link, salvar) e legenda — em TODAS as superfícies; o perfil deixou de ser tile só-mídia. Legenda maior e mais legível: UMA linha, com "mais" no fim dela que abre a descrição INTEIRA por cima da mídia (sem mudar a altura do card, então a grade não se mexe); na home ela agora vem também da API quando o <h1> do post não renderiza. v3.14: hover-to-play reescrito — debounce na entrada (atravessar a grade não dispara nada), o vídeo SOBREVIVE ao fim do hover (volta instantâneo, sem re-download) sob um LRU curto, só aparece quando tem frame (fim do piscar preto) e o hover vale o card inteiro; clicar em comentar SEMPRE abre a overlay (espera o post renderizar em vez de desistir e redirecionar); e o skeleton de carregamento saiu do overlay em tela cheia para dentro da própria grade. v3.15: @menções e #hashtags da legenda viram links (cor de link do IG); COMPORTAMENTO ÚNICO em todas as páginas — clicar no item abre a modal, seja foto, vídeo ou galeria, na home, no explore, no perfil e nos salvos (o clique no vídeo não muta mais); e o player ganhou botão de SOM fixo no canto (34px, sempre visível, em vez do mute escondido na fileira do hover) com a barra de progresso nas cores do Instagram no lugar do azul. v3.16: SEGUIR, CURTIR e SALVAR passam a ir pela API (o pk do autor sai do post, da API ou do perfil) em vez de depender do botão nativo dentro do <article> virtualizado — na home o seguir não fazia nada e o curtir chegava a NAVEGAR pro post; agora há fallback no botão nativo e aviso quando nada funciona, nunca silêncio. Header do perfil ocupa a largura toda do conteúdo (era um bloco estreito com um vazio ao lado) e ganhou botão de COPIAR o @ ao lado do nome. v3.17: o alargamento do header de perfil da v3.16 foi REVERTIDO (mexer em flex/min-width dos filhos colapsava o texto para uma letra por linha) — ele volta a crescer só por zoom, e o botão de copiar o @ continua. TRÁFEGO: cada foto era baixada DUAS vezes — o <img> nativo off-screen pedia uma variante do srcset e o nosso card pedia outra; agora copiamos srcset+sizes do nativo (mesma escolha = cache hit) e o avatar deixou de cair na própria mídia do post quando o alt não é reconhecível. Medido em bancada: 24 requisições de imagem para 12 posts caíram para 12. Vídeo da lista nativa é pausado no evento `play` (não mais até 1s depois, já bufferizando), a janela off-screen caiu de 150vh para 90vh, o carregar-mais puxa 2 páginas por disparo em vez de 3, e o scroll só sincroniza a lista nativa quando algum vídeo visível depende dela. v3.18 (SALVOS): a barra de seleção GRUDA no topo enquanto está ligada (numa limpeza longa não é mais preciso voltar ao topo pra clicar em Remover), ganhou botão 'Todos', barra de PROGRESSO com contador durante a remoção em lote e um 'Parar' pra abortar no meio. O item removido dos salvos NÃO some mais da página: escurece e ganha o selo 'removido', saindo de vez só no próximo carregamento — assim a grade não reflui embaixo do cursor e não se perde a posição no meio da limpeza; o que falhar fica marcado em vermelho. v3.20: proporção passa a 9:16 (a mais alta que o IG produz, de reels/stories) — um reel cabe inteiro, sem corte. Conteúdo mais LARGO que a caixa não é ampliado pra preencher: entra inteiro (contain) com o fundo preenchido por uma cópia borrada da própria mídia, em vez de mostrar só uma faixa ampliada do meio. E o conteúdo ganhou respiro lateral em qualquer largura de janela (antes, com a janela estreita, os cards encostavam no nav de um lado e na borda do outro). O teto de altura por viewport da v3.19 foi revertido. Prefs em localStorage.
 // @author       oguilhermelima
 // @match        https://www.instagram.com/*
@@ -443,10 +443,10 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igm-norail{ display:none !important; }
 
 /* vars tunáveis: nav (offset) e largura máx do bloco de conteúdo (≤3 colunas, preenchem) */
-:root{ --igm-navw:72px; --igm-maxw:1320px; }
+:root{ --igm-navw:72px; --igm-pinw:72px; --igm-maxw:1320px; }
 
 /* nav esquerdo fixo: pino a largura (= --igm-navw) e mato a transition (sem hover-expand) */
-.igm-navpin{ width:var(--igm-navw) !important; min-width:var(--igm-navw) !important; max-width:var(--igm-navw) !important; flex:0 0 var(--igm-navw) !important; transition:none !important; }
+.igm-navpin{ width:var(--igm-pinw) !important; min-width:var(--igm-pinw) !important; max-width:var(--igm-pinw) !important; flex:0 0 var(--igm-pinw) !important; transition:none !important; }
 
 /* a coluna do feed começa em x=0 (nav é overlay fixo, não ocupa fluxo) → desloco o
    conteúdo pela largura do nav. */
@@ -463,14 +463,16 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
    NÃO mexer em flex/min-width/max-width dos filhos: a v3.16 fez isso e quebrou feio — o min-width:0
    caiu num wrapper errado e o texto passou a quebrar UMA LETRA POR LINHA, com o avatar solto no meio.
    O layout interno do header é do IG; aqui só escalamos e damos respiro. */
-.igm-gridcol header { zoom:1.28; padding-top:26px !important; }
+.igm-gridcol header { padding-top:26px !important; }
+/* zoom só com folga: abaixo de ~1100px o header ampliado passava da coluna (rolagem horizontal/corte) */
+@media (min-width: 1100px){ .igm-gridcol header { zoom:1.28; } }
 /* botão de COPIAR o @ do perfil, ao lado do username */
 .igp-copy{ margin-left:8px; vertical-align:middle; flex:0 0 auto;
   display:inline-flex; align-items:center; justify-content:center;
   width:26px; height:26px; padding:0; border:0; border-radius:8px; cursor:pointer;
   background:transparent; color:var(--ig-secondary-text, #a8a8a8); opacity:.85;
   transition:background .15s ease, color .15s ease; }
-.igp-copy:hover{ background:rgba(255,255,255,.1); color:var(--ig-primary-text, #f5f5f5); opacity:1; }
+.igp-copy:hover{ background:var(--igf-hover-bg, rgba(255,255,255,.1)); color:var(--ig-primary-text, #f5f5f5); opacity:1; }
 .igp-copy svg{ width:17px; height:17px; display:block; }
 .igp-copy.igf-copied{ color:#0095f6; }
 .igm-gridcol [role="tablist"] { justify-content:center !important; }
@@ -591,7 +593,7 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igf-loader{ display:flex; align-items:center; justify-content:center; gap:10px; padding:34px 26px 60px; min-height:40px;
   color:var(--ig-secondary-text, #aaa); font-size:13px; }
 .igf-loader.igf-done{ display:none; }
-.igf-spin{ width:26px; height:26px; border:3px solid rgba(255,255,255,.18); border-top-color:#fff; border-radius:50%; animation:igf-rot .8s linear infinite; }
+.igf-spin{ width:26px; height:26px; border:3px solid rgba(128,128,128,.25); border-top-color:var(--igf-text, #fff); border-radius:50%; animation:igf-rot .8s linear infinite; }
 @keyframes igf-rot{ to{ transform:rotate(360deg); } }
 /* skeleton de CARREGAMENTO: cards fantasmas DENTRO do próprio grid, no lugar exato onde os posts
    vão entrar (nada de overlay por cima da página). Altura = a do card real, pela mesma conta do
@@ -641,6 +643,9 @@ html.igf-dark{
   --igf-text-2:#b9b9c0;
   --igf-shadow: 0 1px 2px rgba(0,0,0,.55);
   --igf-shadow-hov: 0 18px 44px rgba(0,0,0,.64);
+  --igs-bg:#1c1c1e; --igs-fg:#f5f5f5; --igs-fg2:#dcdcdd; --igs-muted:#8e8e93; --igs-muted2:#6b6b70;
+  --igs-border:#363638; --igs-line:#2a2a2d; --igs-hover:#2c2c2e; --igs-input:#000; --igs-track:#48484a;
+  --igs-shadow:rgba(0,0,0,.6);
 }
 /* claro */
 html:not(.igf-dark){
@@ -652,6 +657,9 @@ html:not(.igf-dark){
   --igf-text-2:#5b5b62;
   --igf-shadow: 0 1px 2px rgba(0,0,0,.08);
   --igf-shadow-hov: 0 16px 36px rgba(0,0,0,.18);
+  --igs-bg:#ffffff; --igs-fg:#0c1014; --igs-fg2:#262626; --igs-muted:#737373; --igs-muted2:#a8a8a8;
+  --igs-border:#dbdbdb; --igs-line:#efefef; --igs-hover:#f2f2f2; --igs-input:#efefef; --igs-track:#c7c7c7;
+  --igs-shadow:rgba(0,0,0,.16);
 }
 /* card: bg + borda da paleta + transições; sombra (resting + hover) só com a flag igf-shadow */
 .igf-card{ background:var(--igf-card-bg) !important; border-color:var(--igf-line) !important;
@@ -757,12 +765,12 @@ html:not(.igf-dark){
 .igf-card.igf-sel .igf-selcb{ background:#0095f6; }
 .igf-card.igf-sel .igf-selcb::after{ content:""; position:absolute; left:8px; top:4px; width:6px; height:11px; border:solid #fff; border-width:0 2.5px 2.5px 0; transform:rotate(45deg); }
 /* menu de coleções + toast */
-.igf-collmenu{ position:fixed; z-index:2147483647; min-width:220px; max-height:60vh; overflow-y:auto; padding:6px; background:#1c1c1e; border:1px solid #363638; border-radius:12px; box-shadow:0 12px 34px rgba(0,0,0,.6); }
-.igf-cm-head{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#8e8e93; padding:6px 10px 4px; }
-.igf-cm-item{ all:unset; cursor:pointer; display:block; width:100%; box-sizing:border-box; padding:9px 11px; border-radius:8px; color:#f5f5f5; font:600 13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-.igf-cm-item:hover{ background:#2c2c2e; }
+.igf-collmenu{ position:fixed; z-index:2147483647; min-width:220px; max-height:60vh; overflow-y:auto; padding:6px; background:var(--igs-bg); border:1px solid var(--igs-border); border-radius:12px; box-shadow:0 12px 34px var(--igs-shadow); }
+.igf-cm-head{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--igs-muted); padding:6px 10px 4px; }
+.igf-cm-item{ all:unset; cursor:pointer; display:block; width:100%; box-sizing:border-box; padding:9px 11px; border-radius:8px; color:var(--igs-fg); font:600 13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+.igf-cm-item:hover{ background:var(--igs-hover); }
 .igf-cm-new{ color:#0095f6; }
-.igf-toast{ position:fixed; left:50%; bottom:80px; transform:translateX(-50%) translateY(8px); z-index:2147483647; background:#1c1c1e; color:#f5f5f5; border:1px solid #363638; border-radius:999px; padding:9px 18px; font:13px -apple-system,sans-serif; box-shadow:0 6px 22px rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
+.igf-toast{ position:fixed; left:50%; bottom:80px; transform:translateX(-50%) translateY(8px); z-index:2147483647; background:var(--igs-bg); color:var(--igs-fg); border:1px solid var(--igs-border); border-radius:999px; padding:9px 18px; font:13px -apple-system,sans-serif; box-shadow:0 6px 22px var(--igs-shadow); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
 .igf-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 `);
 
@@ -772,9 +780,9 @@ html:not(.igf-dark){
      * ------------------------------------------------------------------ */
     addStyle(`
 #igs-fab{ position:fixed; right:18px; bottom:18px; z-index:2147483646; width:44px; height:44px;
-  display:flex; align-items:center; justify-content:center; background:#1c1c1e; color:#f5f5f5;
-  border:1px solid #363638; border-radius:50%; cursor:pointer; opacity:.72;
-  box-shadow:0 6px 20px rgba(0,0,0,.45);
+  display:flex; align-items:center; justify-content:center; background:var(--igs-bg); color:var(--igs-fg);
+  border:1px solid var(--igs-border); border-radius:50%; cursor:pointer; opacity:.72;
+  box-shadow:0 6px 20px var(--igs-shadow);
   transition:opacity .2s, color .15s, background .15s, border-color .15s, transform .2s; }
 #igs-fab:hover{ opacity:1; color:#fff; background:#0095f6; border-color:#0095f6; transform:rotate(30deg); }
 #igs-fab svg{ width:21px; height:21px; fill:currentColor; display:block; }
@@ -782,61 +790,61 @@ html:not(.igf-dark){
 html.igf-no-msg .igf-msgdock{ display:none !important; }
 /* botão voltar-ao-topo: acima do FAB, aparece só ligado + rolado */
 #igs-totop{ position:fixed; right:18px; bottom:72px; z-index:2147483646; width:42px; height:42px;
-  display:none; align-items:center; justify-content:center; background:#1c1c1e; color:#f5f5f5;
-  border:1px solid #363638; border-radius:50%; cursor:pointer; opacity:.72; box-shadow:0 6px 20px rgba(0,0,0,.45);
+  display:none; align-items:center; justify-content:center; background:var(--igs-bg); color:var(--igs-fg);
+  border:1px solid var(--igs-border); border-radius:50%; cursor:pointer; opacity:.72; box-shadow:0 6px 20px var(--igs-shadow);
   transition:opacity .2s, color .15s, background .15s, border-color .15s, transform .2s; }
 #igs-totop:hover{ opacity:1; color:#fff; background:#0095f6; border-color:#0095f6; transform:translateY(-2px); }
 #igs-totop svg{ width:20px; height:20px; fill:currentColor; display:block; }
 html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
-#igs-panel{ position:fixed; right:18px; bottom:70px; z-index:2147483647; width:384px; max-height:88vh;
+#igs-panel{ position:fixed; right:18px; bottom:70px; z-index:2147483647; width:min(384px, calc(100vw - 36px)); max-height:min(88vh, calc(100vh - 88px));
   display:none; flex-direction:column; overflow:hidden;
-  background:#1c1c1e; color:#f5f5f5; border:1px solid #363638; border-radius:18px; box-shadow:0 16px 50px rgba(0,0,0,.65);
+  background:var(--igs-bg); color:var(--igs-fg); border:1px solid var(--igs-border); border-radius:18px; box-shadow:0 16px 50px var(--igs-shadow);
   font:14px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; transform-origin:bottom right; }
 #igs-panel.open{ display:flex; animation:igs-pop .16s cubic-bezier(.2,.7,.3,1); }
 @keyframes igs-pop{ from{ opacity:0; transform:translateY(10px) scale(.97); } to{ opacity:1; transform:none; } }
-.igs-head{ display:flex; align-items:center; gap:10px; padding:14px 14px 12px; border-bottom:1px solid #2a2a2d; }
+.igs-head{ display:flex; align-items:center; gap:10px; padding:14px 14px 12px; border-bottom:1px solid var(--igs-line); }
 .igs-logo{ width:28px; height:28px; border-radius:9px; background:#0095f6; display:flex; align-items:center; justify-content:center; flex:none; }
 .igs-logo svg{ width:17px; height:17px; fill:#fff; }
 .igs-head b{ font-size:16px; font-weight:800; flex:1; }
-.igs-x{ all:unset; cursor:pointer; color:#9a9a9d; width:28px; height:28px; display:flex; align-items:center; justify-content:center; font-size:16px; border-radius:50%; transition:.15s; }
-.igs-x:hover{ color:#f5f5f5; background:#2c2c2e; }
-.igs-search{ padding:10px 14px; border-bottom:1px solid #2a2a2d; }
-.igs-search > div{ display:flex; align-items:center; gap:8px; background:#000; border:1px solid #363638; border-radius:999px; padding:7px 12px; transition:border-color .15s; }
+.igs-x{ all:unset; cursor:pointer; color:var(--igs-muted); width:28px; height:28px; display:flex; align-items:center; justify-content:center; font-size:16px; border-radius:50%; transition:.15s; }
+.igs-x:hover{ color:var(--igs-fg); background:var(--igs-hover); }
+.igs-search{ padding:10px 14px; border-bottom:1px solid var(--igs-line); }
+.igs-search > div{ display:flex; align-items:center; gap:8px; background:var(--igs-input); border:1px solid var(--igs-border); border-radius:999px; padding:7px 12px; transition:border-color .15s; }
 .igs-search > div:focus-within{ border-color:#0095f6; }
-.igs-search svg{ width:16px; height:16px; fill:#8e8e93; flex:none; }
-.igs-search input{ all:unset; flex:1; color:#f5f5f5; font:inherit; }
-.igs-search input::placeholder{ color:#8e8e93; }
+.igs-search svg{ width:16px; height:16px; fill:var(--igs-muted); flex:none; }
+.igs-search input{ all:unset; flex:1; color:var(--igs-fg); font:inherit; }
+.igs-search input::placeholder{ color:var(--igs-muted); }
 .igs-body{ display:flex; min-height:0; flex:1; }
-.igs-rail{ display:flex; flex-direction:column; gap:4px; padding:10px 8px; border-right:1px solid #2a2a2d; flex:none; }
-.igs-tab{ all:unset; box-sizing:border-box; width:40px; height:40px; border-radius:11px; display:flex; align-items:center; justify-content:center; color:#8e8e93; cursor:pointer; transition:background .15s,color .15s; }
+.igs-rail{ display:flex; flex-direction:column; gap:4px; padding:10px 8px; border-right:1px solid var(--igs-line); flex:none; }
+.igs-tab{ all:unset; box-sizing:border-box; width:40px; height:40px; border-radius:11px; display:flex; align-items:center; justify-content:center; color:var(--igs-muted); cursor:pointer; transition:background .15s,color .15s; }
 .igs-tab svg{ width:21px; height:21px; fill:currentColor; }
-.igs-tab:hover{ background:#242426; color:#f5f5f5; }
+.igs-tab:hover{ background:var(--igs-hover); color:var(--igs-fg); }
 .igs-tab.active{ background:rgba(0,149,246,.15); color:#0095f6; }
-.igs-content{ flex:1; min-width:0; overflow-y:auto; padding:6px 0 12px; scrollbar-width:thin; scrollbar-color:#48484a transparent; }
+.igs-content{ flex:1; min-width:0; overflow-y:auto; padding:6px 0 12px; scrollbar-width:thin; scrollbar-color:var(--igs-track) transparent; }
 .igs-content::-webkit-scrollbar{ width:8px; }
-.igs-content::-webkit-scrollbar-thumb{ background:#48484a; border-radius:99px; border:2px solid #1c1c1e; }
+.igs-content::-webkit-scrollbar-thumb{ background:var(--igs-track); border-radius:99px; border:2px solid var(--igs-bg); }
 .igs-sec{ display:none; }
-.igs-sec-title{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#8e8e93; padding:12px 16px 6px; }
+.igs-sec-title{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--igs-muted); padding:12px 16px 6px; }
 .igs-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 12px; cursor:pointer; border-radius:9px; margin:1px 6px; transition:background .12s; }
-.igs-row:hover{ background:#242426; }
+.igs-row:hover{ background:var(--igs-hover); }
 .igs-rowlbl{ flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; }
-.igs-hint{ color:#8e8e93; font-size:11px; line-height:1.3; font-weight:400; }
-.igs-row select{ background:#000; color:#f5f5f5; border:1px solid #363638; border-radius:8px; padding:5px 8px; font:inherit; cursor:pointer; flex:0 0 auto; }
+.igs-hint{ color:var(--igs-muted); font-size:11px; line-height:1.3; font-weight:400; }
+.igs-row select{ background:var(--igs-input); color:var(--igs-fg); border:1px solid var(--igs-border); border-radius:8px; padding:5px 8px; font:inherit; cursor:pointer; flex:0 0 auto; }
 .igs-row.dim, .igs-slider.dim{ opacity:.4; pointer-events:none; }
 .igs-sw{ position:relative; width:38px; height:22px; flex:none; }
 .igs-sw input{ position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; }
-.igs-sw i{ position:absolute; inset:0; border-radius:999px; background:#48484a; transition:.18s; pointer-events:none; }
+.igs-sw i{ position:absolute; inset:0; border-radius:999px; background:var(--igs-track); transition:.18s; pointer-events:none; }
 .igs-sw i::after{ content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:.18s; box-shadow:0 1px 2px rgba(0,0,0,.4); }
 .igs-sw input:checked + i{ background:#0095f6; }
 .igs-sw input:checked + i::after{ transform:translateX(16px); }
 .igs-slider{ display:flex; flex-direction:column; gap:8px; padding:10px 12px; margin:1px 6px; }
-.igs-lab{ display:flex; justify-content:space-between; align-items:center; color:#dcdcdd; }
+.igs-lab{ display:flex; justify-content:space-between; align-items:center; color:var(--igs-fg2); }
 .igs-lab .val{ color:#0095f6; font-weight:700; background:rgba(0,149,246,.12); border-radius:6px; padding:1px 8px; font-size:13px; min-width:38px; text-align:center; }
 .igs-slider input[type=range]{ width:100%; accent-color:#0095f6; cursor:pointer; }
-.igs-empty{ display:none; color:#8e8e93; text-align:center; padding:32px 16px; }
-.igs-foot{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-top:1px solid #2a2a2d; }
-.igs-ver{ color:#6b6b70; font-size:12px; }
-.igs-reset{ all:unset; cursor:pointer; color:#8e8e93; font-size:13px; font-weight:600; padding:4px 8px; border-radius:7px; transition:.15s; }
+.igs-empty{ display:none; color:var(--igs-muted); text-align:center; padding:32px 16px; }
+.igs-foot{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-top:1px solid var(--igs-line); }
+.igs-ver{ color:var(--igs-muted2); font-size:12px; }
+.igs-reset{ all:unset; cursor:pointer; color:var(--igs-muted); font-size:13px; font-weight:600; padding:4px 8px; border-radius:7px; transition:.15s; }
 .igs-reset:hover{ color:#ff3040; background:rgba(255,48,64,.1); }
 `);
 
@@ -2762,6 +2770,20 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         return col.querySelector('[data-pagelet="story_tray"]') || col.querySelector('[aria-label*="Stories" i]');
     }
 
+    // --igm-navw = largura REAL do nav (o offset do conteúdo). Era 72px fixo: com o nav expandido (sem o
+    // pino, ex. explore/perfil em janela larga) o conteúdo começava SOB o nav. Não mede durante o hover
+    // (o IG expande o nav por cima) nem fora da faixa de uma coluna lateral (barra inferior do mobile).
+    let navWset = 0;
+    function syncNavWidth(box, w) {
+        if (!box) return;
+        if (box.classList.contains("igm-navpin")) w = 72;   // pinado: a largura é a do pino (--igm-pinw), não medida
+        else if (box.matches(":hover") || w < 48 || w > 400) return;
+        w = Math.round(w);
+        if (w === navWset) return;
+        navWset = w;
+        document.documentElement.style.setProperty("--igm-navw", w + "px");
+    }
+
     let chromeApplied = false;   // alguma classe .igm-* viva no DOM → o unmasonry tem o que limpar
     function applyNavPin() {
         if (!prefs.masonry || !prefs.pinNav) {   // flag off → garante que nenhum nav fica pinado
@@ -2788,6 +2810,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         // offset só se o feed começa SOB o nav (overlay); senão dobraria o respiro
         const navBox = document.querySelector(".igm-navpin") || leftNavWidthBox();
         const navW = navBox ? (navBox.getBoundingClientRect().width || 72) : 0;
+        syncNavWidth(navBox, navW);
         const colLeft = split.col.getBoundingClientRect().left;
         split.col.classList.toggle("igm-col", navW > 0 && colLeft < navW - 4);
         const tray = storiesTray(split.col);
@@ -2871,6 +2894,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         const main = col.closest("main") || document.querySelector("main");
         const navBox = leftNavWidthBox();
         const navW = navBox ? (navBox.getBoundingClientRect().width || 72) : 0;
+        syncNavWidth(navBox, navW);
         const underNav = navW > 0 && main && main.getBoundingClientRect().left < navW - 4;
         for (let n = grid; n && n !== col; n = n.parentElement) n.classList.add("igm-wide");   // tira os caps internos do IG
         // a COLUNA inteira (header + grid) ganha a MESMA largura/centragem do feed da home (--igm-maxw)
