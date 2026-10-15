@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X (Twitter) — Control Panel, Wide Layout & Age Bypass
 // @namespace    x-declutter-wide
-// @version      3.11.1
+// @version      3.12.0
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/twitter.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/twitter.user.js
 // @author       oguilhermelima
@@ -418,280 +418,295 @@
            Dois seletores pro shell: data-tw-shell (achado por JS = menor ancestral comum de
            header+main, vale pra qualquer árvore) e o :has() equivalente, que já casa no
            PRIMEIRO paint, antes de o JS achar o nó. */
-        /* ---------- SIDEBAR ESQUERDA COMPACTA (SÓ ÍCONES) ---------- */
-        html.tw-hideLeftSidebar [data-tw-navcol],
-        html.tw-hideLeftSidebar header[role="banner"] {
-            box-sizing: border-box !important;
-            flex: 0 0 var(--tw-navcol-w, 88px) !important;
-            width: var(--tw-navcol-w, 88px) !important;
-            max-width: var(--tw-navcol-w, 88px) !important;
-            min-width: var(--tw-navcol-w, 88px) !important;
-            margin-right: var(--tw-left-gap, 28px) !important;
-            padding-right: 0 !important;
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-            justify-content: flex-start !important;
-            z-index: 5 !important;
-        }
-        html.tw-hideLeftSidebar [data-tw-navcol] header[role="banner"] {
-            width: 100% !important;
-            max-width: none !important;
-            flex: 1 1 auto !important;
-            margin-right: 0 !important;
-        }
-        /* Estrutura vertical da nav compacta */
-        html.tw-hideLeftSidebar header[role="banner"] > div {
-            box-sizing: border-box !important;
-            width: var(--tw-navcol-w, 88px) !important;
-            max-width: var(--tw-navcol-w, 88px) !important;
-            min-width: var(--tw-navcol-w, 88px) !important;
-            height: 100% !important;
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: flex-end !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] > div > div {
-            box-sizing: border-box !important;
-            width: 100% !important;
-            height: 100% !important;
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: space-between !important;
-            align-items: flex-end !important;
-        }
+        /* Layout da nav compacta só no desktop (>= 1000px): abaixo disso o X já usa a nav de ícones
+           (tablet) ou a barra inferior (mobile), e forçar largura/margem aqui desalinhava a página. */
+        @media (min-width: 1000px) {
+            /* ---------- SIDEBAR ESQUERDA COMPACTA (SÓ ÍCONES) ---------- */
+            html.tw-hideLeftSidebar [data-tw-navcol],
+            html.tw-hideLeftSidebar header[role="banner"] {
+                box-sizing: border-box !important;
+                flex: 0 0 var(--tw-navcol-w, 88px) !important;
+                width: var(--tw-navcol-w, 88px) !important;
+                max-width: var(--tw-navcol-w, 88px) !important;
+                min-width: var(--tw-navcol-w, 88px) !important;
+                margin-right: var(--tw-left-gap, 28px) !important;
+                padding-right: 0 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: flex-start !important;
+                z-index: 5 !important;
+            }
+            html.tw-hideLeftSidebar [data-tw-navcol] header[role="banner"] {
+                width: 100% !important;
+                max-width: none !important;
+                flex: 1 1 auto !important;
+                margin-right: 0 !important;
+            }
+            /* Estrutura vertical da nav compacta */
+            html.tw-hideLeftSidebar header[role="banner"] > div {
+                box-sizing: border-box !important;
+                margin-left: 0 !important;
+                margin-right: 0 !important;
+                width: var(--tw-navcol-w, 88px) !important;
+                max-width: var(--tw-navcol-w, 88px) !important;
+                min-width: var(--tw-navcol-w, 88px) !important;
+                height: 100% !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: flex-end !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] > div > div {
+                box-sizing: border-box !important;
+                width: var(--tw-navcol-w, 88px) !important;
+                height: 100% !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: space-between !important;
+                align-items: flex-end !important;
+            }
+            /* o miolo da caixa fixa mantém os 275px nativos e vazava ~190px pra esquerda da nav */
+            html.tw-hideLeftSidebar header[role="banner"] > div > div > div {
+                box-sizing: border-box !important;
+                width: 100% !important;
+                max-width: 100% !important;
+            }
 
-        /* Topo: Logo, Nav e Botão Postar alinhados na mesma coluna de 50px à direita */
-        html.tw-hideLeftSidebar header[role="banner"] div:has(> h1) {
-            width: 50px !important;
-            min-width: 50px !important;
-            max-width: 50px !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-            align-self: flex-end !important;
-            margin-left: auto !important;
-            margin-right: 0 !important;
-            padding: 0 !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] h1 {
-            width: 50px !important;
-            min-width: 50px !important;
-            max-width: 50px !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-            align-self: flex-end !important;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] h1 a {
-            box-sizing: border-box !important;
-            width: 50px !important;
-            height: 50px !important;
-            min-width: 50px !important;
-            max-width: 50px !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-            margin: 4px 0 !important;
-            padding: 0 !important;
-            border-radius: 9999px !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] h1 a > div {
-            box-sizing: border-box !important;
-            width: 50px !important;
-            height: 50px !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] h1 a svg {
-            width: 26px !important;
-            height: 26px !important;
-            max-width: 26px !important;
-            max-height: 26px !important;
-            margin: auto !important;
-            display: block !important;
-        }
+            /* Topo: Logo, Nav e Botão Postar alinhados na mesma coluna de 50px à direita */
+            html.tw-hideLeftSidebar header[role="banner"] div:has(> h1) {
+                width: 50px !important;
+                min-width: 50px !important;
+                max-width: 50px !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+                align-self: flex-end !important;
+                margin-left: auto !important;
+                margin-right: 0 !important;
+                padding: 0 !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] h1 {
+                width: 50px !important;
+                min-width: 50px !important;
+                max-width: 50px !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+                align-self: flex-end !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] h1 a {
+                box-sizing: border-box !important;
+                width: 50px !important;
+                height: 50px !important;
+                min-width: 50px !important;
+                max-width: 50px !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+                margin: 4px 0 !important;
+                padding: 0 !important;
+                border-radius: 9999px !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] h1 a > div {
+                box-sizing: border-box !important;
+                width: 50px !important;
+                height: 50px !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] h1 a svg {
+                width: 26px !important;
+                height: 26px !important;
+                max-width: 26px !important;
+                max-height: 26px !important;
+                margin: auto !important;
+                display: block !important;
+            }
 
-        /* Nav de navegação: mesma coluna de 50px */
-        html.tw-hideLeftSidebar header[role="banner"] nav[role="navigation"] {
-            align-items: flex-end !important;
-            align-self: flex-end !important;
-            width: 50px !important;
-            min-width: 50px !important;
-            max-width: 50px !important;
-            display: flex !important;
-            flex-direction: column !important;
-            margin-left: auto !important;
-            margin-right: 0 !important;
-            padding: 0 !important;
-        }
+            /* Nav de navegação: mesma coluna de 50px */
+            html.tw-hideLeftSidebar header[role="banner"] nav[role="navigation"] {
+                align-items: flex-end !important;
+                align-self: flex-end !important;
+                width: 50px !important;
+                min-width: 50px !important;
+                max-width: 50px !important;
+                display: flex !important;
+                flex-direction: column !important;
+                margin-left: auto !important;
+                margin-right: 0 !important;
+                padding: 0 !important;
+            }
 
-        /* Itens da navegação: apenas ícone centralizado nos 50px */
-        html.tw-hideLeftSidebar header[role="banner"] nav a span,
-        html.tw-hideLeftSidebar header[role="banner"] nav button span,
-        html.tw-hideLeftSidebar header[role="banner"] nav div[dir] {
-            display: none !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] nav a,
-        html.tw-hideLeftSidebar header[role="banner"] nav button,
-        html.tw-hideLeftSidebar header[role="banner"] nav div[role="button"] {
-            box-sizing: border-box !important;
-            width: 50px !important;
-            height: 50px !important;
-            min-width: 50px !important;
-            max-width: 50px !important;
-            margin: 4px 0 !important;
-            padding: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            border-radius: 9999px !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] nav a > div,
-        html.tw-hideLeftSidebar header[role="banner"] nav button > div {
-            width: 50px !important;
-            height: 50px !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] nav svg {
-            width: 26px !important;
-            height: 26px !important;
-            margin: 0 auto !important;
-            display: block !important;
-        }
+            /* Itens da navegação: apenas ícone centralizado nos 50px */
+            html.tw-hideLeftSidebar header[role="banner"] nav a span,
+            html.tw-hideLeftSidebar header[role="banner"] nav button span,
+            html.tw-hideLeftSidebar header[role="banner"] nav div[dir] {
+                display: none !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] nav a,
+            html.tw-hideLeftSidebar header[role="banner"] nav button,
+            html.tw-hideLeftSidebar header[role="banner"] nav div[role="button"] {
+                box-sizing: border-box !important;
+                width: 50px !important;
+                height: 50px !important;
+                min-width: 50px !important;
+                max-width: 50px !important;
+                margin: 4px 0 !important;
+                padding: 0 !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                border-radius: 9999px !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] nav a > div,
+            html.tw-hideLeftSidebar header[role="banner"] nav button > div {
+                width: 50px !important;
+                height: 50px !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] nav svg {
+                width: 26px !important;
+                height: 26px !important;
+                margin: 0 auto !important;
+                display: block !important;
+            }
 
-        /* Botão Novo Post: redondo com ícone de pena proporcional aos ícones */
-        html.tw-hideLeftSidebar header[role="banner"] div:has(> [data-testid="SideNav_NewTweet_Button"]),
-        html.tw-hideLeftSidebar header[role="banner"] div:has(> a[href$="/compose/post"]),
-        html.tw-hideLeftSidebar header[role="banner"] div:has(> a[href$="/compose/tweet"]) {
-            width: 50px !important;
-            min-width: 50px !important;
-            max-width: 50px !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-            align-self: flex-end !important;
-            margin-left: auto !important;
-            margin-right: 0 !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"],
-        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"],
-        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"] {
-            box-sizing: border-box !important;
-            position: relative !important;
-            width: 44px !important;
-            height: 44px !important;
-            min-width: 44px !important;
-            max-width: 44px !important;
-            min-height: 44px !important;
-            max-height: 44px !important;
-            margin: 10px auto !important;
-            padding: 0 !important;
-            border-radius: 50% !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            background-color: #1d9bf0 !important;
-            overflow: hidden !important;
-            transition: background-color 0.15s ease, transform 0.15s ease !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"]:hover,
-        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"]:hover,
-        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"]:hover {
-            background-color: #1a8cd8 !important;
-            transform: scale(1.04) !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"] span,
-        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"] span,
-        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"] span {
-            display: none !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"] svg,
-        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"] svg,
-        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"] svg {
-            display: block !important;
-            width: 22px !important;
-            height: 22px !important;
-            fill: #ffffff !important;
-            color: #ffffff !important;
-            margin: auto !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"]:not(:has(svg))::after,
-        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"]:not(:has(svg))::after,
-        html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"]:not(:has(svg))::after {
-            content: "" !important;
-            position: absolute !important;
-            inset: 0 !important;
-            margin: auto !important;
-            width: 20px !important;
-            height: 20px !important;
-            background-color: #ffffff !important;
-            -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M23 3c-6.62-.1-10.38 2.41-13.05 6.08C7.29 12.61 6 17.35 6 22h2c0-.77.1-1.53.25-2.27 4.14-1.12 7.74-3.8 9.94-7.53C19.78 9.21 21.94 5.38 23 3zm-7.69 7.69c-.93 1.25-2.02 2.37-3.23 3.32-.48-1.59-1.28-3.04-2.33-4.26 1.48-.92 2.92-1.63 4.31-2.13.43 1.05.85 2.1 1.25 3.07zM3 21H1v-6c0-3.31 2.69-6 6-6v2c-2.21 0-4 1.79-4 4v6z'/%3E%3C/svg%3E") no-repeat center / contain !important;
-            mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M23 3c-6.62-.1-10.38 2.41-13.05 6.08C7.29 12.61 6 17.35 6 22h2c0-.77.1-1.53.25-2.27 4.14-1.12 7.74-3.8 9.94-7.53C19.78 9.21 21.94 5.38 23 3zm-7.69 7.69c-.93 1.25-2.02 2.37-3.23 3.32-.48-1.59-1.28-3.04-2.33-4.26 1.48-.92 2.92-1.63 4.31-2.13.43 1.05.85 2.1 1.25 3.07zM3 21H1v-6c0-3.31 2.69-6 6-6v2c-2.21 0-4 1.79-4 4v6z'/%3E%3C/svg%3E") no-repeat center / contain !important;
-        }
+            /* Botão Novo Post: redondo com ícone de pena proporcional aos ícones */
+            html.tw-hideLeftSidebar header[role="banner"] div:has(> [data-testid="SideNav_NewTweet_Button"]),
+            html.tw-hideLeftSidebar header[role="banner"] div:has(> a[href$="/compose/post"]),
+            html.tw-hideLeftSidebar header[role="banner"] div:has(> a[href$="/compose/tweet"]) {
+                width: 50px !important;
+                min-width: 50px !important;
+                max-width: 50px !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+                align-self: flex-end !important;
+                margin-left: auto !important;
+                margin-right: 0 !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"],
+            html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"],
+            html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"] {
+                box-sizing: border-box !important;
+                position: relative !important;
+                width: 44px !important;
+                height: 44px !important;
+                min-width: 44px !important;
+                max-width: 44px !important;
+                min-height: 44px !important;
+                max-height: 44px !important;
+                margin: 10px auto !important;
+                padding: 0 !important;
+                border-radius: 50% !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                background-color: #1d9bf0 !important;
+                overflow: hidden !important;
+                transition: background-color 0.15s ease, transform 0.15s ease !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"]:hover,
+            html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"]:hover,
+            html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"]:hover {
+                background-color: #1a8cd8 !important;
+                transform: scale(1.04) !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"] span,
+            html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"] span,
+            html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"] span {
+                display: none !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"] svg,
+            html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"] svg,
+            html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"] svg {
+                display: block !important;
+                width: 22px !important;
+                height: 22px !important;
+                fill: #ffffff !important;
+                color: #ffffff !important;
+                margin: auto !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_NewTweet_Button"]:not(:has(svg))::after,
+            html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/post"]:not(:has(svg))::after,
+            html.tw-hideLeftSidebar header[role="banner"] a[href$="/compose/tweet"]:not(:has(svg))::after {
+                content: "" !important;
+                position: absolute !important;
+                inset: 0 !important;
+                margin: auto !important;
+                width: 20px !important;
+                height: 20px !important;
+                background-color: #ffffff !important;
+                -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M23 3c-6.62-.1-10.38 2.41-13.05 6.08C7.29 12.61 6 17.35 6 22h2c0-.77.1-1.53.25-2.27 4.14-1.12 7.74-3.8 9.94-7.53C19.78 9.21 21.94 5.38 23 3zm-7.69 7.69c-.93 1.25-2.02 2.37-3.23 3.32-.48-1.59-1.28-3.04-2.33-4.26 1.48-.92 2.92-1.63 4.31-2.13.43 1.05.85 2.1 1.25 3.07zM3 21H1v-6c0-3.31 2.69-6 6-6v2c-2.21 0-4 1.79-4 4v6z'/%3E%3C/svg%3E") no-repeat center / contain !important;
+                mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M23 3c-6.62-.1-10.38 2.41-13.05 6.08C7.29 12.61 6 17.35 6 22h2c0-.77.1-1.53.25-2.27 4.14-1.12 7.74-3.8 9.94-7.53C19.78 9.21 21.94 5.38 23 3zm-7.69 7.69c-.93 1.25-2.02 2.37-3.23 3.32-.48-1.59-1.28-3.04-2.33-4.26 1.48-.92 2.92-1.63 4.31-2.13.43 1.05.85 2.1 1.25 3.07zM3 21H1v-6c0-3.31 2.69-6 6-6v2c-2.21 0-4 1.79-4 4v6z'/%3E%3C/svg%3E") no-repeat center / contain !important;
+            }
 
-        /* Quando a sidebar está aberta: esconde o ícone de pena (o texto tem prioridade) */
-        html:not(.tw-hideLeftSidebar) header[role="banner"] [data-testid="SideNav_NewTweet_Button"] svg,
-        html:not(.tw-hideLeftSidebar) header[role="banner"] a[href$="/compose/post"] svg,
-        html:not(.tw-hideLeftSidebar) header[role="banner"] a[href$="/compose/tweet"] svg {
-            display: none !important;
-        }
-        html:not(.tw-hideLeftSidebar) header[role="banner"] [data-testid="SideNav_NewTweet_Button"]::after,
-        html:not(.tw-hideLeftSidebar) header[role="banner"] a[href$="/compose/post"]::after,
-        html:not(.tw-hideLeftSidebar) header[role="banner"] a[href$="/compose/tweet"]::after {
-            display: none !important;
-        }
+            /* Sidebar aberta (só onde o X mostra a nav expandida, >= 1265px): esconde o ícone de pena —
+               o texto tem prioridade. Abaixo disso a nav NATIVA já é só ícones e a pena é o botão inteiro. */
+            @media (min-width: 1265px) {
+                html:not(.tw-hideLeftSidebar) header[role="banner"] [data-testid="SideNav_NewTweet_Button"] svg,
+                html:not(.tw-hideLeftSidebar) header[role="banner"] a[href$="/compose/post"] svg,
+                html:not(.tw-hideLeftSidebar) header[role="banner"] a[href$="/compose/tweet"] svg {
+                    display: none !important;
+                }
+            }
+            html:not(.tw-hideLeftSidebar) header[role="banner"] [data-testid="SideNav_NewTweet_Button"]::after,
+            html:not(.tw-hideLeftSidebar) header[role="banner"] a[href$="/compose/post"]::after,
+            html:not(.tw-hideLeftSidebar) header[role="banner"] a[href$="/compose/tweet"]::after {
+                display: none !important;
+            }
 
-        /* Card de Conta/Perfil no rodapé: avatar circular limpo e alinhado */
-        html.tw-hideLeftSidebar header[role="banner"] div:has(> [data-testid="SideNav_AccountSwitcher_Button"]) {
-            width: 50px !important;
-            min-width: 50px !important;
-            max-width: 50px !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-            align-self: flex-end !important;
-            margin-left: auto !important;
-            margin-right: 0 !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] {
-            box-sizing: border-box !important;
-            width: 44px !important;
-            height: 44px !important;
-            min-width: 44px !important;
-            max-width: 44px !important;
-            min-height: 44px !important;
-            max-height: 44px !important;
-            margin: 8px auto 14px auto !important;
-            padding: 0 !important;
-            border-radius: 50% !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            overflow: hidden !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] img {
-            width: 36px !important;
-            height: 36px !important;
-            min-width: 36px !important;
-            min-height: 36px !important;
-            border-radius: 50% !important;
-            margin: auto !important;
-            display: block !important;
-        }
-        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] svg,
-        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] span,
-        html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] div[dir] {
-            display: none !important;
+            /* Card de Conta/Perfil no rodapé: avatar circular limpo e alinhado */
+            html.tw-hideLeftSidebar header[role="banner"] div:has(> [data-testid="SideNav_AccountSwitcher_Button"]) {
+                width: 50px !important;
+                min-width: 50px !important;
+                max-width: 50px !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+                align-self: flex-end !important;
+                margin-left: auto !important;
+                margin-right: 0 !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] {
+                box-sizing: border-box !important;
+                width: 44px !important;
+                height: 44px !important;
+                min-width: 44px !important;
+                max-width: 44px !important;
+                min-height: 44px !important;
+                max-height: 44px !important;
+                margin: 8px auto 14px auto !important;
+                padding: 0 !important;
+                border-radius: 50% !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                overflow: hidden !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] img {
+                width: 36px !important;
+                height: 36px !important;
+                min-width: 36px !important;
+                min-height: 36px !important;
+                border-radius: 50% !important;
+                margin: auto !important;
+                display: block !important;
+            }
+            html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] svg,
+            html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] span,
+            html.tw-hideLeftSidebar header[role="banner"] [data-testid="SideNav_AccountSwitcher_Button"] div[dir] {
+                display: none !important;
+            }
         }
 
         html.tw-hideRightSidebar [data-testid="sidebarColumn"],
@@ -701,6 +716,27 @@
             max-width: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
+        }
+
+        /* ---------- TEMA: tokens da nossa UI nas 3 paletas do X (claro / dim / escuro) ----------
+           html[data-tw-theme] vem da cor de fundo do <body> (syncTheme). Escuro é o padrão. */
+        :root {
+            --tw-ui-page: #000000; --tw-ui-bg: #16181c; --tw-ui-fg: #e7e9ea; --tw-ui-fg2: #d0d3d6;
+            --tw-ui-muted: #71767b; --tw-ui-muted2: #5b5f63; --tw-ui-border: #2f3336; --tw-ui-line: #23262b;
+            --tw-ui-input: #202327; --tw-ui-hover: #1c1f23; --tw-ui-track: #3e4144; --tw-ui-glass: rgba(22, 24, 28, .88);
+            --tw-ui-shadow: rgba(0, 0, 0, .6);
+        }
+        html[data-tw-theme="dim"] {
+            --tw-ui-page: #15202b; --tw-ui-bg: #1e2732; --tw-ui-fg: #f7f9f9; --tw-ui-fg2: #d9dee2;
+            --tw-ui-muted: #8b98a5; --tw-ui-muted2: #6e7d8b; --tw-ui-border: #38444d; --tw-ui-line: #2c3640;
+            --tw-ui-input: #273340; --tw-ui-hover: #273340; --tw-ui-track: #4a5662; --tw-ui-glass: rgba(21, 32, 43, .88);
+            --tw-ui-shadow: rgba(0, 0, 0, .5);
+        }
+        html[data-tw-theme="light"] {
+            --tw-ui-page: #ffffff; --tw-ui-bg: #ffffff; --tw-ui-fg: #0f1419; --tw-ui-fg2: #2f3336;
+            --tw-ui-muted: #536471; --tw-ui-muted2: #8b98a5; --tw-ui-border: #cfd9de; --tw-ui-line: #eff3f4;
+            --tw-ui-input: #eff3f4; --tw-ui-hover: #f7f9f9; --tw-ui-track: #cfd9de; --tw-ui-glass: rgba(255, 255, 255, .88);
+            --tw-ui-shadow: rgba(101, 119, 134, .28);
         }
 
         /* ---------- BOTÕES NOS DIVISORES ESTILO REDDIT ---------- */
@@ -717,7 +753,9 @@
         }
         .tw-divider-bar {
             position: sticky !important;
-            top: 12px !important;
+            /* meia altura da tela, sobre as linhas divisórias — no topo (12px) os botões caíam em cima da
+               seta "voltar" e da lupa do cabeçalho sticky da coluna */
+            top: calc(50vh - 16px) !important;
             display: flex !important;
             justify-content: space-between !important;
             width: 100% !important;
@@ -734,9 +772,9 @@
             width: 32px !important;
             height: 32px !important;
             border-radius: 50% !important;
-            background: #000000 !important;
-            border: 1px solid #2f3336 !important;
-            color: #eff3f4 !important;
+            background: var(--tw-ui-page) !important;
+            border: 1px solid var(--tw-ui-border) !important;
+            color: var(--tw-ui-fg) !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
@@ -753,7 +791,7 @@
             pointer-events: auto !important;
         }
         .tw-divider-btn:hover {
-            background: #16181c !important;
+            background: var(--tw-ui-bg) !important;
             border-color: #1d9bf0 !important;
             color: #1d9bf0 !important;
             transform: scale(1.1) !important;
@@ -771,11 +809,12 @@
             margin-right: -16px !important;
         }
 
+        /* abaixo de 1000px o X já é nav de ícones/barra inferior e sem sidebar: nada pra alternar */
         @media (max-width: 999px) {
-            .tw-divider-btn-right {
-                display: none !important;
-            }
+            .tw-divider-track { display: none !important; }
         }
+        /* janela estreita demais pra sidebar (tw-sbnofit): o toggle da direita não teria efeito visível */
+        html.tw-sbnofit .tw-divider-btn-right { visibility: hidden !important; }
 
         /* ---------- LARGURA (desktop; mobile/tablet ficam nativos) ---------- */
         @media (min-width: 1000px) {
@@ -811,43 +850,6 @@
                 width: 100% !important; max-width: none !important; flex: 1 1 auto !important; margin-right: 0 !important;
             }
 
-            /* COLUNA DA NAV (Compacta: só ícones) */
-            html.tw-wide.tw-hideLeftSidebar [data-tw-navcol],
-            html.tw-wide.tw-hideLeftSidebar header[role="banner"] {
-                box-sizing: border-box !important;
-                flex: 0 0 var(--tw-navcol-w, 88px) !important;
-                width: var(--tw-navcol-w, 88px) !important; max-width: var(--tw-navcol-w, 88px) !important;
-                min-width: var(--tw-navcol-w, 88px) !important;
-                margin-right: var(--tw-left-gap, 28px) !important;
-                padding-right: 0 !important;
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: flex-end !important;
-                justify-content: flex-start !important;
-                z-index: 5 !important;
-            }
-            html.tw-wide.tw-hideLeftSidebar [data-tw-navcol] header[role="banner"] {
-                width: 100% !important; max-width: none !important; flex: 1 1 auto !important; margin-right: 0 !important;
-            }
-            html.tw-wide.tw-hideLeftSidebar header[role="banner"] > div {
-                box-sizing: border-box !important;
-                width: var(--tw-navcol-w, 88px) !important; max-width: var(--tw-navcol-w, 88px) !important;
-                min-width: var(--tw-navcol-w, 88px) !important;
-                height: 100% !important;
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: flex-end !important;
-            }
-            html.tw-wide.tw-hideLeftSidebar header[role="banner"] > div > div {
-                box-sizing: border-box !important;
-                width: 100% !important;
-                height: 100% !important;
-                display: flex !important;
-                flex-direction: column !important;
-                justify-content: space-between !important;
-                align-items: flex-end !important;
-            }
-
             /* main: flex container contendo primaryColumn e sidebarColumn */
             html.tw-wide [data-tw-maincol],
             html.tw-wide main[role="main"] {
@@ -860,10 +862,18 @@
                 flex-direction: row !important;
             }
             html.tw-wide main[role="main"] > div {
-                width: 100% !important;
-                max-width: 100% !important;
                 display: flex !important;
                 flex-direction: row !important;
+            }
+            /* TODA a cadeia main → linha das colunas: o X chumba width (990px+) e flex-shrink:0 em cada
+               nível, então só soltar o main>div deixava os níveis de baixo com a largura nativa — a linha
+               transbordava o shell e a sidebar direita invadia a borda / passava da tela. */
+            html.tw-wide main[role="main"] div:has([data-testid="primaryColumn"]) {
+                box-sizing: border-box !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                min-width: 0 !important;
+                flex-shrink: 1 !important;
             }
             /* primaryColumn: largura controlada */
             html.tw-wide [data-testid="primaryColumn"] {
@@ -879,10 +889,10 @@
                 width: var(--tw-side-w, 350px) !important;
                 max-width: var(--tw-side-w, 350px) !important;
                 margin-left: var(--tw-gap, 20px) !important;
+                margin-right: 0 !important;   /* o X põe ~70px de margin-right nativo: roubava da coluna central e descentralizava */
                 flex-shrink: 0 !important;
             }
             html.tw-wide [data-testid="primaryColumn"] div:has(> section) { max-width: none !important; }
-        }
             /* PERFIL: a regra acima tira o cap de 600px do container que, no perfil, também embrulha o
                BANNER (capa). Sem cap, o banner 3:1 (padding-bottom:33%) estica até a largura inteira e
                domina a tela. Recapa só a ALTURA do banner: a aspect-box reserva 3:1, mas max-height +
@@ -1027,14 +1037,14 @@
 
         /* Bug do X / Chromium: popovers manuais vazios no top-layer quebram o layout
            do player em tela cheia, deixando o vídeo ocupando apenas metade da tela */
-        div[popover="manual"],
-        [popover="manual"].contents,
-        .contents:has(> section:empty),
-        :fullscreen:not(#_) [popover="manual"],
-        :-webkit-full-screen:not(#_) [popover="manual"] {
+        :root:has(:fullscreen) div[popover="manual"],
+        :root:has(:fullscreen) .contents:has(> section:empty),
+        :root:has(:-webkit-full-screen) div[popover="manual"],
+        :root:has(:-webkit-full-screen) .contents:has(> section:empty) {
             display: none !important;
         }
-        [popover="manual"] {
+        :root:has(:fullscreen) [popover="manual"],
+        :root:has(:-webkit-full-screen) [popover="manual"] {
             border: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
@@ -1052,19 +1062,19 @@
             align-items: center;
             gap: 8px;
             padding: 8px 14px;
-            background: rgba(22, 24, 28, .88);
+            background: var(--tw-ui-glass);
             backdrop-filter: blur(12px) saturate(1.2);
-            border-bottom: 1px solid #2f3336;
+            border-bottom: 1px solid var(--tw-ui-border);
             margin-bottom: 8px;
             box-sizing: border-box;
             font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            color: #e7e9ea;
+            color: var(--tw-ui-fg);
         }
         html:not(:has([data-testid="primaryColumn"] [role="tablist"])) .tw-bm-bar {
             top: 53px;
         }
         .tw-bm-sp { flex: 1 1 auto; }
-        .tw-bm-count { font-size: 13px; color: #71767b; font-weight: 500; }
+        .tw-bm-count { font-size: 13px; color: var(--tw-ui-muted); font-weight: 500; }
 
         .tw-bm-btn {
             all: unset;
@@ -1085,11 +1095,11 @@
         .tw-bm-btn[disabled] { opacity: .45; pointer-events: none; }
         .tw-bm-ghost {
             background: transparent;
-            color: #e7e9ea;
-            border: 1px solid #2f3336;
+            color: var(--tw-ui-fg);
+            border: 1px solid var(--tw-ui-border);
         }
         .tw-bm-ghost:hover {
-            background: rgba(255, 255, 255, .08);
+            background: var(--tw-ui-hover);
         }
         .tw-bm-danger {
             background: #f4212e;
@@ -1249,9 +1259,9 @@
             position: fixed; right: 16px; bottom: 16px;
             z-index: 2147483646; width: 44px; height: 44px;
             display: flex; align-items: center; justify-content: center;
-            background: #16181c; color: #e7e9ea; border: 1px solid #2f3336;
+            background: var(--tw-ui-bg); color: var(--tw-ui-fg); border: 1px solid var(--tw-ui-border);
             border-radius: 50%; cursor: pointer; opacity: .72;
-            box-shadow: 0 6px 20px rgba(0,0,0,.45);
+            box-shadow: 0 6px 20px var(--tw-ui-shadow);
             transition: opacity .2s, color .15s, background .15s, border-color .15s, transform .25s;
         }
         #tw-fab:hover { opacity: 1; color: #fff; background: #1d9bf0; border-color: #1d9bf0; transform: rotate(40deg); }
@@ -1259,104 +1269,104 @@
 
         #tw-panel {
             position: fixed; right: 16px; bottom: 68px;
-            z-index: 2147483647; width: 384px; max-height: 88vh;
+            z-index: 2147483647; width: min(384px, calc(100vw - 32px)); max-height: min(88vh, calc(100vh - 84px));
             display: none; flex-direction: column; overflow: hidden;
-            background: #16181c; color: #e7e9ea; border: 1px solid #2f3336;
-            border-radius: 18px; box-shadow: 0 16px 50px rgba(0,0,0,.65);
+            background: var(--tw-ui-bg); color: var(--tw-ui-fg); border: 1px solid var(--tw-ui-border);
+            border-radius: 18px; box-shadow: 0 16px 50px var(--tw-ui-shadow);
             font: 14px/1.3 -apple-system, "Segoe UI", system-ui, sans-serif;
             transform-origin: bottom right;
         }
         #tw-panel.open { display: flex; animation: tw-pop .16s cubic-bezier(.2,.7,.3,1); }
         @keyframes tw-pop { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
 
-        .tw-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 12px; border-bottom: 1px solid #23262b; }
+        .tw-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 12px; border-bottom: 1px solid var(--tw-ui-line); }
         .tw-logo { width: 28px; height: 28px; border-radius: 9px; background: #1d9bf0; display: flex; align-items: center; justify-content: center; flex: none; }
         .tw-logo svg { width: 17px; height: 17px; fill: #fff; }
         .tw-head b { font-size: 16px; font-weight: 800; flex: 1; }
-        .tw-x { all: unset; cursor: pointer; color: #71767b; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 50%; transition: .15s; }
-        .tw-x:hover { color: #e7e9ea; background: #2f3336; }
+        .tw-x { all: unset; cursor: pointer; color: var(--tw-ui-muted); width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 50%; transition: .15s; }
+        .tw-x:hover { color: var(--tw-ui-fg); background: var(--tw-ui-border); }
 
-        .tw-search { padding: 10px 14px; border-bottom: 1px solid #23262b; }
-        .tw-search > div { display: flex; align-items: center; gap: 8px; background: #202327; border: 1px solid #2f3336; border-radius: 999px; padding: 7px 12px; transition: border-color .15s, background .15s; }
-        .tw-search > div:focus-within { border-color: #1d9bf0; background: #16181c; }
-        .tw-search svg { width: 16px; height: 16px; fill: #71767b; flex: none; }
-        .tw-search input { all: unset; flex: 1; color: #e7e9ea; font: inherit; }
-        .tw-search input::placeholder { color: #71767b; }
+        .tw-search { padding: 10px 14px; border-bottom: 1px solid var(--tw-ui-line); }
+        .tw-search > div { display: flex; align-items: center; gap: 8px; background: var(--tw-ui-input); border: 1px solid var(--tw-ui-border); border-radius: 999px; padding: 7px 12px; transition: border-color .15s, background .15s; }
+        .tw-search > div:focus-within { border-color: #1d9bf0; background: var(--tw-ui-bg); }
+        .tw-search svg { width: 16px; height: 16px; fill: var(--tw-ui-muted); flex: none; }
+        .tw-search input { all: unset; flex: 1; color: var(--tw-ui-fg); font: inherit; }
+        .tw-search input::placeholder { color: var(--tw-ui-muted); }
 
         .tw-body { display: flex; min-height: 0; flex: 1; }
-        .tw-rail { display: flex; flex-direction: column; gap: 4px; padding: 10px 8px; border-right: 1px solid #23262b; flex: none; }
-        .tw-tab { all: unset; box-sizing: border-box; width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: #71767b; cursor: pointer; transition: background .15s, color .15s; }
+        .tw-rail { display: flex; flex-direction: column; gap: 4px; padding: 10px 8px; border-right: 1px solid var(--tw-ui-line); flex: none; }
+        .tw-tab { all: unset; box-sizing: border-box; width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: var(--tw-ui-muted); cursor: pointer; transition: background .15s, color .15s; }
         .tw-tab svg { width: 21px; height: 21px; fill: currentColor; }
-        .tw-tab:hover { background: #1c1f23; color: #e7e9ea; }
+        .tw-tab:hover { background: var(--tw-ui-hover); color: var(--tw-ui-fg); }
         .tw-tab.active { background: rgba(29,155,240,.15); color: #1d9bf0; }
-        .tw-content { flex: 1; min-width: 0; overflow-y: auto; padding: 6px 0 12px; scrollbar-width: thin; scrollbar-color: #3e4144 transparent; }
+        .tw-content { flex: 1; min-width: 0; overflow-y: auto; padding: 6px 0 12px; scrollbar-width: thin; scrollbar-color: var(--tw-ui-track) transparent; }
         .tw-content::-webkit-scrollbar { width: 8px; }
-        .tw-content::-webkit-scrollbar-thumb { background: #3e4144; border-radius: 99px; border: 2px solid #16181c; }
+        .tw-content::-webkit-scrollbar-thumb { background: var(--tw-ui-track); border-radius: 99px; border: 2px solid var(--tw-ui-bg); }
 
         .tw-sec { display: none; }
-        .tw-sec-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #71767b; padding: 12px 16px 6px; }
+        .tw-sec-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--tw-ui-muted); padding: 12px 16px 6px; }
 
         .tw-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; cursor: pointer; border-radius: 9px; margin: 1px 6px; transition: background .12s; }
-        .tw-row:hover { background: #1c1f23; }
-        .tw-rowlbl { flex: 1; color: #e7e9ea; }
-        .tw-row select { background: #202327; color: #e7e9ea; border: 1px solid #2f3336; border-radius: 8px; padding: 5px 8px; font: inherit; cursor: pointer; }
+        .tw-row:hover { background: var(--tw-ui-hover); }
+        .tw-rowlbl { flex: 1; color: var(--tw-ui-fg); }
+        .tw-row select { background: var(--tw-ui-input); color: var(--tw-ui-fg); border: 1px solid var(--tw-ui-border); border-radius: 8px; padding: 5px 8px; font: inherit; cursor: pointer; }
         .tw-row.dim, .tw-slider.dim { opacity: .4; pointer-events: none; }
 
         .tw-sw { position: relative; width: 38px; height: 22px; flex: none; }
         .tw-sw input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
-        .tw-sw i { position: absolute; inset: 0; border-radius: 999px; background: #3e4144; transition: .18s; pointer-events: none; }
+        .tw-sw i { position: absolute; inset: 0; border-radius: 999px; background: var(--tw-ui-track); transition: .18s; pointer-events: none; }
         .tw-sw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: .18s; box-shadow: 0 1px 2px rgba(0,0,0,.4); }
         .tw-sw input:checked + i { background: #1d9bf0; }
         .tw-sw input:checked + i::after { transform: translateX(16px); }
 
         .tw-slider { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; margin: 1px 6px; }
-        .tw-slider .lab { display: flex; justify-content: space-between; align-items: center; color: #d0d3d6; }
+        .tw-slider .lab { display: flex; justify-content: space-between; align-items: center; color: var(--tw-ui-fg2); }
         .tw-slider .lab .val { color: #1d9bf0; font-weight: 700; background: rgba(29,155,240,.12); border-radius: 6px; padding: 1px 8px; font-size: 13px; min-width: 38px; text-align: center; }
         .tw-slider input[type=range] { width: 100%; accent-color: #1d9bf0; cursor: pointer; }
 
-        .tw-empty { display: none; color: #71767b; text-align: center; padding: 32px 16px; font-size: 14px; }
+        .tw-empty { display: none; color: var(--tw-ui-muted); text-align: center; padding: 32px 16px; font-size: 14px; }
 
-        .tw-foot { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-top: 1px solid #23262b; }
-        .tw-ver { color: #5b5f63; font-size: 12px; }
-        .tw-reset { all: unset; cursor: pointer; color: #71767b; font-size: 13px; font-weight: 600; padding: 4px 8px; border-radius: 7px; transition: .15s; }
+        .tw-foot { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-top: 1px solid var(--tw-ui-line); }
+        .tw-ver { color: var(--tw-ui-muted2); font-size: 12px; }
+        .tw-reset { all: unset; cursor: pointer; color: var(--tw-ui-muted); font-size: 13px; font-weight: 600; padding: 4px 8px; border-radius: 7px; transition: .15s; }
         .tw-reset:hover { color: #f4212e; background: rgba(244,33,46,.1); }
         .tw-reload { all: unset; cursor: pointer; color: #fff; background: #1d9bf0; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px; transition: .15s; }
         .tw-reload:hover { background: #1a8cd8; }
 
         /* ---------- gerenciador da sidebar (widget do painel) ---------- */
         .tw-sbmgr-wrap { padding: 2px 10px 8px; }
-        .tw-sbhint { color: #71767b; font-size: 11px; line-height: 1.4; padding: 2px 6px 10px; }
+        .tw-sbhint { color: var(--tw-ui-muted); font-size: 11px; line-height: 1.4; padding: 2px 6px 10px; }
         .tw-sbrow { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 9px; }
-        .tw-sbrow:hover { background: #1c1f23; }
-        .tw-sbic { width: 22px; height: 22px; flex: none; color: #e7e9ea; display: flex; align-items: center; justify-content: center; }
+        .tw-sbrow:hover { background: var(--tw-ui-hover); }
+        .tw-sbic { width: 22px; height: 22px; flex: none; color: var(--tw-ui-fg); display: flex; align-items: center; justify-content: center; }
         .tw-sbic svg { width: 20px; height: 20px; fill: currentColor; }
-        .tw-sblbl { flex: 1; min-width: 0; color: #e7e9ea; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
-        .tw-sbmove { all: unset; cursor: pointer; width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: #71767b; border: 1px solid #2f3336; font-size: 12px; }
+        .tw-sblbl { flex: 1; min-width: 0; color: var(--tw-ui-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+        .tw-sbmove { all: unset; cursor: pointer; width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--tw-ui-muted); border: 1px solid var(--tw-ui-border); font-size: 12px; }
         .tw-sbmove:hover:not(:disabled) { color: #fff; background: #1d9bf0; border-color: #1d9bf0; }
         .tw-sbmove:disabled { opacity: .3; cursor: default; }
-        .tw-sbseg { display: flex; flex: none; border: 1px solid #2f3336; border-radius: 7px; overflow: hidden; }
-        .tw-sbopt { all: unset; cursor: pointer; font-size: 11px; padding: 4px 7px; color: #71767b; transition: .12s; }
-        .tw-sbopt:hover { color: #e7e9ea; background: #1c1f23; }
+        .tw-sbseg { display: flex; flex: none; border: 1px solid var(--tw-ui-border); border-radius: 7px; overflow: hidden; }
+        .tw-sbopt { all: unset; cursor: pointer; font-size: 11px; padding: 4px 7px; color: var(--tw-ui-muted); transition: .12s; }
+        .tw-sbopt:hover { color: var(--tw-ui-fg); background: var(--tw-ui-hover); }
         .tw-sbopt.on { background: #1d9bf0; color: #fff; }
 
         /* ---------- nosso popup "Mais" ---------- */
         .tw-more-pop { position: fixed; z-index: 2147483646; display: none; flex-direction: column; min-width: 230px; max-height: 70vh; overflow-y: auto;
-            background: #16181c; color: #e7e9ea; border: 1px solid #2f3336; border-radius: 16px; box-shadow: 0 16px 50px rgba(0,0,0,.65); padding: 6px;
+            background: var(--tw-ui-bg); color: var(--tw-ui-fg); border: 1px solid var(--tw-ui-border); border-radius: 16px; box-shadow: 0 16px 50px var(--tw-ui-shadow); padding: 6px;
             font: 15px/1.2 -apple-system, "Segoe UI", system-ui, sans-serif; }
         .tw-more-pop.open { display: flex; }
-        .tw-more-row { display: flex; align-items: center; gap: 16px; padding: 11px 14px; border-radius: 9px; color: #e7e9ea; text-decoration: none; cursor: pointer; }
-        .tw-more-row:hover { background: #1c1f23; }
-        .tw-more-ic { width: 24px; height: 24px; flex: none; display: flex; align-items: center; justify-content: center; color: #e7e9ea; }
+        .tw-more-row { display: flex; align-items: center; gap: 16px; padding: 11px 14px; border-radius: 9px; color: var(--tw-ui-fg); text-decoration: none; cursor: pointer; }
+        .tw-more-row:hover { background: var(--tw-ui-hover); }
+        .tw-more-ic { width: 24px; height: 24px; flex: none; display: flex; align-items: center; justify-content: center; color: var(--tw-ui-fg); }
         .tw-more-ic svg { width: 24px; height: 24px; fill: currentColor; }
         .tw-more-lbl { font-size: 15px; font-weight: 500; }
-        .tw-more-empty { color: #71767b; font-size: 13px; padding: 14px; text-align: center; }
+        .tw-more-empty { color: var(--tw-ui-muted); font-size: 13px; padding: 14px; text-align: center; }
 
         /* toast de feedback (ex.: "Link copiado") */
         #tw-toast {
             position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%) translateY(8px);
-            z-index: 2147483647; background: #16181c; color: #e7e9ea; border: 1px solid #2f3336;
+            z-index: 2147483647; background: var(--tw-ui-bg); color: var(--tw-ui-fg); border: 1px solid var(--tw-ui-border);
             border-radius: 999px; padding: 8px 16px; font: 14px/1 -apple-system, "Segoe UI", system-ui, sans-serif;
-            box-shadow: 0 6px 20px rgba(0,0,0,.45); opacity: 0; pointer-events: none;
+            box-shadow: 0 6px 20px var(--tw-ui-shadow); opacity: 0; pointer-events: none;
             transition: opacity .2s, transform .2s;
         }
         #tw-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -1380,6 +1390,7 @@
         de.style.setProperty("--tw-left-scale", String((settings.leftScale || 120) / 100));
         de.style.setProperty("--tw-right-scale", String((settings.rightScale || 120) / 100));
         de.style.setProperty("--tw-media-h", (settings.mediaHeight || 80) + "vh");
+        syncTheme();
         applyWidth();
         applyBlurMedia();
         hideDiscover(true);   // mudança de setting → re-aplica display em todas as células "discover"
@@ -1391,6 +1402,16 @@
         // (scheduleHomeTab) e nos dois controles que realmente importam (homeDefault/hideForYou).
     }
 
+    // ---- TEMA: o X pinta a cor da paleta no <body> (branco / #15202b / preto) ---------------- //
+    function syncTheme() {
+        if (!document.body) return;
+        const m = (getComputedStyle(document.body).backgroundColor || "").match(/\d+/g);
+        if (!m || m.length < 3) return;
+        const [r, g, b] = m.map(Number);
+        const theme = (0.299 * r + 0.587 * g + 0.114 * b) > 160 ? "light" : (b - r > 12 ? "dim" : "dark");
+        if (document.documentElement.dataset.twTheme !== theme) document.documentElement.dataset.twTheme = theme;
+    }
+
     // ---- LARGURA: shell = laterais + coluna central (px), centrado --------- //
     const SIDE_BASE = 350;
     const GAP = 20;
@@ -1398,7 +1419,7 @@
     let centerW = 700;
     function applyWidth() {
         centerW = Math.min(2400, Math.max(320, Number(settings.centerW) || 700));
-        document.documentElement.style.setProperty("--tw-center-w", centerW + "px");
+        colsKey = "";   // centerW mudou → applyColumns recalcula e reescreve --tw-center-w (capado à janela)
         markShell();
         applyColumns();
         widthHint();
@@ -1415,8 +1436,8 @@
 
         const effectiveNavW = isLeftHidden ? 88 : navW;
         const leftGap = isLeftHidden ? 28 : GAP;
-        const minNeed = effectiveNavW + leftGap + TIMELINE_HARD + (isRightHidden ? 0 : (GAP + sideW));
-        const roomy = !isRightHidden && window.innerWidth >= minNeed;
+        const fits = window.innerWidth >= effectiveNavW + leftGap + TIMELINE_HARD + GAP + sideW;   // a sidebar CABE nesta janela
+        const roomy = !isRightHidden && fits;
         const effectiveSideW = roomy ? sideW : 0;
         const rightGap = roomy ? GAP : 0;
 
@@ -1425,12 +1446,13 @@
         const effCenterW = Math.min(centerW, maxAvailCenter);
         const shellW = effectiveNavW + leftGap + effCenterW + (roomy ? (rightGap + effectiveSideW) : 0);
 
-        const key = effectiveNavW + "|" + effectiveSideW + "|" + effCenterW + "|" + roomy + "|" + isLeftHidden + "|" + isRightHidden + "|" + leftGap;
+        const key = effectiveNavW + "|" + effectiveSideW + "|" + effCenterW + "|" + roomy + "|" + isLeftHidden + "|" + isRightHidden + "|" + leftGap + "|" + fits;
         if (key === colsKey) return;
         colsKey = key;
         latW = effectiveNavW + (roomy ? (GAP + effectiveSideW) : 0);
 
         de.classList.toggle("tw-nosb", !roomy);
+        de.classList.toggle("tw-sbnofit", !fits);
         de.classList.toggle("tw-hideLeftSidebar", isLeftHidden);
         de.classList.toggle("tw-hideRightSidebar", isRightHidden || !roomy);
 
@@ -1516,7 +1538,8 @@
 
         let fb = postBtn.querySelector(".tw-post-fallback-label");
 
-        if (isLeftHidden) {
+        // abaixo de 1265px a nav nativa é só ícones: o botão é a pena, não pode ganhar texto
+        if (isLeftHidden || window.innerWidth < 1265) {
             if (fb) fb.remove();
             return;
         }
@@ -1589,12 +1612,13 @@
         applyColumns(); widthHint();
     }, 120));
 
-    // Largura REAL da nav → --tw-nav-w. Guarda: só aceita medida plausível de coluna de nav
-    // (72–320px). Fora dessa faixa a nav está herdando a largura da coluna que nós mesmos
-    // definimos — usar esse número realimentaria o buraco a cada medição.
+    // Largura REAL da nav → --tw-nav-w. Mede a caixa FIXA que você vê (header > div > div: 275px
+    // expandida, 88px só-ícones abaixo de 1265px) — o <nav> interno é mais estreito que ela, e no
+    // modo ícones (~50px) caía fora da faixa e virava 276, reservando coluna larga pra nav estreita.
+    // Guarda: só aceita medida plausível (72–320px); fora disso a caixa herdou largura nossa.
     let navW = 276;
     function measureNav() {
-        const nav = document.querySelector('header[role="banner"] nav[role="navigation"]');
+        const nav = document.querySelector('header[role="banner"] > div > div') || document.querySelector('header[role="banner"] nav[role="navigation"]');
         if (!nav) return;
         const w = Math.round(nav.getBoundingClientRect().width);
         const use = (w >= 72 && w <= 320) ? w : 276;
@@ -2477,6 +2501,7 @@
             syncBookmarksPageChange();
         }
         if (settings.ageBypass) installAgeBypass();   // re-tenta o patch do bypass (idempotente) até pegar — corrige a corrida do F5
+        syncTheme();                                  // o X troca a paleta ao vivo (Configurações → Exibição)
         markShell();                                  // no-op se o shell já está marcado e vivo (só re-acha se o X remontou)
         applyColumns();                               // a nav só existe depois que o shell hidrata (no-op se nada mudou)
         syncSidebarButtons();
