@@ -66,6 +66,7 @@
             { key: "showCounts",  label: "Mostrar contadores",    hint: "Exibe o nº de curtidas e comentários na barra de ações dos cards.", def: true },
         ] },
         { title: "Vídeo", items: [
+            { key: "hoverPreview", label: "Prévia ao passar o mouse", hint: "Nos cards, o vídeo toca sem som enquanto o mouse está em cima e para ao sair. Off = só toca no clique (clique de novo pausa; o ↗ no canto abre o post).", def: false },
             { key: "autoUnmute", label: "Auto-desmutar vídeos", hint: "Tira o mudo dos vídeos novos automaticamente (o player respeita seu mute manual).", def: false },
             { key: "stories",    label: "Player nos stories",   hint: "Mostra a barra de progresso do player (arrastar pra avançar/voltar) também em /stories/.", def: true },
             { key: "keyboard",   label: "Atalhos de teclado",   hint: "Espaço/K play, J/L e setas seek, M mudo, F tela cheia, ,/. frame, [ ] velocidade…", def: true },
@@ -77,7 +78,7 @@
     ];
     const ITEMS = GROUPS.flatMap((g) => g.items);
     const DEFAULTS = Object.assign(
-        { volume: 0.6, speed: 1 },   // estado vivo do player (não exposto no painel)
+        { volume: 0.6, speed: 1, feedMuted: false },   // estado vivo do player (não exposto no painel)
         Object.fromEntries(ITEMS.map((i) => [i.key, i.def])),
     );
 
@@ -585,10 +586,23 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 /* tela cheia do card: o vídeo inteiro (contain) no tamanho da tela, não o tamanho natural do arquivo */
 .igf-video.igvc-fs video, .igf-video:fullscreen video{ width:100%; height:100%; max-width:none; max-height:none; object-fit:contain; }
 /* ▶ some enquanto TOCA; volta por cima do frame parado (igf-paused) */
-.igf-play{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
+.igf-play{ position:absolute; inset:0; z-index:2; display:flex; align-items:center; justify-content:center; pointer-events:none; }   /* acima do <video> (irmão posterior): senão o ▶ do pausado ficava atrás do frame */
 .igf-play svg{ width:46px; height:46px; opacity:.92; filter:drop-shadow(0 1px 5px rgba(0,0,0,.55)); }
 .igf-video.on:not(.igf-paused) .igf-play{ display:none; }
 .igf-video.igf-paused .igf-play svg{ opacity:.75; }
+/* ↗ ABRIR O POST — no vídeo o clique toca/pausa, então abrir ganhou um alvo próprio no canto
+   (aparece no hover do card e com o vídeo parado) */
+.igf-open{ position:absolute; top:10px; left:10px; z-index:5; width:34px; height:34px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.55); color:#fff;
+  opacity:0; transition:opacity .15s ease, background .15s ease; }
+.igf-card:hover .igf-open, .igf-video:not(.on) .igf-open, .igf-video.igf-paused .igf-open, .igf-open:focus-visible{ opacity:.9; }
+.igf-open:hover{ opacity:1; background:rgba(0,0,0,.78); }
+.igf-open svg{ width:18px; height:18px; display:block; }
+/* vídeo ATIVO pausado: o player fica à mostra (sem depender do hover) pra retomar/arrastar */
+.igf-video.igf-active.igf-paused .igvc-bar::before{ opacity:1; }
+.igf-video.igf-active.igf-paused .igvc-row{ opacity:1; transform:none; pointer-events:auto; }
+.igf-video.igf-active.igf-paused .igvc-track{ height:9px; }
+.igf-video.igf-active.igf-paused .igvc-thumb{ transform:translateY(-50%) scale(1); }
 /* LEGENDA — o wrap tem a altura FIXA (é ele que mantém a uniformidade, mesmo sem legenda);
    a legenda mora COLADA no rodapé dele e, ao expandir, cresce PRA CIMA por cima da mídia. */
 .igf-capwrap{ position:relative; height:var(--igf-caph); }
@@ -1181,6 +1195,13 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
      * Teclado — age no vídeo mais centralizado e visível
      * ------------------------------------------------------------------ */
     function activeVideo() {
+        // o vídeo de card que o usuário pôs pra tocar manda (mesmo pausado), enquanto estiver à vista
+        const pv = cardVideo(playCard);
+        if (pv && pv.isConnected) {
+            const r = pv.getBoundingClientRect();
+            const vis = r.height ? (Math.min(r.bottom, innerHeight) - Math.max(r.top, 0)) / r.height : 0;
+            if (vis >= VIS_MIN) return pv;
+        }
         let best = null, bestD = Infinity;
         const cy = innerHeight / 2;
         for (const v of document.querySelectorAll("video")) {
@@ -1674,7 +1695,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function openViaNative(p, card, tryOpen) {
         cancelOpenWait();
         // vai abrir a overlay por cima → o vídeo do card não pode continuar tocando atrás dela
-        if (hoverCard) { const h = hoverCard; hoverCard = null; suspendVideo(h); }
+        if (playCard) suspendVideo(playCard);
+        if (previewCard) { const h = previewCard; previewCard = null; suspendVideo(h); }
         clearTimeout(hoverT); hoverNext = null;
         if (tryOpen()) return;                                   // o nó já estava lá → overlay na hora
         const src = igSrc;
@@ -1809,101 +1831,146 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         } finally { delete btn.dataset.busy; btn.classList.remove("igf-busy"); }
     }
 
-    /* === HOVER-TO-PLAY (v3.14, reescrito) ====================================================
-     * O modelo antigo criava o <video> ao entrar e o DESTRUÍA ao sair — voltar num card já visto
-     * recarregava tudo do zero, e atravessar a grade disparava uma cascata de create/destroy.
-     * Agora:
-     *   • DEBOUNCE de entrada (HOVER_IN): passar por cima não dispara nada; só parar sobre o card.
-     *   • O NOSSO <video> (URL .mp4 da API) SOBREVIVE ao fim do hover, apenas pausado — voltar é
-     *     instantâneo, sem rede. Um LRU curto (KEEP_ALIVE) segura os últimos; o resto volta ao poster.
-     *   • O <video> NATIVO emprestado (fallback quando a API não deu URL) continua sendo devolvido
-     *     na saída: o IG mata a MediaSource ao virtualizar o artigo e ele viraria tela preta.
-     *   • O vídeo só APARECE quando tem frame (loadeddata) → fade por cima do poster, nunca um
-     *     retângulo preto no meio do card.
-     *   • Todo play() revalida se o card ainda é o do cursor — nada de tocar o card errado depois
-     *     de uma promessa lenta resolver.
-     *   • A lista nativa off-screen só é sincronizada quando o card em hover PRECISA dela (sem URL
-     *     na API); com URL, o hover não provoca nenhum churn no React do IG. */
-    const HOVER_IN = 110;      // ms sobre o card antes de começar a tocar
-    const KEEP_ALIVE = 5;      // quantos <video> NOSSOS ficam vivos (pausados) fora do hover
-    let videoIO = null, pickQ = false, hoverCard = null, hoverT = 0, hoverNext = null;
+    /* === VÍDEO NOS CARDS: CLIQUE PRA TOCAR ======================================================
+     * Antes o vídeo tocava no hover e parava quando o mouse saía — contra-intuitivo: pra continuar
+     * assistindo era preciso segurar o mouse em cima do card. Agora:
+     *   • CLIQUE na mídia toca (com som, conforme o volume/mudo salvos) e o vídeo SEGUE tocando
+     *     quando o mouse sai. Clicar de novo (ou Espaço/K com ele ativo) pausa.
+     *   • UM vídeo nosso por vez: tocar outro pausa o anterior (vale também pro play do player/teclado).
+     *   • Rolou e o vídeo ficou com menos de ~40% à mostra → pausa e NÃO retoma sozinho.
+     *   • O post abre pelo botão ↗ no canto da mídia (ou pelo comentar da barra de ações).
+     *   • "Prévia ao passar o mouse" (opcional, off): toca SEM som no hover e para ao sair — a menos
+     *     que você clique, aí vira reprodução de verdade.
+     * Herdado do modelo anterior: o NOSSO <video> (URL .mp4 da API) sobrevive pausado sob um LRU curto
+     * (KEEP_ALIVE) → voltar é instantâneo; o <video> NATIVO emprestado (sem URL na API) é devolvido na
+     * pausa, porque o IG mata a MediaSource ao virtualizar; o vídeo só aparece com o 1º frame. */
+    const HOVER_IN = 110;      // ms sobre o card antes de começar a prévia (atravessar a grade não dispara nada)
+    const KEEP_ALIVE = 5;      // quantos <video> NOSSOS ficam vivos (pausados) fora do card ativo
+    const VIS_MIN = 0.4;       // fração visível abaixo da qual o vídeo tocando pausa
+    let videoIO = null, pickQ = false, hoverT = 0, hoverNext = null;
+    let playCard = null;       // card que o USUÁRIO pôs pra tocar (segue "ativo" mesmo pausado: teclado age nele)
+    let previewCard = null;    // card em prévia muda (hover, só com a flag)
     const visVids = new Set();      // cards de vídeo VISÍVEIS
     const liveCards = [];           // LRU (mais recente no fim) dos cards com <video> nosso vivo
     const videoState = new Map();   // code -> currentTime: retoma de onde parou quando o vídeo é recriado (LRU)
     const VIDEO_STATE_MAX = 40;
-    let feedSoundOn = false;        // intenção GLOBAL de som no feed: o 1º unmute (gesto) liga; novos vídeos já entram com som
     const apiVideoUrl = (card) => (igMedia.get(card.dataset.code || "") || {}).videoUrl || "";
+    const cardVideo = (card) => { const m = card && card.querySelector(".igf-video"); return m && m.querySelector("video"); };
     // algum card de vídeo VISÍVEL depende do <video> nativo? (= a API não deu URL pra ele).
     // É o único caso que ainda justifica manter a lista nativa alinhada ao scroll.
     function needsNativeVideo() {
         for (const card of visVids) if (card.isConnected && !apiVideoUrl(card)) return true;
         return false;
     }
+    function setPlayCard(card) {
+        if (playCard === card) return;
+        const old = playCard && playCard.querySelector(".igf-video");
+        if (old) old.classList.remove("igf-active");
+        playCard = card;
+        const m = card && card.querySelector(".igf-video");
+        if (m) m.classList.add("igf-active");   // CSS: o player fica à mostra enquanto ESTE estiver pausado
+    }
     function ensureVideoIO() {
         if (videoIO || typeof IntersectionObserver === "undefined") return;
         videoIO = new IntersectionObserver((ents) => {
             for (const e of ents) {
-                if (e.isIntersecting) { visVids.add(e.target); continue; }
-                visVids.delete(e.target);
-                if (hoverCard === e.target) hoverCard = null;
-                if (hoverNext === e.target) { clearTimeout(hoverT); hoverNext = null; }
-                releaseVideo(e.target);   // saiu da tela → devolve de vez (não segura memória fora de vista)
+                const card = e.target;
+                if (e.isIntersecting) visVids.add(card); else visVids.delete(card);
+                if (e.intersectionRatio < VIS_MIN) {
+                    if (card === previewCard) { previewCard = null; suspendVideo(card); }
+                    if (card === playCard) { const v = cardVideo(card); if (v && !v.paused) suspendVideo(card); }   // não retoma sozinho
+                    if (hoverNext === card) { clearTimeout(hoverT); hoverNext = null; }
+                }
+                if (!e.isIntersecting) releaseVideo(card);   // saiu da tela → devolve de vez (não segura memória fora de vista)
             }
-        }, { threshold: 0 });
+        }, { threshold: [0, VIS_MIN] });
     }
-    // garante o invariante "só o card sob o cursor está TOCANDO" (o scroll pode ter movido a grade
-    // sob o mouse). Percorre só os vivos (≤ KEEP_ALIVE), não todos os cards visíveis.
+    // invariante "só o card ativo (ou a prévia) TOCA" — o play pode ter vindo de qualquer lugar.
+    // Percorre só os vivos (≤ KEEP_ALIVE), não todos os cards visíveis.
     function pickVideos() {
-        if (hoverCard && !hoverCard.isConnected) hoverCard = null;
+        if (playCard && !playCard.isConnected) setPlayCard(null);
+        if (previewCard && !previewCard.isConnected) previewCard = null;
         for (const card of liveCards.slice()) {
-            if (card === hoverCard) continue;
-            const v = card.querySelector(".igf-video video");
+            if (card === playCard || card === previewCard) continue;
+            const v = cardVideo(card);
             if (v && !v.paused) suspendVideo(card);
         }
-        if (hoverCard) activateVideo(hoverCard);
     }
     function queuePick() { if (pickQ) return; pickQ = true; raf(() => { pickQ = false; pickVideos(); }); }
-    function onCardEnter(card) {
-        if (hoverCard === card || hoverNext === card) return;
-        clearTimeout(hoverT);
-        hoverNext = card;
-        hoverT = setTimeout(() => { hoverNext = null; beginHover(card); }, HOVER_IN);
+    // algum <video> nosso começou a tocar (clique, prévia, botão do player, teclado) → pausa os outros
+    function onOwnPlay(card, v) {
+        const preview = !!v._igfPreviewPlay;
+        v._igfPreviewPlay = false;
+        if (!preview && previewCard === card) previewCard = null;            // play "de verdade" num card em prévia
+        if (!preview) setPlayCard(card);
+        for (const c of liveCards.slice()) {
+            if (c === card) continue;
+            const o = cardVideo(c);
+            if (o && !o.paused) { if (c === previewCard) previewCard = null; suspendVideo(c); }
+        }
     }
-    function onCardLeave(card) {
-        if (hoverNext === card) { clearTimeout(hoverT); hoverNext = null; }
-        if (hoverCard === card) { hoverCard = null; suspendVideo(card); }
+    // CLIQUE na mídia de vídeo: toca ou alterna pausa
+    function clickVideoCard(card) {
+        const v = cardVideo(card);
+        if (v && playCard === card && !v.paused) { suspendVideo(card); return; }
+        startCard(card);
     }
-    function beginHover(card) {
+    function startCard(card) {
         if (!card.isConnected) return;
-        if (hoverCard && hoverCard !== card) suspendVideo(hoverCard);
-        hoverCard = card;
-        if (apiVideoUrl(card)) { activateVideo(card); return; }
+        clearTimeout(hoverT); hoverNext = null;
+        if (previewCard === card) previewCard = null;                         // a prévia vira reprodução de verdade
+        if (playCard && playCard !== card) suspendVideo(playCard);
+        setPlayCard(card);
+        if (apiVideoUrl(card) || cardVideo(card)) { activateVideo(card, false); return; }
         // sem URL na API → depende do <video> NATIVO, que pode estar virtualizado. Puxo a lista
-        // off-screen pra posição do card e re-tento por ~1s: antes, se o nativo não estivesse lá no
-        // exato instante do hover, o card simplesmente não tocava até o próximo scroll.
+        // off-screen pra posição do card e re-tento por ~1s.
         syncSrcScroll();
         let tries = 0;
         const tryLater = () => {
-            if (hoverCard !== card || !card.isConnected) return;
-            activateVideo(card);
-            if (!card.querySelector(".igf-video video") && ++tries < 6) setTimeout(tryLater, 160);
+            if (playCard !== card || !card.isConnected) return;
+            activateVideo(card, false);
+            if (!cardVideo(card) && ++tries < 6) setTimeout(tryLater, 160);
         };
         tryLater();
     }
-    function activateVideo(card) {
+    function onCardEnter(card) {
+        if (!prefs.hoverPreview || card === playCard || card === previewCard || hoverNext === card) return;
+        const pv = cardVideo(playCard);
+        if (pv && !pv.paused) return;                       // um vídeo de verdade está tocando → a prévia não atropela
+        clearTimeout(hoverT);
+        hoverNext = card;
+        hoverT = setTimeout(() => {
+            hoverNext = null;
+            if (!card.isConnected || !prefs.hoverPreview || card === playCard) return;
+            if (previewCard && previewCard !== card) suspendVideo(previewCard);
+            previewCard = card;
+            if (apiVideoUrl(card) || cardVideo(card)) activateVideo(card, true);   // prévia só com URL (sem churn na lista nativa)
+        }, HOVER_IN);
+    }
+    function onCardLeave(card) {
+        if (hoverNext === card) { clearTimeout(hoverT); hoverNext = null; }
+        if (previewCard === card) { previewCard = null; suspendVideo(card); }   // clicou durante a prévia → não é mais prévia, segue
+    }
+    function activateVideo(card, preview) {
         const media = card.querySelector(".igf-video");
         if (!media) return;
         const v = media.querySelector("video") || createVideo(card, media);
         if (!v) return;
         media.classList.remove("igf-paused");
-        if (!v.paused) { if (v.dataset.igOwn) trackLive(card); return; }   // já tocando (o pick roda a cada scroll) → nada a fazer
+        try {
+            if (preview) v.muted = true;
+            else { v.muted = !!prefs.feedMuted; v.volume = prefs.volume; }   // som conforme o volume/mudo salvos
+        } catch (_) { /**/ }
+        if (v.dataset.igOwn) trackLive(card);
+        if (!v.paused) { if (!preview) onOwnPlay(card, v); return; }   // a prévia virou play: ganha som acima, segue tocando
+        v._igfPreviewPlay = !!preview;
         try {
             v.loop = true; v.playsInline = true;
             const pr = v.play && v.play();
             if (pr && pr.catch) pr.catch(() => {
-                if (hoverCard !== card) return;            // já saiu → o pause é que interrompeu; nada a fazer
-                // som sem gesto do usuário é bloqueado pela política de autoplay → cai pra mudo (mas TOCA)
-                try { v.muted = true; const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => { /**/ }); } catch (_) { /**/ }
+                if (playCard !== card && previewCard !== card) return;   // o pause é que interrompeu; nada a fazer
+                // som bloqueado pela política de autoplay → cai pra mudo (mas TOCA). Não conta como "o usuário mutou".
+                try { v._igfAutoMute = true; v.muted = true; const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => { /**/ }); } catch (_) { /**/ }
             });
         } catch (_) { /**/ }
     }
@@ -1914,11 +1981,18 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             // CAMINHO BOM: MEU <video> com a URL .mp4 REAL da API → confiável, recriável, sem preto
             v = el("video", { src: url, preload: "auto", playsinline: "", "webkit-playsinline": "" });
             v.loop = true; v.playsInline = true; v.dataset.igOwn = "1";
-            v.muted = !feedSoundOn;                          // preserva a intenção de som (não re-muta a cada hover)
+            v.muted = true;                                  // nasce mudo; o activateVideo dá o som conforme o modo
             try { v.volume = prefs.volume; } catch (_) { /**/ }
             const savedT = videoState.get(card.dataset.code || "");   // retoma de onde parou
             if (savedT) v.addEventListener("loadedmetadata", () => { try { if (savedT < (v.duration || 1e9)) v.currentTime = savedT; } catch (_) { /**/ } }, { once: true });
-            v.addEventListener("volumechange", () => { feedSoundOn = !v.muted && v.volume > 0; });   // (des)mutou → intenção global segue
+            // mudo/desmudo NO VÍDEO ATIVO = preferência do usuário (próximos vídeos já entram assim).
+            // Prévia (sempre muda) e o fallback de autoplay não contam.
+            v.addEventListener("volumechange", () => {
+                if (v._igfAutoMute) { v._igfAutoMute = false; return; }
+                if (card !== playCard || v._igfPreviewPlay) return;
+                const m = v.muted || v.volume === 0;
+                if (m !== !!prefs.feedMuted) { prefs.feedMuted = m; savePrefsSoon(); }
+            });
             v.addEventListener("error", () => releaseVideo(card), { once: true });   // URL expirada → volta o poster (sem tela preta)
             trackLive(card);
         } else {
@@ -1928,6 +2002,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (!v) return null;                             // sem URL e sem nativo → fica o poster
             v.muted = true;
         }
+        v.addEventListener("play", () => { media.classList.remove("igf-paused"); onOwnPlay(card, v); });   // um por vez, venha o play de onde vier
+        v.addEventListener("pause", () => { if (v.isConnected && media.contains(v)) media.classList.add("igf-paused"); });   // pausou pelo player/teclado também mostra ▶
         // .on = "tem imagem": só entra quando há 1º frame → o fade cobre o poster sem piscar preto.
         // No mesmo gancho decido se o vídeo é largo demais pra caixa (então entra inteiro, sem zoom).
         const reveal = () => {
@@ -1944,8 +2020,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         try { attach(v); } catch (_) { /**/ }   // barra de player (uma vez por vídeo, não por hover)
         return v;
     }
-    // fim do hover: PAUSA. O nosso vídeo fica no card (frame parado + ▶ por cima) pro próximo hover
-    // ser instantâneo; o nativo emprestado é devolvido na hora.
+    // PAUSA. O nosso vídeo fica no card (frame parado + ▶ por cima) pra retomar instantâneo;
+    // o nativo emprestado é devolvido na hora.
     function suspendVideo(card) {
         const media = card && card.querySelector(".igf-video");
         const v = media && media.querySelector("video");
@@ -1971,12 +2047,13 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         liveCards.push(card);
         while (liveCards.length > KEEP_ALIVE) {
             const old = liveCards.shift();
-            if (old !== hoverCard) releaseVideo(old);
-            else liveCards.push(old);   // o do cursor nunca é despejado
+            if (old !== playCard && old !== previewCard) releaseVideo(old);
+            else liveCards.push(old);   // o ativo e a prévia nunca são despejados
         }
     }
     // devolve de vez: pausa, destrói a barra do player, REMOVE o <video> e volta o poster.
     function releaseVideo(card) {
+        if (card === previewCard) previewCard = null;
         const i = liveCards.indexOf(card);
         if (i >= 0) liveCards.splice(i, 1);
         const media = card && card.querySelector(".igf-video");
@@ -2006,6 +2083,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function unloadCard(card) {
         if (card.dataset.unloaded) return;
         card.dataset.unloaded = "1";
+        if (card === playCard) setPlayCard(null);
         releaseVideo(card);
         const code = card.dataset.code;
         if (code) videoState.delete(code);
@@ -2058,7 +2136,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         raf(() => {
             syncQ = false;
             if (!igSrc || loading) return;
-            const anchor = (hoverCard && hoverCard.isConnected) ? hoverCard : centeredVideoCard();   // hover manda; senão o card central
+            const act = playCard || previewCard;
+            const anchor = (act && act.isConnected) ? act : centeredVideoCard();   // o card ativo manda; senão o card central
             const art = anchor && nativeArticle(anchor.dataset.key);
             if (art) {
                 // centraliza o ARTIGO nativo dentro do igSrc → natives da região visível ficam vivos.
@@ -2068,7 +2147,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                 const sr = igSrc.getBoundingClientRect(), ar = art.getBoundingClientRect();
                 const delta = (ar.top - sr.top) - (igSrc.clientHeight / 2 - ar.height / 2);
                 if (Math.abs(delta) > (igSrc.clientHeight || 480) / 3) igSrc.scrollTop += delta;
-                queuePick();                                   // nativo certo agora existe → toca o card central
+                queuePick();
             } else {
                 // âncora ainda não renderizada (virtualizada) → aproxima por ratio e afina 1x quando renderizar
                 const docMax = (document.documentElement.scrollHeight - (window.innerHeight || 800)) || 1;
@@ -2398,9 +2477,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (isCarousel) {
             media = buildCarousel(p, card, slides);            // galeria: setas + dots + contador (cada slide se enquadra sozinho)
         } else if (p.isVideo) {
-            media = el("div", { class: "igf-media igf-video", "data-open": "1" });
+            // vídeo: clique TOCA/PAUSA; abrir o post é o ↗ no canto (um <a>: ctrl/cmd/meio = nova aba)
+            media = el("div", { class: "igf-media igf-video" });
             if (p.media) media.appendChild(mediaImg(p, media));
             media.appendChild(el("div", { class: "igf-play", html: PLAY_SVG }));
+            media.appendChild(el("a", { class: "igf-open", href: cleanPostUrl(p), "data-act": "open", title: "Abrir post", "aria-label": "Abrir post", html: ICO.open }));
         } else {
             // imagem = link pro post (ctrl/cmd/meio abre em nova aba; clique normal → modal do IG)
             media = el("a", { class: "igf-media", href: cleanPostUrl(p), "data-open": "1" });
@@ -2442,10 +2523,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             const actEl = t.closest("[data-act]");
             const name = actEl && card.contains(actEl) ? actEl.dataset.act : "";
             if (name) {
+                if (name === "open" && (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1)) return;   // ↗ é <a>: nova aba
                 e.preventDefault(); e.stopPropagation();
                 switch (name) {
                     case "like": likeItem(p, card, actEl); break;
-                    case "comment": openItem(p, card); break;
+                    case "comment": case "open": openItem(p, card); break;
                     case "share": copyLink(p, actEl); break;
                     case "save": saveItem(p, card, actEl); break;
                     case "follow": followUser(p, actEl); break;
@@ -2456,6 +2538,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                 return;
             }
             if (t.closest(".igf-cap")) { toggleCaption(card); return; }
+            if (t.closest(".igf-video")) { e.preventDefault(); clickVideoCard(card); return; }   // vídeo: clique toca/pausa
             const media = t.closest("[data-open]");
             if (media) {
                 if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;   // nova aba (só nos <a>)
@@ -2467,7 +2550,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             const card = cardOf(e.target);
             if (!card || card.contains(e.relatedTarget)) return;
             measureCaption(card);
-            if (card.querySelector(".igf-video")) onCardEnter(card);
+            if (prefs.hoverPreview && card.querySelector(".igf-video")) onCardEnter(card);
         });
         feed.addEventListener("pointerout", (e) => {
             const card = cardOf(e.target);
@@ -2884,7 +2967,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (loaderIO) { loaderIO.disconnect(); loaderIO = null; }
         if (videoIO) { videoIO.disconnect(); videoIO = null; }
         if (farIO) { farIO.disconnect(); farIO = null; }
-        visVids.clear(); hoverCard = null; videoState.clear(); feedSoundOn = false; liveCodes.clear();
+        clearTimeout(hoverT); hoverNext = null;
+        visVids.clear(); playCard = null; previewCard = null; videoState.clear(); liveCodes.clear();
         if (igSrc) { igSrc.classList.remove("igf-src"); igSrc = null; }
         if (feedEl) { feedEl.remove(); feedEl = null; }
         if (loaderEl) { loaderEl.remove(); loaderEl = null; }
