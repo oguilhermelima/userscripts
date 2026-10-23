@@ -640,6 +640,11 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 .igf-play svg{ width:46px; height:46px; opacity:.92; filter:drop-shadow(0 1px 5px rgba(0,0,0,.55)); }
 .igf-video.on:not(.igf-paused) .igf-play{ display:none; }
 .igf-video.igf-paused .igf-play svg{ opacity:.75; }
+/* clicou e o vídeo ainda não tem frame: o ▶ vira spinner (o clique foi registrado) */
+.igf-video.igf-loading .igf-play svg{ display:none; }
+.igf-video.igf-loading .igf-play::after{ content:""; width:38px; height:38px; border-radius:50%; box-sizing:border-box;
+  border:3px solid rgba(255,255,255,.35); border-top-color:#fff; animation:igf-rot .8s linear infinite;
+  filter:drop-shadow(0 1px 4px rgba(0,0,0,.5)); }
 /* ↗ ABRIR O POST — no vídeo o clique toca/pausa, então abrir ganhou um alvo próprio no canto
    (aparece no hover do card e com o vídeo parado) */
 .igf-open{ position:absolute; top:10px; left:10px; z-index:5; width:34px; height:34px; border-radius:50%;
@@ -1959,6 +1964,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     // CLIQUE na mídia de vídeo: toca ou alterna pausa
     function clickVideoCard(card) {
         const v = cardVideo(card);
+        const media = card.querySelector(".igf-video");
+        // ainda carregando (sem 1º frame): o 2º clique "impaciente" NÃO pausa — antes ele pausava o vídeo
+        // que nem tinha aparecido, e o clique parecia não fazer nada
+        if (v && playCard === card && media && media.classList.contains("igf-loading")) return;
         if (v && playCard === card && !v.paused) { suspendVideo(card); return; }
         startCard(card);
     }
@@ -1981,7 +1990,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         tryLater();
     }
     function onCardEnter(card) {
-        if (!prefs.hoverPreview || card === playCard || card === previewCard || hoverNext === card) return;
+        if (!prefs.hoverPreview) { warmSoon(card); return; }
+        if (card === playCard || card === previewCard || hoverNext === card) return;
         const pv = cardVideo(playCard);
         if (pv && !pv.paused) return;                       // um vídeo de verdade está tocando → a prévia não atropela
         clearTimeout(hoverT);
@@ -1992,6 +2002,20 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (previewCard && previewCard !== card) suspendVideo(previewCard);
             previewCard = card;
             if (apiVideoUrl(card) || cardVideo(card)) activateVideo(card, true);   // prévia só com URL (sem churn na lista nativa)
+        }, HOVER_IN);
+    }
+    /* AQUECIMENTO: no modelo de hover o vídeo começava a baixar quando o mouse PARAVA no card, então já
+     * tinha frame quando você olhava. No clique-pra-tocar o download só começava no clique — 1-2s de
+     * poster parado na rede do IG. Agora o hover (mesmo debounce) cria o <video> PAUSADO com
+     * preload=auto: quando o clique chega, os dados já estão vindo. Entra no LRU (KEEP_ALIVE). */
+    function warmSoon(card) {
+        if (hoverNext === card || cardVideo(card) || !apiVideoUrl(card)) return;
+        clearTimeout(hoverT);
+        hoverNext = card;
+        hoverT = setTimeout(() => {
+            hoverNext = null;
+            const media = card.isConnected && card.querySelector(".igf-video");
+            if (media && !media.querySelector("video") && apiVideoUrl(card) && createVideo(card, media)) media.classList.add("igf-paused");   // frame parado + ▶
         }, HOVER_IN);
     }
     function onCardLeave(card) {
@@ -2014,8 +2038,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         try {
             v.loop = true; v.playsInline = true;
             const pr = v.play && v.play();
-            if (pr && pr.catch) pr.catch(() => {
+            if (!preview && !media.classList.contains("on")) media.classList.add("igf-loading");   // ▶ vira spinner até o 1º frame
+            if (pr && pr.catch) pr.catch((err) => {
+                media.classList.remove("igf-loading");
                 if (playCard !== card && previewCard !== card) return;   // o pause é que interrompeu; nada a fazer
+                if (err && err.name !== "NotAllowedError") return;       // AbortError = um pause() no meio; não força play mudo
                 // som bloqueado pela política de autoplay → cai pra mudo (mas TOCA). Não conta como "o usuário mutou".
                 try { v._igfAutoMute = true; v.muted = true; const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => { /**/ }); } catch (_) { /**/ }
             });
@@ -2055,6 +2082,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // No mesmo gancho decido se o vídeo é largo demais pra caixa (então entra inteiro, sem zoom).
         const reveal = () => {
             if (!v.isConnected) return;
+            media.classList.remove("igf-loading");
             media.classList.add("on");
             // o backdrop borrado sai do POSTER (o <video> não serve de background-image) — sem isso o
             // vídeo deitado entrava em contain sobre o fundo chapado, com barras pretas em vez do borrão
@@ -2597,7 +2625,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             const card = cardOf(e.target);
             if (!card || card.contains(e.relatedTarget)) return;
             measureCaption(card);
-            if (prefs.hoverPreview && card.querySelector(".igf-video")) onCardEnter(card);
+            if (card.querySelector(".igf-video")) onCardEnter(card);   // prévia (com a flag) ou aquecimento
         });
         feed.addEventListener("pointerout", (e) => {
             const card = cardOf(e.target);
