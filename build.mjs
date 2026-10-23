@@ -86,6 +86,7 @@ const descriptions = {
   reddit: "Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs.",
   twitch: "Streamer top navigation plus a YouTube-style Clips and VOD theater with filtering, sorting, and native playback controls.",
   twitter: "X/Twitter control panel for a wider layout, decluttered sidebars, live preferences, and sensitive-content handling.",
+  youtube: "Full-screen theater with chat and up-next sidebars, black-bar crop, loop, audio boost, speed and quality controls, plus settings for quality, filters and Shorts.",
 };
 const cards = parsed.map(item => ({
   id: item.name,
