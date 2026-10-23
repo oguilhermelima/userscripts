@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X (Twitter) — Control Panel, Wide Layout & Age Bypass
 // @namespace    x-declutter-wide
-// @version      3.12.0
+// @version      3.12.1
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/twitter.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/twitter.user.js
 // @author       oguilhermelima
@@ -753,9 +753,9 @@
         }
         .tw-divider-bar {
             position: sticky !important;
-            /* meia altura da tela, sobre as linhas divisórias — no topo (12px) os botões caíam em cima da
-               seta "voltar" e da lupa do cabeçalho sticky da coluna */
-            top: calc(50vh - 16px) !important;
+            /* no topo, na altura do cabeçalho sticky da coluna (53px). Os botões ficam quase todos FORA
+               da coluna (só 4px por dentro da linha), então não cobrem a seta "voltar" nem a lupa */
+            top: 13px !important;
             display: flex !important;
             justify-content: space-between !important;
             width: 100% !important;
@@ -769,44 +769,38 @@
             z-index: 10001 !important;
             pointer-events: auto !important;
             cursor: pointer !important;
-            width: 32px !important;
-            height: 32px !important;
-            border-radius: 50% !important;
+            width: 26px !important;
+            height: 26px !important;
+            /* só o ícone: o fundo é a cor da página, apenas pra esconder a linha divisória atrás dele */
             background: var(--tw-ui-page) !important;
-            border: 1px solid var(--tw-ui-border) !important;
-            color: var(--tw-ui-fg) !important;
+            border: 0 !important;
+            color: var(--tw-ui-muted, #71767b) !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6) !important;
-            transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease !important;
+            transition: color 0.15s ease !important;
             user-select: none !important;
             padding: 0 !important;
         }
-        .tw-divider-btn::before {
-            content: "" !important;
-            position: absolute !important;
-            inset: -6px !important;
-            border-radius: 50% !important;
-            pointer-events: auto !important;
-        }
         .tw-divider-btn:hover {
-            background: var(--tw-ui-bg) !important;
-            border-color: #1d9bf0 !important;
             color: #1d9bf0 !important;
-            transform: scale(1.1) !important;
+        }
+        .tw-divider-btn:focus-visible {
+            outline: 2px solid #1d9bf0 !important;
+            outline-offset: 2px !important;
         }
         .tw-divider-btn svg {
-            width: 16px !important;
-            height: 16px !important;
+            width: 20px !important;
+            height: 20px !important;
             display: block !important;
             pointer-events: none !important;
         }
+        /* 22 dos 26px ficam do lado de fora da linha divisória */
         .tw-divider-btn-left {
-            margin-left: -16px !important;
+            margin-left: -22px !important;
         }
         .tw-divider-btn-right {
-            margin-right: -16px !important;
+            margin-right: -22px !important;
         }
 
         /* abaixo de 1000px o X já é nav de ícones/barra inferior e sem sidebar: nada pra alternar */
@@ -1480,7 +1474,6 @@
                 id: "tw-toggle-left-btn",
                 class: "tw-divider-btn tw-divider-btn-left",
                 type: "button",
-                html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>',
                 onclick: (e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -1494,7 +1487,6 @@
                 id: "tw-toggle-right-btn",
                 class: "tw-divider-btn tw-divider-btn-right",
                 type: "button",
-                html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><line x1="15" y1="4" x2="15" y2="20"/></svg>',
                 onclick: (e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -1509,14 +1501,35 @@
             primary.prepend(track);
         }
 
+        // Ícone de painel: o lado aberto aparece preenchido
+        const panelIcon = (side, open) => {
+            const line = side === "left" ? 9 : 15;
+            const fill = side === "left"
+                ? "M6 4h3v16H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"
+                : "M15 4h3a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-3z";
+            return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">' +
+                '<rect x="3" y="4" width="18" height="16" rx="3"/>' +
+                `<line x1="${line}" y1="4" x2="${line}" y2="20"/>` +
+                (open ? `<path d="${fill}" fill="currentColor" stroke="none"/>` : "") +
+                "</svg>";
+        };
+        const setIcon = (button, side, open) => {
+            const key = side + open;
+            if (button.dataset.icon === key) return;
+            button.dataset.icon = key;
+            button.innerHTML = panelIcon(side, open);
+        };
+
         const leftBtn = document.getElementById("tw-toggle-left-btn");
         if (leftBtn) {
+            setIcon(leftBtn, "left", !settings.hideLeftSidebar);
             leftBtn.title = settings.hideLeftSidebar ? "Expandir menu lateral" : "Recolher menu lateral (apenas ícones)";
             leftBtn.setAttribute("aria-label", leftBtn.title);
         }
 
         const rightBtn = document.getElementById("tw-toggle-right-btn");
         if (rightBtn) {
+            setIcon(rightBtn, "right", !settings.hideRightSidebar);
             rightBtn.title = settings.hideRightSidebar ? "Expandir barra lateral" : "Recolher barra lateral";
             rightBtn.setAttribute("aria-label", rightBtn.title);
         }
