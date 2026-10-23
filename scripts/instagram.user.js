@@ -2134,7 +2134,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         releaseVideo(card);
         const code = card.dataset.code;
         if (code) videoState.delete(code);
-        metaPending.delete(card);
+        // (o card SEGUE em metaPending: a legenda/header que chegarem depois ainda precisam entrar nele —
+        // um card montado escondido, longe ou com o feed em display:none, perdia a legenda pra sempre)
         for (const img of card.querySelectorAll(".igf-media img")) {
             const src = img.getAttribute("src");
             if (!src) continue;
@@ -2789,16 +2790,18 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (const card of metaPending) {
             if (!card.isConnected) { metaPending.delete(card); continue; }
             const rec = igMedia.get(card.dataset.code);
-            if (!rec) continue;                                 // a API ainda não trouxe este post
             const p = posts.get(card.dataset.key); if (!p) { metaPending.delete(card); continue; }
             if (home) {
-                // home: o <article> já deu header/contadores — daqui só aproveito a LEGENDA. Se a API
-                // respondeu e o post não tem legenda, sai do pendente (senão o Set nunca esvazia).
-                if (rec.caption) { p.caption = rec.caption; setCaption(card, rec.caption); }
-                card.dataset.metaDone = "1";
-                metaPending.delete(card);
+                // home: o <article> já deu header/contadores — daqui só a LEGENDA: da API, senão do <h1>
+                // do artigo nativo (o IG costuma renderizá-lo depois do harvest). Sai do pendente quando
+                // achou a legenda ou quando a API respondeu sem ela (post sem legenda).
+                let cap = rec && rec.caption;
+                if (!cap) { const art = nativeArticle(card.dataset.key), h = art && art.querySelector("h1"); cap = h ? (h.textContent || "").trim() : ""; }
+                if (cap) { p.caption = cap.slice(0, 1500); setCaption(card, p.caption); }
+                if (cap || rec) { card.dataset.metaDone = "1"; metaPending.delete(card); }
                 continue;
             }
+            if (!rec) continue;                                 // a API ainda não trouxe este post
             if (!rec.author && !rec.caption) continue;
             if (rec.author) p.author = rec.author;
             if (rec.avatar) p.avatar = rec.avatar;
