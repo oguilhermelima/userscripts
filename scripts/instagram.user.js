@@ -3073,8 +3073,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // wrapper-comum (.igm-content, capado) → stories + meu feed centram juntos = alinhados.
         const cwrap = contentWrapper(split.col, list);
         chromeApplied = true; mountedChrome = cwrap;
+        const marks = [];
         for (let n = list.parentElement, i = 0; n && n.tagName !== "MAIN" && i < 16; n = n.parentElement, i++) {
-            n.classList.add(n === cwrap ? "igm-content" : "igm-wide");
+            const cls = n === cwrap ? "igm-content" : "igm-wide";
+            n.classList.add(cls); marks.push([n, cls]);
             if (n === split.col) break;
         }
         // offset só se o feed começa SOB o nav (overlay); senão dobraria o respiro
@@ -3085,7 +3087,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         split.col.classList.toggle("igm-col", navW > 0 && colLeft < navW - 4);
         const tray = storiesTray(split.col);
         if (tray) { tray.classList.add("igm-stories"); trayEl = tray; }
-        for (const r of split.rails) r.classList.toggle("igm-norail", !!prefs.hideRail);   // flag: esconder coluna direita
+        for (const r of split.rails) { r.classList.toggle("igm-norail", !!prefs.hideRail); if (prefs.hideRail) marks.push([r, "igm-norail"]); }   // flag: esconder coluna direita
+        if (tray) marks.push([tray, "igm-stories"]);
+        setChromeMarks(marks, split.col.parentElement);
         mountOwnFeed(list, cwrap);   // esconde a lista nativa + renderiza MEU feed em masonry
     }
     // ===== EXPLORE / PROFILE: grade de tiles → mosaico próprio =====
@@ -3169,11 +3173,14 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const navW = navBox ? (navBox.getBoundingClientRect().width || 72) : 0;
         syncNavWidth(navBox, navW);
         const underNav = navW > 0 && main && main.getBoundingClientRect().left < navW - 4;
-        for (let n = grid; n && n !== col; n = n.parentElement) n.classList.add("igm-wide");   // tira os caps internos do IG
+        const marks = [];
+        for (let n = grid; n && n !== col; n = n.parentElement) { n.classList.add("igm-wide"); marks.push([n, "igm-wide"]); }   // tira os caps internos do IG
         // a COLUNA inteira (header + grid) ganha a MESMA largura/centragem do feed da home (--igm-maxw)
         col.classList.add("igm-content", "igm-gridcol");
         mountedChrome = col;
         if (underNav) col.classList.add("igm-gridnav");   // main nasce sob o nav fixo → desloca p/ centrar em (viewport − nav), igual home
+        marks.push([col, "igm-content"]);
+        setChromeMarks(marks, null);
         mountOwnFeed(grid, cwrap);   // grid vira .igf-src (off-screen, vivo) + renderiza nosso mosaico
     }
     /* SKELETON de carregamento — DENTRO da página (v3.14). Era um overlay `position:fixed` cobrindo
@@ -3208,7 +3215,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // sem nada aplicado, não há o que limpar — sem este flag os 5 querySelectorAll full-doc rodavam
         // a CADA burst de mutação em reels/stories (as superfícies mais churnentas do IG), sempre vazios
         if (!chromeApplied) return;
-        chromeApplied = false; mountedChrome = null; trayEl = null;
+        chromeApplied = false; mountedChrome = null; trayEl = null; setChromeMarks([], null);
         teardownOwnFeed();   // tira o off-screen da lista nativa + remove meu feed
         for (const e of document.querySelectorAll(".igm-wide")) e.classList.remove("igm-wide");
         for (const e of document.querySelectorAll(".igm-content")) e.classList.remove("igm-content");
@@ -3235,12 +3242,22 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     let routeTries = 0, extrasTries = 0, routeMounted = false;
     const ROUTE_MAX = 80;       // montagens tentadas por rota antes de desistir (página sem a estrutura esperada)
     const EXTRAS_MAX = 20;      // idem pros extras (pino do nav, tray de stories, copiar @) — podem nem existir
+    /* "CHROME" = as classes .igm-* que pusemos em nós DO IG. O React re-renderiza esses nós (troca o
+     * className, recria o wrapper) e uma rail pode montar DEPOIS da nossa montagem. O scan antigo
+     * re-assegurava tudo a cada rajada; aqui guardamos o que marcamos (≈10 nós) e a contagem de filhos da
+     * "row" da coluna, e a saúde confere isso — barato, e qualquer perda dispara o re-apply na hora. */
+    let chromeMarks = [], chromeRow = null, chromeRowKids = 0;
+    function setChromeMarks(marks, row) { chromeMarks = marks; chromeRow = row; chromeRowKids = row ? row.childElementCount : 0; }
+    function chromeIntact() {
+        for (const [n, cls] of chromeMarks) if (!n.isConnected || !n.classList.contains(cls)) return false;
+        return !chromeRow || (chromeRow.isConnected && chromeRow.childElementCount === chromeRowKids);   // rail nova = filho novo na row
+    }
     function coreHealthy() {
         const surf = targetSurface();
         if (surf !== mountedSurface) return false;
         if (!surf) return true;
         return !!(feedEl && feedEl.isConnected && igSrc && igSrc.isConnected &&
-            mountedChrome && mountedChrome.isConnected && mountedChrome.classList.contains("igm-content"));
+            mountedChrome && mountedChrome.isConnected && mountedChrome.classList.contains("igm-content") && chromeIntact());
     }
     function needsRouteWork() {
         // quebrou DEPOIS de montar (React re-renderizou) → sempre conserta; nunca montou → até ROUTE_MAX
