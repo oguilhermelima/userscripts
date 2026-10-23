@@ -181,6 +181,7 @@
         }
         if (!imageUrl && !videoUrl) return;
         const prev = igMedia.get(m.code) || {};
+        igMedia.delete(m.code);                 // re-insere no FIM → a ordem do Map vira um LRU por ingestão
         igMedia.set(m.code, {
             isVideo: isVideo || prev.isVideo, videoUrl: videoUrl || prev.videoUrl || "", imageUrl: imageUrl || prev.imageUrl || "",
             thumbUrl: thumbUrl || prev.thumbUrl || "",
@@ -195,6 +196,19 @@
             likes: fmtCountNum(m.like_count) || prev.likes || "",
             comments: fmtCountNum(m.comment_count) || prev.comments || "",
         });
+        if (igMedia.size > IGMEDIA_MAX) pruneIgMedia();
+    }
+    /* MEMÓRIA: o explore e o feed despejam centenas de itens de API por sessão e o igMedia só crescia.
+     * Teto com despejo dos MAIS ANTIGOS — mas nunca de um código que tem card nosso (o card ainda lê
+     * videoUrl/pk/slides daqui). `liveCodes` é mantido pelo harvest e zerado no teardown. */
+    const IGMEDIA_MAX = 600;
+    const liveCodes = new Set();
+    function pruneIgMedia() {
+        const target = Math.floor(IGMEDIA_MAX * 0.85);
+        for (const code of igMedia.keys()) {
+            if (igMedia.size <= target) break;
+            if (!liveCodes.has(code)) igMedia.delete(code);
+        }
     }
     const igCollections = new Map();        // collection_id -> collection_name (capturadas do tráfego do IG)
     function walkForMedia(node, depth) {    // varre o JSON inteiro atrás de itens de mídia (schema aninhado/variável)
@@ -562,7 +576,7 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igf-media.igf-fit img{ position:relative; }
 .igf-card:hover .igf-media.igf-fit img{ transform:none; }
 .igf-media.igf-fit .igf-blur{ position:absolute; inset:0; z-index:0; background-size:cover; background-position:center;
-  filter:blur(26px) saturate(1.25) brightness(.65); transform:scale(1.15); pointer-events:none; }
+  filter:blur(16px) saturate(1.25) brightness(.65); transform:scale(1.1); pointer-events:none; }   /* raio menor = filtro bem mais barato; a fonte é o thumb pequeno */
 /* vídeo: cover como a imagem. Entra TRANSPARENTE e só aparece com o 1º frame (.on, posto no loadeddata) */
 .igf-video{ cursor:pointer; }
 .igf-video video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
@@ -1483,10 +1497,12 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (!avatar) for (const im of a.querySelectorAll("img")) { if (!box.contains(im)) { avatar = im; break; } }
         const capEl = a.querySelector("h1");
         const link = a.querySelector('a[href*="/p/"], a[href*="/reel/"]');
-        // contadores (na área de ações, DEPOIS da mídia, em ordem: like, comment)
-        const nums = [];
+        // contadores: da API (igMedia) primeiro; o DOM é só o fallback — varrer todo span/a/div do artigo
+        // atrás de números era a parte cara do harvest. Na área de ações, DEPOIS da mídia: like, comment.
+        const rec0 = igMedia.get(codeOf(key)) || {};
+        const nums = (rec0.likes || rec0.comments) ? [rec0.likes || "", rec0.comments || ""] : [];
         let afterMedia = false;
-        for (const e of a.querySelectorAll("span, a, div")) {
+        if (!nums.length) for (const e of a.querySelectorAll("span, a, div")) {
             if (e === box || box.contains(e)) { afterMedia = true; continue; }
             if (!afterMedia || e.children.length) continue;
             const t = (e.textContent || "").trim();
@@ -1503,6 +1519,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // depois. Limite alto: o texto inteiro é o que o "mais" expande; só a 1ª linha fica à mostra.
         const code = codeOf(key);
         const capText = (capEl && (capEl.textContent || "").trim()) || (igMedia.get(code) || {}).caption || "";
+        liveCodes.add(code);
         posts.set(key, {
             key, code, href: (link.pathname || link.getAttribute("href") || ""), author,
             avatar: avatar ? avatar.src : "", media, srcset, sizes, isVideo: !!video,
@@ -1520,8 +1537,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (a.dataset.igfKey !== m[0]) a.dataset.igfKey = m[0];
         return m[0];
     }
-    // lê um TILE (explore/perfil/salvos) → post; autor/legenda vêm da API (igMedia), a mídia do thumb
-    // do thumbnail (o IG serve a imagem em aspecto real e só CORTA por CSS p/ quadrado) → senão 1:1.
+    // lê um TILE (explore/perfil/salvos) → post. Mídia = thumb da API (ou o <img>/poster do tile);
+    // autor/avatar/legenda vêm da API (igMedia) e preenchem o card depois, se chegarem atrasados.
     function harvestTile(a) {
         const key = tileKey(a);
         if (!key || posts.has(key)) return false;
@@ -1547,6 +1564,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         }
         // (v3.12) a proporção do post NÃO é mais lida: a grade é uniforme, a caixa da mídia já nasce
         // com a altura final. Um leitor a menos por tile no caminho crítico do harvest.
+        carouselWait.delete(key);
+        liveCodes.add(code);
         posts.set(key, {
             key, code, href: (a.getAttribute("href") || a.href || ""), media, isVideo, tile: true,
             // dados p/ o CARD COMPLETO (explore/perfil/salvos): vêm da API (igMedia), não do DOM do tile
@@ -1810,7 +1829,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     let videoIO = null, pickQ = false, hoverCard = null, hoverT = 0, hoverNext = null;
     const visVids = new Set();      // cards de vídeo VISÍVEIS
     const liveCards = [];           // LRU (mais recente no fim) dos cards com <video> nosso vivo
-    const videoState = new Map();   // code -> currentTime: retoma de onde parou quando o vídeo é recriado
+    const videoState = new Map();   // code -> currentTime: retoma de onde parou quando o vídeo é recriado (LRU)
+    const VIDEO_STATE_MAX = 40;
     let feedSoundOn = false;        // intenção GLOBAL de som no feed: o 1º unmute (gesto) liga; novos vídeos já entram com som
     const apiVideoUrl = (card) => (igMedia.get(card.dataset.code || "") || {}).videoUrl || "";
     // algum card de vídeo VISÍVEL depende do <video> nativo? (= a API não deu URL pra ele).
@@ -1916,7 +1936,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             // o backdrop borrado sai do POSTER (o <video> não serve de background-image) — sem isso o
             // vídeo deitado entrava em contain sobre o fundo chapado, com barras pretas em vez do borrão
             const poster = media.querySelector("img");
-            mediaFit(media, v.videoWidth, v.videoHeight, (poster && (poster.currentSrc || poster.src)) || "");
+            mediaFit(media, v.videoWidth, v.videoHeight, blurSrc(card, (poster && (poster.currentSrc || poster.src)) || ""));
         };
         if (v.readyState >= 2) reveal(); else v.addEventListener("loadeddata", reveal, { once: true });
         if (!media.querySelector("[data-instancekey]")) media.appendChild(el("div", { "data-instancekey": "igf" }));   // âncora p/ o player mirar a MÍDIA
@@ -1937,7 +1957,12 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     function saveVideoTime(card, v) {
         const code = card.dataset.code;
-        if (code && v.dataset.igOwn) { const t = v.currentTime; if (isFinite(t) && t > 0) videoState.set(code, t); }
+        if (code && v.dataset.igOwn) {
+            const t = v.currentTime;
+            if (!(isFinite(t) && t > 0)) return;
+            videoState.delete(code); videoState.set(code, t);                     // LRU curto: só os últimos importam
+            if (videoState.size > VIDEO_STATE_MAX) videoState.delete(videoState.keys().next().value);
+        }
     }
     // LRU dos vídeos vivos: segura os últimos KEEP_ALIVE e devolve o mais antigo ao poster.
     function trackLive(card) {
@@ -1964,6 +1989,46 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         try { v.remove(); } catch (_) { /**/ }
         const dummy = media.querySelector('[data-instancekey="igf"]'); if (dummy) dummy.remove();
         media.classList.remove("on", "igf-paused");                                // poster + badge de play reaparecem
+    }
+    /* DESCARGA DE CARDS LONGE DA TELA. O feed é append-only (a grade uniforme precisa dos cards no lugar
+     * pra altura do scroll ficar certa), mas o que pesa num card não é o nó: é a imagem decodificada, o
+     * <video> e o backdrop borrado. A ~3 telas de distância o card devolve tudo isso (src/srcset vão pro
+     * dataset, o vídeo é liberado, o estado de retomada é esquecido) e recarrega ao voltar à faixa.
+     * Com content-visibility:auto ele já não pintava; agora também não segura memória. */
+    let farIO = null;
+    function observeFar(card) {
+        if (typeof IntersectionObserver === "undefined") return;
+        if (!farIO) farIO = new IntersectionObserver((ents) => {
+            for (const e of ents) { if (e.isIntersecting) reloadCard(e.target); else unloadCard(e.target); }
+        }, { rootMargin: "2600px 0px 2600px 0px" });
+        farIO.observe(card);
+    }
+    function unloadCard(card) {
+        if (card.dataset.unloaded) return;
+        card.dataset.unloaded = "1";
+        releaseVideo(card);
+        const code = card.dataset.code;
+        if (code) videoState.delete(code);
+        metaPending.delete(card);
+        for (const img of card.querySelectorAll(".igf-media img")) {
+            const src = img.getAttribute("src");
+            if (!src) continue;
+            img.dataset.src = src;
+            const ss = img.getAttribute("srcset"); if (ss) { img.dataset.srcset = ss; img.removeAttribute("srcset"); }
+            img.removeAttribute("src");
+        }
+        const bg = card.querySelector(".igf-blur");
+        if (bg && bg.style.backgroundImage) { bg.dataset.bg = bg.style.backgroundImage; bg.style.backgroundImage = ""; }
+    }
+    function reloadCard(card) {
+        if (!card.dataset.unloaded) return;
+        delete card.dataset.unloaded;
+        for (const img of card.querySelectorAll(".igf-media img[data-src]")) {
+            if (img.dataset.srcset) { img.setAttribute("srcset", img.dataset.srcset); delete img.dataset.srcset; }   // srcset ANTES do src (um download só)
+            img.setAttribute("src", img.dataset.src); delete img.dataset.src;
+        }
+        const bg = card.querySelector(".igf-blur[data-bg]");
+        if (bg) { bg.style.backgroundImage = bg.dataset.bg; delete bg.dataset.bg; }
     }
     function observeVideoCard(card) {
         if (card.dataset.vio || !card.querySelector(".igf-video")) return;
@@ -2040,7 +2105,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             const fit = () => {
                 if (stage.firstChild !== si) return;               // slide já trocou → esta proporção é de outro
                 si.classList.add("on");                            // mesmo fade-in dos demais (o CSS parte de opacity:0)
-                mediaFit(wrap, s.w || si.naturalWidth, s.h || si.naturalHeight, si.currentSrc || url);
+                mediaFit(wrap, s.w || si.naturalWidth, s.h || si.naturalHeight, s.thumbUrl || si.currentSrc || url);
             };
             stage.appendChild(si);
             // a API já traz original_width/height do slide → enquadra ANTES de a imagem baixar (sem pulo)
@@ -2070,6 +2135,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
      * fundo vira uma cópia borrada dela mesma. Aplico assim que souber a proporção — pela API, se ela
      * já trouxe w/h, senão no load da imagem/vídeo. `natW/natH` é o tamanho real do arquivo. */
     const FIT_LIMIT = AR_W / AR_H;   // acima desta razão (largura/altura) o conteúdo é "largo demais" pra caixa
+    // backdrop borrado: a variante PEQUENA da API (thumb ≥360px) basta — borrada, ninguém vê a resolução,
+    // e o GPU filtra uma textura bem menor que a foto cheia.
+    const blurSrc = (card, fallback) => ((card && igMedia.get(card.dataset.code || "")) || {}).thumbUrl || fallback;
     function mediaFit(media, natW, natH, url) {
         if (!media || !natW || !natH) return;
         media.classList.toggle("igf-fit", natW / natH > FIT_LIMIT * 1.02);
@@ -2100,7 +2168,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             // ser inserido no card — parentElement era null e a mídia larga ficava em cover (cortada).
             // Como o card copia srcset/sizes do <img> nativo justamente pra cair no cache, esse era o
             // caminho COMUM, não o raro: a maioria das fotos nunca chegava a ganhar o .igf-fit.
-            mediaFit(media || img.parentElement, w, h, img.currentSrc || img.src);
+            mediaFit(media || img.parentElement, w, h, rec.thumbUrl || img.currentSrc || img.src);
         };
         if (img.complete && img.naturalWidth) ready();                    // veio do cache → sem fade
         else img.addEventListener("load", ready, { once: true });
@@ -2549,6 +2617,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                 feedEl.appendChild(frag);
                 for (const card of fresh) {
                     observeVideoCard(card);                                  // vídeo → rastreia visibilidade (toca no hover)
+                    observeFar(card);                                        // longe da tela → descarrega a mídia
                     // grid: falta tudo (header/legenda). home: só entra na fila se a legenda não veio do <article>.
                     const needsMeta = metaSurface() || !card.querySelector(".igf-cap").textContent;
                     if (needsMeta && !card.dataset.metaDone) metaPending.add(card);
@@ -2814,7 +2883,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (srcMO) { srcMO.disconnect(); srcMO = null; } srcMOTarget = null;
         if (loaderIO) { loaderIO.disconnect(); loaderIO = null; }
         if (videoIO) { videoIO.disconnect(); videoIO = null; }
-        visVids.clear(); hoverCard = null; videoState.clear(); feedSoundOn = false;
+        if (farIO) { farIO.disconnect(); farIO = null; }
+        visVids.clear(); hoverCard = null; videoState.clear(); feedSoundOn = false; liveCodes.clear();
         if (igSrc) { igSrc.classList.remove("igf-src"); igSrc = null; }
         if (feedEl) { feedEl.remove(); feedEl = null; }
         if (loaderEl) { loaderEl.remove(); loaderEl = null; }
