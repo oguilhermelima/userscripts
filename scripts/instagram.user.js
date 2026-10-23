@@ -290,7 +290,40 @@
     };
 
     /* ------------------------------------------------------------------ *
-     * CSS
+     * CSS — TOKENS. Uma paleta só para tudo o que é nosso (cards, player,
+     *   salvos, menu de coleções, toast, painel). O claro é o padrão em :root;
+     *   html.igf-dark (posto pelo applyTheme) troca para o escuro.
+     *   Camadas: escala curta e ordenada (player < FAB < menus < painel < toast),
+     *   toda no topo do int32 pra ficar acima de qualquer overlay do IG.
+     * ------------------------------------------------------------------ */
+    addStyle(`
+:root{
+  --igf-accent:#0095f6; --igf-accent-soft:rgba(0,149,246,.14);
+  --igf-danger:#ed4956; --igf-like:#ff3040;
+  --igf-grad:linear-gradient(90deg,#feda75 0%,#fa7e1e 25%,#d62976 55%,#962fbf 78%,#4f5bd5 100%);
+  --igz-player:2147483000; --igz-fab:2147483100; --igz-menu:2147483200; --igz-panel:2147483300; --igz-toast:2147483400;
+  --igf-card-bg:#ffffff;  --igf-elev:#ffffff;  --igf-input:#efefef;
+  --igf-media-bg:#efefef; --igf-avatar-bg:#dbdbdb;
+  --igf-line:rgba(0,0,0,.12); --igf-line-hov:rgba(0,0,0,.26); --igf-border:#dbdbdb;
+  --igf-hover-bg:rgba(0,0,0,.05); --igf-track:#c7c7c7;
+  --igf-text:#0b0b0d; --igf-text-2:#5b5b62; --igf-muted:#737373;
+  --igf-shade:rgba(0,0,0,.16);
+  --igf-shadow:0 1px 2px rgba(0,0,0,.08); --igf-shadow-hov:0 16px 36px rgba(0,0,0,.18);
+  --igf-shadow-pop:0 12px 34px var(--igf-shade);
+}
+html.igf-dark{
+  --igf-card-bg:#0e0e10;  --igf-elev:#1c1c1e;  --igf-input:#000000;
+  --igf-media-bg:#0b0b0b; --igf-avatar-bg:#222222;
+  --igf-line:rgba(255,255,255,.10); --igf-line-hov:rgba(255,255,255,.26); --igf-border:#363638;
+  --igf-hover-bg:rgba(255,255,255,.08); --igf-track:#48484a;
+  --igf-text:#f4f4f5; --igf-text-2:#b9b9c0; --igf-muted:#8e8e93;
+  --igf-shade:rgba(0,0,0,.6);
+  --igf-shadow:0 1px 2px rgba(0,0,0,.55); --igf-shadow-hov:0 18px 44px rgba(0,0,0,.64);
+}
+`);
+
+    /* ------------------------------------------------------------------ *
+     * CSS — player
      * ------------------------------------------------------------------ */
     addStyle(`
 .igvc-host{ position:relative; isolation:isolate; --igvc-bar-h:44px; }
@@ -307,14 +340,14 @@
 }
 /* a barra cobre o vídeo inteiro (pointer-events:none) só pra poder ancorar o botão de SOM no topo;
    trilha e fileira seguem coladas no rodapé. Em story a barra continua sendo só a trilha. */
-.igvc-bar:not(.igvc-story){ top:0; }
 .igvc-bar{
-  position:absolute; left:0; right:0; bottom:0; z-index:2147483647;
+  position:absolute; left:0; right:0; bottom:0; z-index:var(--igz-player);
   pointer-events:none; color:#fff;
   font:500 12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   -webkit-font-smoothing:antialiased;
   user-select:none; -webkit-user-select:none;
 }
+.igvc-bar:not(.igvc-story){ top:0; }
 /* gradiente só no hover, atrás da fileira */
 .igvc-bar::before{
   content:""; position:absolute; left:0; right:0; bottom:0; height:68px;
@@ -344,13 +377,12 @@
   position:absolute; left:0; right:0; bottom:0; height:3px; z-index:2;   /* ACIMA da row: senão a fileira (irmã posterior) tapa a trilha no hover e o seek não pega */
   pointer-events:auto; cursor:pointer; touch-action:none;
   background:rgba(255,255,255,.22); transition:height .12s ease;
+  --igvc-grad:var(--igf-grad);
 }
 .igvc-bar.igvc-show .igvc-track{ height:9px; }
 .igvc-buffered{ position:absolute; left:0; top:0; bottom:0; width:0; background:rgba(255,255,255,.32); }
-/* progresso nas cores do INSTAGRAM (era o azul de sistema). O gradiente é pintado no tamanho da
-   TRILHA e recortado pela largura da fill (background-attachment não serve aqui) → as cores ficam
-   ancoradas na barra em vez de esticarem/andarem conforme o vídeo avança. */
-.igvc-track{ --igvc-grad:linear-gradient(90deg,#feda75 0%,#fa7e1e 25%,#d62976 55%,#962fbf 78%,#4f5bd5 100%); }
+/* progresso nas cores do INSTAGRAM. O gradiente é pintado no tamanho da TRILHA e recortado pela
+   largura da fill → as cores ficam ancoradas na barra em vez de esticarem conforme o vídeo avança. */
 .igvc-fill{ position:absolute; left:0; top:0; bottom:0; width:0; overflow:hidden; }
 .igvc-fill::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:420px; background:var(--igvc-grad); }
 /* com container queries o gradiente casa exatamente a largura da trilha (o 420px acima é o fallback) */
@@ -403,7 +435,7 @@ input.igvc-range{
 input.igvc-range::-webkit-slider-thumb{ -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:#fff; cursor:pointer; }
 input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-radius:50%; background:#fff; cursor:pointer; }
 
-/* popover de velocidade (config saiu pro painel flutuante) */
+/* popover de velocidade (fica sobre o vídeo → sempre escuro, independe do tema) */
 .igvc-pop{
   position:absolute; bottom:46px; min-width:84px; padding:6px;
   background:rgba(18,18,18,.97); border:1px solid rgba(255,255,255,.12);
@@ -414,7 +446,7 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igvc-pop-speed{ right:84px; min-width:84px; }
 .igvc-pop button{ background:transparent; border:0; color:#fff; text-align:left; padding:6px 10px; border-radius:6px; cursor:pointer; font:inherit; white-space:nowrap; }
 .igvc-pop button:hover{ background:rgba(255,255,255,.12); }
-.igvc-pop button.igvc-on{ color:#0095f6; font-weight:700; }
+.igvc-pop button.igvc-on{ color:var(--igf-accent); font-weight:700; }
 
 /* stories: do nosso player fica SÓ a barra de progresso (scrub) — o post original (reply, like,
    tudo) permanece INTACTO. Sem gradiente e sem a fileira de botões (não montados em story). */
@@ -429,187 +461,190 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 `);
 
     /* ------------------------------------------------------------------ *
-     * CSS — feed da home em MOSAICO (multicolunas estilo dashboard)
-     *   • só ADITIVO: alargo os wrappers de largura do route do feed e troco
-     *     a coluna única por CSS `columns`. Cards = os próprios <article>.
-     *   • tema-aware: cores via as vars do IG (--ig-elevated-background etc),
-     *     com fallback dark, então respeita claro/escuro.
+     * CSS — mosaico (home / explore / perfil / salvos)
+     *   .igm-* = classes que EU ponho em nós DO IG → !important pra vencer o
+     *   inline/atômico deles. .igf-* = DOM nosso → sem !important.
      * ------------------------------------------------------------------ */
     addStyle(`
+/* vars tunáveis: nav (offset), largura máx do bloco de conteúdo e respiro lateral */
+:root{ --igm-navw:72px; --igm-pinw:72px; --igm-maxw:1320px; --igf-pad:clamp(14px, 2vw, 30px); }
+
 /* largura: solto os caps de 470/630px do route do feed (NÃO toco no <main>, que é shell) */
 .igm-wide{ max-width:none !important; width:100% !important; --x-width:100% !important; --x-maxWidth:100% !important; }
-
 /* right rail (perfil/sugestões/footer) — irmão da coluna do feed na "row" */
 .igm-norail{ display:none !important; }
-
-/* vars tunáveis: nav (offset) e largura máx do bloco de conteúdo (≤3 colunas, preenchem) */
-:root{ --igm-navw:72px; --igm-pinw:72px; --igm-maxw:1320px; }
-
 /* nav esquerdo fixo: pino a largura (= --igm-navw) e mato a transition (sem hover-expand) */
 .igm-navpin{ width:var(--igm-pinw) !important; min-width:var(--igm-pinw) !important; max-width:var(--igm-pinw) !important; flex:0 0 var(--igm-pinw) !important; transition:none !important; }
-
-/* a coluna do feed começa em x=0 (nav é overlay fixo, não ocupa fluxo) → desloco o
-   conteúdo pela largura do nav. */
+/* a coluna do feed começa em x=0 (nav é overlay fixo, não ocupa fluxo) → desloco o conteúdo pela largura do nav */
 .igm-col{ box-sizing:border-box !important; padding-left:var(--igm-navw) !important; }
-
 /* wrapper comum que contém stories E cards: capo aqui (max-width + margin auto) → o
    bloco inteiro (stories + grid) centra no espaço útil e fica alinhado por construção. */
 .igm-content{ max-width:var(--igm-maxw) !important; width:100% !important; margin-left:auto !important; margin-right:auto !important; box-sizing:border-box !important; --x-width:100% !important; --x-maxWidth:100% !important; }
 /* coluna do grid (explore/profile) que nasce SOB o nav fixo: maxw + padding do nav → conteúdo maxw centrado em (viewport − nav), igual à home */
 .igm-gridnav{ max-width:calc(var(--igm-maxw) + var(--igm-navw)) !important; padding-left:var(--igm-navw) !important; }
-/* perfil: o header (avatar/bio/stats) mantém a centragem nativa do IG, mas MAIOR (zoom) e com respiro no
-   topo (o IG cola no topo). As abas (posts/reels/tagged) centralizadas. */
 /* HEADER DO PERFIL — ocupa mais espaço via zoom (amplia o bloco inteiro sem tocar na estrutura).
    NÃO mexer em flex/min-width/max-width dos filhos: a v3.16 fez isso e quebrou feio — o min-width:0
    caiu num wrapper errado e o texto passou a quebrar UMA LETRA POR LINHA, com o avatar solto no meio.
    O layout interno do header é do IG; aqui só escalamos e damos respiro. */
-.igm-gridcol header { padding-top:26px !important; }
+.igm-gridcol header{ padding-top:26px !important; }
 /* zoom só com folga: abaixo de ~1100px o header ampliado passava da coluna (rolagem horizontal/corte) */
-@media (min-width: 1100px){ .igm-gridcol header { zoom:1.28; } }
+@media (min-width: 1100px){ .igm-gridcol header{ zoom:1.28; } }
+.igm-gridcol [role="tablist"]{ justify-content:center !important; }
+/* explore/search: a barra de busca e o bloco de resultados acompanham a largura do conteúdo (best-effort) */
+.igm-gridcol [role="search"], .igm-gridcol form[role="search"],
+.igm-gridcol div:has(> input[aria-label*="esquis" i]), .igm-gridcol div:has(> input[aria-label*="earch" i]),
+.igm-gridcol input[aria-label*="esquis" i], .igm-gridcol input[aria-label*="earch" i]{ max-width:none !important; width:100% !important; }
+/* tray de stories: emoldurada como um card e alinhada à 1ª coluna (mesmo respiro lateral do feed) */
+.igm-stories{ width:calc(100% - 2 * var(--igf-pad)) !important; max-width:none !important;
+  margin:0 var(--igf-pad) 10px !important; padding:12px 14px !important; box-sizing:border-box !important;
+  background:var(--igf-card-bg); border:1px solid var(--igf-line); border-radius:14px; }
+
 /* botão de COPIAR o @ do perfil, ao lado do username */
 .igp-copy{ margin-left:8px; vertical-align:middle; flex:0 0 auto;
   display:inline-flex; align-items:center; justify-content:center;
   width:26px; height:26px; padding:0; border:0; border-radius:8px; cursor:pointer;
-  background:transparent; color:var(--ig-secondary-text, #a8a8a8); opacity:.85;
+  background:transparent; color:var(--igf-muted); opacity:.85;
   transition:background .15s ease, color .15s ease; }
-.igp-copy:hover{ background:var(--igf-hover-bg, rgba(255,255,255,.1)); color:var(--ig-primary-text, #f5f5f5); opacity:1; }
+.igp-copy:hover{ background:var(--igf-hover-bg); color:var(--igf-text); opacity:1; }
 .igp-copy svg{ width:17px; height:17px; display:block; }
-.igp-copy.igf-copied{ color:#0095f6; }
-.igm-gridcol [role="tablist"] { justify-content:center !important; }
-/* explore/search: a barra de busca e o bloco de resultados acompanham a largura do conteúdo (best-effort) */
-.igm-gridcol [role="search"], .igm-gridcol form[role="search"],
-.igm-gridcol div:has(> input[aria-label*="esquis" i]), .igm-gridcol div:has(> input[aria-label*="earch" i]),
-.igm-gridcol input[aria-label*="esquis" i], .igm-gridcol input[aria-label*="earch" i] { max-width:none !important; width:100% !important; }
-
-/* garante a tray de stories preenchendo o bloco e alinhada à esquerda (não centrada/estreita) */
-.igm-stories{ width:100% !important; max-width:none !important; margin-left:0 !important; margin-right:0 !important; }
+.igp-copy.igf-copied{ color:var(--igf-accent); }
 
 /* === FEED PRÓPRIO (DOM NOSSO) ============================================ *
  * A lista nativa do IG fica VIVA mas fora de vista (.igf-src): continua sendo o
  * "fornecedor" de dados (harvest) e mantém o IG carregando ao rolar. Eu renderizo
  * CARDS meus (.igf-card) num container meu (.igf-feed).
  *
- * v3.12 — GRADE UNIFORME (era masonry em JS). Todo card tem a MESMA altura, dada
- * por CSS: mídia em aspect-ratio fixo + faixas de altura fixa (head/ações/legenda).
- * Consequências: zero medição de altura em JS, zero posicionamento absoluto, zero
- * re-layout quando uma imagem carrega — o layout é do compositor, não nosso. Como a
- * altura é conhecida ANTES de qualquer conteúdo chegar, "content-visibility:auto" +
- * "contain-intrinsic-size" fazem o browser PULAR layout/paint/decode dos cards fora
- * da tela sem nenhum pulo de scroll (o placeholder tem o tamanho exato do real). */
-/* janela do fornecedor: cada post renderizado AQUI faz o IG baixar a mídia dele. 150vh mantinha ~3
-   posts vivos por vez; 90vh corta esse consumo sem prejudicar o harvest (que lê atributo, não pixel). */
+ * GRADE UNIFORME: todo card tem a MESMA altura, dada por CSS: mídia em aspect-ratio
+ * fixo + faixas de altura fixa (head/ações/legenda). Zero medição de altura em JS,
+ * zero re-layout quando uma imagem carrega. Como a altura é conhecida ANTES do conteúdo,
+ * "content-visibility:auto" + "contain-intrinsic-size" pulam layout/paint/decode dos
+ * cards fora da tela sem pulo de scroll. */
+/* janela do fornecedor (nó DO IG): cada post renderizado aqui faz o IG baixar a mídia dele; 90vh basta pro harvest */
 .igf-src{ position:fixed !important; top:0 !important; left:0 !important; width:480px !important; height:90vh !important; overflow-y:auto !important; opacity:0 !important; pointer-events:none !important; z-index:-1 !important; }
 .igf-feed{ display:grid; grid-template-columns:repeat(var(--igf-ncols,3), minmax(0,1fr)); gap:var(--igf-gap,24px);
-  width:100%; padding:8px 0 80px; box-sizing:border-box;
+  width:100%; padding:8px var(--igf-pad) 80px; box-sizing:border-box;
   --igf-ar:9/16;       /* proporção da mídia — a mais alta do IG (reels); igual pra todo item */
   /* faixas de altura FIXA: card = mídia + head + ações + legenda + respiro do rodapé.
      A legenda é UMA linha exata (line-height em px, caixa = padding-top + 1×linha, SEM padding-bottom:
      o overflow clipa na padding-box, então qualquer padding embaixo deixaria a 2ª linha espiando).
-     O respiro do rodapé é do CARD, não da legenda. Mexer aqui = mexer em cardHeightFor(). */
+     Mexer aqui = mexer em cardHeightFor(). */
   --igf-headh:48px; --igf-acth:40px; --igf-caph:25px; --igf-padb:9px;   /* legenda = 6 + 1×19 */
-  --igf-pad:clamp(14px, 2vw, 30px);   /* respiro lateral do conteúdo (some quando a janela é larga) */
   --igf-cardh:520px;   /* altura estimada p/ contain-intrinsic-size (recalculada no layout) */
 }
-/* RESPIRO LATERAL — enquanto a janela é maior que o cap (--igm-maxw) sobra margem naturalmente, mas
-   assim que ela encolhe o conteúdo passava a ENCOSTAR nas bordas (colado no nav de um lado e na borda
-   do outro). O padding é do container e cresce com a janela, então vale em qualquer largura.
-   As stories usam a MESMA medida pra ficarem alinhadas com a primeira coluna de cards. */
-.igf-feed{ padding-left:var(--igf-pad); padding-right:var(--igf-pad); }
-.igm-stories{ margin-left:var(--igf-pad) !important; margin-right:var(--igf-pad) !important; }
-/* content-visibility: o card fora da viewport não entra em layout/paint (nem decodifica a imagem).
-   contain-intrinsic-size dá a altura exata do que foi pulado → a barra de rolagem não pula. */
 .igf-card{ position:relative; min-width:0; box-sizing:border-box; border-radius:14px; overflow:hidden; padding-bottom:var(--igf-padb);
-  background:rgb(var(--ig-elevated-background, 32, 32, 32)); border:1px solid rgba(255,255,255,.08);
-  content-visibility:auto; contain-intrinsic-size:auto var(--igf-cardh); }
+  background:var(--igf-card-bg); border:1px solid var(--igf-line);
+  content-visibility:auto; contain-intrinsic-size:auto var(--igf-cardh);
+  transition:transform .2s cubic-bezier(.2,.7,.3,1), box-shadow .2s ease, border-color .2s ease; }
+.igf-card:hover{ border-color:var(--igf-line-hov); }
+.igf-feed.igf-shadow .igf-card{ box-shadow:var(--igf-shadow); }
+.igf-feed.igf-shadow .igf-card:hover{ transform:translateY(-4px); box-shadow:var(--igf-shadow-hov); }
 .igf-head{ display:flex; align-items:center; gap:8px; padding:0 11px; height:var(--igf-headh); box-sizing:border-box; }
 .igf-who{ display:flex; align-items:center; gap:8px; min-width:0; text-decoration:none; }
-.igf-head img{ width:30px; height:30px; border-radius:50%; object-fit:cover; flex:0 0 auto; background:#222; }
-.igf-head b{ font-size:13px; font-weight:600; color:var(--ig-primary-text, #f5f5f5); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.igf-head img{ width:30px; height:30px; border-radius:50%; object-fit:cover; flex:0 0 auto; background:var(--igf-avatar-bg); }
+.igf-head b{ font-size:13px; font-weight:600; color:var(--igf-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .igf-follow{ margin-left:auto; flex:0 0 auto; background:none; border:0; cursor:pointer; padding:6px 10px; border-radius:8px;
-  color:#4a9eff; font-size:13px; font-weight:700; }
-.igf-follow:hover{ background:rgba(255,255,255,.07); }
-.igf-follow.on{ color:var(--ig-secondary-text, #aaa); font-weight:600; }
+  color:var(--igf-accent); font-size:13px; font-weight:700; }
+.igf-follow:hover{ background:var(--igf-hover-bg); }
+.igf-follow.on{ color:var(--igf-muted); font-weight:600; }
 /* aspect-ratio FIXO (não a proporção real do post) = a fonte da uniformidade. "contain" isola o
    layout da mídia do resto: a imagem chegando não invalida o layout do feed inteiro. */
 .igf-media{ display:block; position:relative; width:100%; aspect-ratio:var(--igf-ar);
-  background:#0b0b0b; overflow:hidden; contain:layout paint; }
-/* fade curto ao carregar: a caixa já está no tamanho final, então isto é só o pixel entrando —
-   sem ele o card salta do fundo chapado pra imagem. ".on" é posto no load (ou já no cache). */
-.igf-media img{ width:100%; height:100%; object-fit:cover; display:block; opacity:0; transition:opacity .16s linear; }
+  background:var(--igf-media-bg); overflow:hidden; contain:layout paint; }
+/* fade curto ao carregar (".on" no load ou já no cache) + zoom leve no hover (overflow:hidden clipa) */
+.igf-media img{ width:100%; height:100%; object-fit:cover; display:block; opacity:0;
+  transition:opacity .16s linear, transform .35s cubic-bezier(.2,.7,.3,1); }
 .igf-media img.on{ opacity:1; }
-/* CONTEÚDO HORIZONTAL: numa caixa 9:16 o "cover" teria que ampliar absurdamente uma foto deitada —
-   sobrava uma faixa do meio, sem contexto. Com .igf-fit ela ENTRA INTEIRA (contain), centralizada, e o
-   espaço que sobra fica preenchido por uma cópia borrada da própria imagem, em vez de barra preta. */
-.igf-media.igf-fit img, .igf-media.igf-fit video{ object-fit:contain !important; z-index:1; position:relative; }
+.igf-card:hover .igf-media > img, .igf-card:hover .igf-cstage img{ transform:scale(1.045); }
+/* CONTEÚDO HORIZONTAL: numa caixa 9:16 o "cover" ampliaria absurdamente uma foto deitada. Com .igf-fit
+   ela ENTRA INTEIRA (contain) e o resto é preenchido por uma cópia borrada da própria imagem. No hover
+   não amplia (cortaria o que acabou de caber). */
+.igf-media.igf-fit img, .igf-media.igf-fit video{ object-fit:contain; z-index:1; }
+.igf-media.igf-fit img{ position:relative; }
+.igf-card:hover .igf-media.igf-fit img{ transform:none; }
 .igf-media.igf-fit .igf-blur{ position:absolute; inset:0; z-index:0; background-size:cover; background-position:center;
   filter:blur(26px) saturate(1.25) brightness(.65); transform:scale(1.15); pointer-events:none; }
-/* no hover a mídia dá um zoom leve; em conteúdo "contain" isso cortaria a imagem — aqui não amplia */
-.igf-card:hover .igf-media.igf-fit img{ transform:none; }
-/* vídeo: cover como a imagem — na grade uniforme, "contain" deixaria letterbox de tamanho variável.
-   Entra TRANSPARENTE e só aparece com o 1º frame (.on, posto no loadeddata) → some o piscar preto. */
-.igf-video video{ position:absolute !important; inset:0 !important; width:100% !important; height:100% !important; object-fit:cover !important;
+/* vídeo: cover como a imagem. Entra TRANSPARENTE e só aparece com o 1º frame (.on, posto no loadeddata) */
+.igf-video{ cursor:pointer; }
+.igf-video video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
   background:transparent; opacity:0; transition:opacity .2s ease; }
 .igf-video.on video{ opacity:1; }
-/* ▶ some enquanto TOCA; volta por cima do frame parado quando o hover sai (igf-paused) */
-.igf-video.on:not(.igf-paused) .igf-play{ display:none; }
-.igf-video.igf-paused .igf-play svg{ opacity:.75; }
+/* tela cheia do card: o vídeo inteiro (contain) no tamanho da tela, não o tamanho natural do arquivo */
+.igf-video.igvc-fs video, .igf-video:fullscreen video{ width:100%; height:100%; max-width:none; max-height:none; object-fit:contain; }
+/* ▶ some enquanto TOCA; volta por cima do frame parado (igf-paused) */
 .igf-play{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
 .igf-play svg{ width:46px; height:46px; opacity:.92; filter:drop-shadow(0 1px 5px rgba(0,0,0,.55)); }
+.igf-video.on:not(.igf-paused) .igf-play{ display:none; }
+.igf-video.igf-paused .igf-play svg{ opacity:.75; }
 /* LEGENDA — o wrap tem a altura FIXA (é ele que mantém a uniformidade, mesmo sem legenda);
-   a legenda mora COLADA no rodapé dele e, ao expandir, cresce PRA CIMA por cima da mídia.
-   Assim "ver a descrição inteira" não muda a altura do card — a grade não se mexe. */
+   a legenda mora COLADA no rodapé dele e, ao expandir, cresce PRA CIMA por cima da mídia. */
 .igf-capwrap{ position:relative; height:var(--igf-caph); }
 .igf-cap{ position:absolute; left:0; right:0; bottom:0; max-height:var(--igf-caph); overflow:hidden;
-  padding:6px 12px 0; box-sizing:border-box; font-size:14px; line-height:19px; color:var(--ig-primary-text, #f5f5f5); }
+  padding:6px 12px 0; box-sizing:border-box; font-size:14px; line-height:19px; color:var(--igf-text); }
 .igf-cap b{ font-weight:600; }
 /* @menções e #hashtags: cor de link do IG, clicáveis (não abrem/fecham o "mais") */
 .igf-tag{ color:rgb(var(--ig-link, 0, 149, 246)); text-decoration:none; }
 .igf-tag:hover{ text-decoration:underline; }
-/* [data-capmore] = medido e TEM mais texto do que cabe (medição no 1º hover do card).
-   O "mais" fica no FIM DA LINHA, com um degradê à esquerda pra emendar no texto cortado. */
+/* [data-capmore] = medido e TEM mais texto do que cabe. O "mais" fica no FIM DA LINHA, com degradê à esquerda. */
 .igf-card[data-capmore] .igf-cap{ cursor:pointer; }
 .igf-card[data-capmore] .igf-capmore{ display:block; }
 .igf-capmore{ display:none; position:absolute; right:0; bottom:0; z-index:3; border:0; cursor:pointer;
-  padding:6px 12px 0 34px; font:600 13px/19px inherit; color:var(--ig-primary-text, #f5f5f5);
-  background:linear-gradient(90deg, rgba(0,0,0,0), var(--igf-card-bg, #111) 34%); }
+  padding:6px 12px 0 34px; font-family:inherit; font-size:13px; font-weight:600; line-height:19px; color:var(--igf-text);
+  background:linear-gradient(90deg, transparent, var(--igf-card-bg) 34%); }
 .igf-capmore:hover{ text-decoration:underline; }
 /* aberta: rola dentro do próprio card, com fundo sólido pra não misturar com a mídia atrás */
 .igf-card.igf-capopen .igf-cap{ max-height:calc(var(--igf-cardh) * .72); overflow-y:auto; overscroll-behavior:contain;
-  z-index:2; padding-bottom:26px; background:var(--igf-card-bg, #111);
-  border-top:1px solid var(--igf-line, rgba(255,255,255,.1)); box-shadow:0 -10px 24px rgba(0,0,0,.5); }
-.igf-card.igf-capopen .igf-capmore{ background:var(--igf-card-bg, #111); padding-left:12px; border-radius:8px 0 0 0; }
-/* barra de ações única abaixo da mídia (like/comment/repost/share … save) */
+  z-index:2; padding-bottom:26px; background:var(--igf-card-bg);
+  border-top:1px solid var(--igf-line); box-shadow:0 -10px 24px var(--igf-shade); }
+.igf-card.igf-capopen .igf-capmore{ background:var(--igf-card-bg); padding-left:12px; border-radius:8px 0 0 0; }
+/* barra de ações única abaixo da mídia (like/comment/share … save) */
 .igf-actions{ display:flex; align-items:center; gap:2px; padding:0 7px; height:var(--igf-acth); box-sizing:border-box; }
 .igf-act{ display:inline-flex; align-items:center; gap:5px; background:none; border:0; cursor:pointer; padding:6px 7px; border-radius:8px;
-  color:var(--ig-primary-text, #f5f5f5); font-size:13px; font-weight:600; line-height:1; }
-.igf-act:hover{ background:rgba(255,255,255,.08); }
+  color:var(--igf-text); font-size:13px; font-weight:600; line-height:1; }
+.igf-act:hover{ background:var(--igf-hover-bg); }
 .igf-act svg{ width:22px; height:22px; display:block; }
-.igf-act.igf-like.on svg{ fill:#ff3040; stroke:#ff3040; }
+.igf-act.igf-like.on svg{ fill:var(--igf-like); stroke:var(--igf-like); }
 .igf-act.igf-save.on svg{ fill:currentColor; }
+.igf-act.igf-copied svg{ stroke:var(--igf-accent); }   /* share = COPIAR link: check de feedback */
+.igf-act.igf-busy{ opacity:.45; pointer-events:none; }  /* removendo dos salvos… */
 .igf-act-sp{ flex:1 1 auto; }
-.igf-video{ cursor:pointer; }
-/* loader: UM spinner no FIM do feed, SEMPRE visível (sem toggle = sem bug de "some, tem que scrollar").
-   Some só quando o feed se esgota (.igf-done). É também a sentinela que dispara o carregar-mais. */
+
+/* flags do painel: legenda / contadores */
+.igf-feed.igf-nocap{ --igf-caph:0px; }   /* legenda off → a faixa some (o JS zera a legenda no cálculo da altura) */
+.igf-feed.igf-nocap .igf-capwrap{ display:none; }
+.igf-feed.igf-nocounts .igf-act > span{ display:none; }
+/* densidade COMPACTA (GAP cai via JS; aqui as faixas + fontes). As alturas são VARS: mudar aqui
+   exige mudar os mesmos números em cardHeightFor() no JS. */
+.igf-feed.igf-dense{ --igf-headh:42px; --igf-acth:34px; --igf-caph:22px; --igf-padb:7px; }   /* legenda = 5 + 1×17 */
+.igf-feed.igf-dense.igf-nocap{ --igf-caph:0px; }
+.igf-feed.igf-dense .igf-card{ border-radius:12px; }
+.igf-feed.igf-dense .igf-head{ padding:0 9px; }
+.igf-feed.igf-dense .igf-head img{ width:26px; height:26px; }
+.igf-feed.igf-dense .igf-actions{ padding:0 5px; }
+.igf-feed.igf-dense .igf-act{ padding:5px 6px; font-size:12px; }
+.igf-feed.igf-dense .igf-act svg{ width:20px; height:20px; }
+.igf-feed.igf-dense .igf-cap{ padding:5px 10px 0; font-size:13px; line-height:17px; }
+.igf-feed.igf-dense .igf-capmore{ font-size:12px; line-height:17px; padding:5px 10px 0 30px; }
+
+/* loader: UM spinner no FIM do feed, sempre visível até o feed esgotar (.igf-done). É também a sentinela do carregar-mais. */
 .igf-loader{ display:flex; align-items:center; justify-content:center; gap:10px; padding:34px 26px 60px; min-height:40px;
-  color:var(--ig-secondary-text, #aaa); font-size:13px; }
+  color:var(--igf-muted); font-size:13px; }
 .igf-loader.igf-done{ display:none; }
-.igf-spin{ width:26px; height:26px; border:3px solid rgba(128,128,128,.25); border-top-color:var(--igf-text, #fff); border-radius:50%; animation:igf-rot .8s linear infinite; }
+.igf-spin{ width:26px; height:26px; border:3px solid rgba(128,128,128,.25); border-top-color:var(--igf-text); border-radius:50%; animation:igf-rot .8s linear infinite; }
 @keyframes igf-rot{ to{ transform:rotate(360deg); } }
-/* skeleton de CARREGAMENTO: cards fantasmas DENTRO do próprio grid, no lugar exato onde os posts
-   vão entrar (nada de overlay por cima da página). Altura = a do card real, pela mesma conta do
-   contain-intrinsic-size → o conteúdo real substitui sem salto. Some no 1º card (ou no timeout).
-   NÃO é o "carregando mais" do fim do feed (esse é o .igf-loader). */
-.igf-skel{ height:calc(var(--igf-cardh) + var(--igf-padb) + 2px);
-  background:linear-gradient(100deg, rgba(255,255,255,.04) 30%, rgba(255,255,255,.10) 50%, rgba(255,255,255,.04) 70%);
-  background-size:200% 100%; animation:igf-shim 1.2s linear infinite; }
-@keyframes igf-shim{ to{ background-position:-200% 0; } }
-/* share virou COPIAR link: feedback de copiado (check azul) */
-.igf-act.igf-copied svg{ stroke:#0095f6; }
+/* skeleton de CARREGAMENTO: cards fantasmas DENTRO do grid, no lugar exato onde os posts vão entrar.
+   Altura = a do card real (mesma conta do contain-intrinsic-size). Shimmer neutro (claro e escuro). */
+.igf-card.igf-skel{ height:calc(var(--igf-cardh) + var(--igf-padb) + 2px); pointer-events:none;
+  background:linear-gradient(100deg, rgba(128,128,128,.10) 30%, rgba(128,128,128,.22) 50%, rgba(128,128,128,.10) 70%) 0 0 / 200% 100%, var(--igf-card-bg);
+  animation:igf-shim 1.2s linear infinite; }
+@keyframes igf-shim{ to{ background-position:-200% 0, 0 0; } }
+/* clique registrado, esperando o IG renderizar o post pra abrir a overlay (some sozinho ao abrir) */
+.igf-card.igf-opening{ cursor:progress; }
+.igf-card.igf-opening .igf-media::after{ content:""; position:absolute; inset:0; z-index:4; background:rgba(0,0,0,.35); }
 
 /* ===== carrossel/galeria: setas + dots + contador (slide em cover; larga demais entra em contain) ===== */
 .igf-carousel{ position:relative; display:block; }
 .igf-cstage{ position:absolute; inset:0; }
-.igf-cstage img, .igf-cstage video{ width:100% !important; height:100% !important; object-fit:cover; display:block; }
+.igf-cstage img, .igf-cstage video{ width:100%; height:100%; object-fit:cover; display:block; }
 .igf-cnav{ position:absolute; top:50%; transform:translateY(-50%); z-index:3; width:30px; height:30px; padding:0;
   display:flex; align-items:center; justify-content:center; border:0; border-radius:50%;
   background:rgba(0,0,0,.45); color:#fff; cursor:pointer; opacity:0; transition:opacity .15s ease; }
@@ -624,116 +659,27 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igf-cdot.on{ background:#fff; }
 .igf-ccount{ position:absolute; top:8px; right:8px; z-index:3; pointer-events:none;
   background:rgba(0,0,0,.55); color:#fff; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; }
-`);
-
-    /* ------------------------------------------------------------------ *
-     * CSS — v3.2 POLISH do mosaico: paleta própria (preto premium no escuro,
-     *   claro no light), micro-interações, densidade, estados. O tema real do
-     *   IG é detectado por LUMINÂNCIA do fundo em JS → html.igf-dark.
-     *   Bloco POSTERIOR ao CSS base → sobrepõe por ordem de origem.
-     * ------------------------------------------------------------------ */
-    addStyle(`
-/* paleta — escuro: card quase-preto (AMOLED) separado do fundo por hairline+sombra; texto bem claro */
-html.igf-dark{
-  --igf-card-bg:#0e0e10;
-  --igf-line: rgba(255,255,255,.10);
-  --igf-line-hov: rgba(255,255,255,.26);
-  --igf-hover-bg: rgba(255,255,255,.08);
-  --igf-text:#f4f4f5;
-  --igf-text-2:#b9b9c0;
-  --igf-shadow: 0 1px 2px rgba(0,0,0,.55);
-  --igf-shadow-hov: 0 18px 44px rgba(0,0,0,.64);
-  --igs-bg:#1c1c1e; --igs-fg:#f5f5f5; --igs-fg2:#dcdcdd; --igs-muted:#8e8e93; --igs-muted2:#6b6b70;
-  --igs-border:#363638; --igs-line:#2a2a2d; --igs-hover:#2c2c2e; --igs-input:#000; --igs-track:#48484a;
-  --igs-shadow:rgba(0,0,0,.6);
-}
-/* claro */
-html:not(.igf-dark){
-  --igf-card-bg:#ffffff;
-  --igf-line: rgba(0,0,0,.12);
-  --igf-line-hov: rgba(0,0,0,.26);
-  --igf-hover-bg: rgba(0,0,0,.05);
-  --igf-text:#0b0b0d;
-  --igf-text-2:#5b5b62;
-  --igf-shadow: 0 1px 2px rgba(0,0,0,.08);
-  --igf-shadow-hov: 0 16px 36px rgba(0,0,0,.18);
-  --igs-bg:#ffffff; --igs-fg:#0c1014; --igs-fg2:#262626; --igs-muted:#737373; --igs-muted2:#a8a8a8;
-  --igs-border:#dbdbdb; --igs-line:#efefef; --igs-hover:#f2f2f2; --igs-input:#efefef; --igs-track:#c7c7c7;
-  --igs-shadow:rgba(0,0,0,.16);
-}
-/* card: bg + borda da paleta + transições; sombra (resting + hover) só com a flag igf-shadow */
-.igf-card{ background:var(--igf-card-bg) !important; border-color:var(--igf-line) !important;
-  transition:transform .2s cubic-bezier(.2,.7,.3,1), box-shadow .2s ease, border-color .2s ease; }
-.igf-feed.igf-shadow .igf-card{ box-shadow:var(--igf-shadow); }
-.igf-feed.igf-shadow .igf-card:hover{ transform:translateY(-4px); box-shadow:var(--igf-shadow-hov); border-color:var(--igf-line-hov) !important; }
-.igf-feed:not(.igf-shadow) .igf-card:hover{ border-color:var(--igf-line-hov) !important; }
-/* texto legível (sobrepõe o cinza nativo do IG) */
-.igf-head b{ color:var(--igf-text) !important; }
-.igf-act{ color:var(--igf-text) !important; }
-/* legenda no texto PRIMÁRIO (era o cinza secundário — ficava apagada demais pra ler no mosaico) */
-.igf-cap{ color:var(--igf-text) !important; }
-.igf-cap b{ color:var(--igf-text) !important; }
-.igf-capmore{ color:var(--igf-text) !important; background:linear-gradient(90deg, rgba(0,0,0,0), var(--igf-card-bg) 34%) !important; }
-.igf-card.igf-capopen .igf-cap{ background:var(--igf-card-bg) !important; border-top-color:var(--igf-line) !important; }
-.igf-card.igf-capopen .igf-capmore{ background:var(--igf-card-bg) !important; }
-/* zoom leve da mídia no hover (a .igf-media tem overflow:hidden → clipa o zoom) */
-.igf-media > img, .igf-cstage img{ transition:transform .35s cubic-bezier(.2,.7,.3,1); }
-.igf-card:hover .igf-media > img, .igf-card:hover .igf-cstage img{ transform:scale(1.045); }
-/* hovers neutros */
-.igf-act:hover, .igf-follow:hover{ background:var(--igf-hover-bg) !important; }
-
-/* flags do painel: sombra / legenda / contadores */
-.igf-feed.igf-nocap .igf-capwrap{ display:none; }
-.igf-feed.igf-nocounts .igf-act > span{ display:none; }
-
-/* densidade COMPACTA (GAP cai via JS; aqui as faixas + fontes). As alturas são VARS: mudar aqui
-   exige mudar os mesmos números em cardHeightFor() no JS (a dica do content-visibility). */
-.igf-feed.igf-dense{ --igf-headh:42px; --igf-acth:34px; --igf-caph:22px; --igf-padb:7px; }   /* legenda = 5 + 1×17 */
-.igf-feed.igf-dense .igf-head{ padding:0 9px; }
-.igf-feed.igf-dense .igf-head img{ width:26px; height:26px; }
-.igf-feed.igf-dense .igf-actions{ padding:0 5px; }
-.igf-feed.igf-dense .igf-act{ padding:5px 6px; font-size:12px; }
-.igf-feed.igf-dense .igf-act svg{ width:20px; height:20px; }
-.igf-feed.igf-dense .igf-cap{ padding:5px 10px 0; font-size:13px; line-height:17px; }
-.igf-feed.igf-dense .igf-capmore{ font-size:12px; line-height:17px; padding:5px 10px 0 30px; }
-.igf-feed.igf-dense .igf-card{ border-radius:12px; }
-/* legenda off → a faixa some de vez (o JS zera --igf-caph no cálculo da altura) */
-.igf-feed.igf-nocap{ --igf-caph:0px; }
-
-/* skeleton: shimmer NEUTRO (visível em claro e escuro) */
-.igf-skel{ background:linear-gradient(100deg, rgba(128,128,128,.10) 30%, rgba(128,128,128,.22) 50%, rgba(128,128,128,.10) 70%); background-size:200% 100%; }
-
-/* stories: emoldura a tray como um card (alinha com a grade do mosaico) */
-.igm-stories{ background:var(--igf-card-bg); border:1px solid var(--igf-line); border-radius:14px; padding:12px 14px !important; margin-bottom:10px !important; box-sizing:border-box; }
-
-.igf-act.igf-busy{ opacity:.45; pointer-events:none; }   /* removendo dos salvos… */
-/* clique registrado, esperando o IG renderizar o post pra abrir a overlay (some sozinho ao abrir) */
-.igf-card.igf-opening{ cursor:progress; }
-.igf-card.igf-opening .igf-media::after{ content:""; position:absolute; inset:0; z-index:4; background:rgba(0,0,0,.35); }
 
 /* ===== SALVOS: toolbar de multisseleção + overlay/checkbox nos tiles ===== */
 .igf-savedbar{ display:flex; align-items:center; gap:10px; padding:4px 2px 12px; }
-/* LIGADA (seleção ou lote rodando) a barra GRUDA no topo: numa limpeza longa você rola metros de
-   grade, e ter que voltar ao topo pra clicar em "Remover" era o pior da experiência. */
+/* LIGADA (seleção ou lote rodando) a barra GRUDA no topo: numa limpeza longa não é preciso voltar ao topo. */
 .igf-savedbar.on{ position:sticky; top:0; z-index:60; margin-bottom:12px;
   padding:10px 14px; border-radius:12px;
-  background:var(--igf-card-bg, #111); border:1px solid var(--igf-line, rgba(255,255,255,.1));
-  box-shadow:0 10px 26px rgba(0,0,0,.5); backdrop-filter:saturate(1.2) blur(6px); }
+  background:var(--igf-card-bg); border:1px solid var(--igf-line);
+  box-shadow:var(--igf-shadow-pop); backdrop-filter:saturate(1.2) blur(6px); }
 .igf-sb-sp{ flex:1 1 auto; }
 .igf-sb-count{ font-size:13px; color:var(--igf-text-2); }
-/* progresso do lote: só existe enquanto remove, e mostra QUANTO falta (era um laço mudo) */
-.igf-sb-prog{ display:none; flex:2 1 220px; height:6px; border-radius:999px; overflow:hidden;
-  background:rgba(128,128,128,.28); }
+/* progresso do lote: só existe enquanto remove, e mostra QUANTO falta */
+.igf-sb-prog{ display:none; flex:2 1 220px; height:6px; border-radius:999px; overflow:hidden; background:rgba(128,128,128,.28); }
 .igf-savedbar.busy .igf-sb-prog{ display:block; }
-.igf-sb-progfill{ height:100%; width:0; border-radius:999px; transition:width .18s ease;
-  background:linear-gradient(90deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5); }
-.igf-sb-btn{ all:unset; cursor:pointer; padding:8px 15px; border-radius:9px; font:700 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:#fff; background:#0095f6; }
+.igf-sb-progfill{ height:100%; width:0; border-radius:999px; transition:width .18s ease; background:var(--igf-grad); }
+.igf-sb-btn{ all:unset; cursor:pointer; padding:8px 15px; border-radius:9px; font:700 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:#fff; background:var(--igf-accent); }
 .igf-sb-btn:hover{ filter:brightness(1.08); }
 .igf-sb-ghost{ background:transparent; color:var(--igf-text); border:1px solid var(--igf-line); }
-.igf-sb-danger{ background:#ed4956; }
+.igf-sb-danger{ background:var(--igf-danger); }
 .igf-sb-btn[disabled]{ opacity:.45; pointer-events:none; }
 /* visibilidade por modo: normal = só "Selecionar"; seleção = count + Todos/Cancelar/Mover/Remover;
-   lote rodando = só o progresso e "Parar" (nada de clicar em Remover duas vezes no meio) */
+   lote rodando = só o progresso e "Parar" */
 .igf-savedbar .igf-sb-ghost, .igf-savedbar .igf-sb-danger, .igf-savedbar .igf-sb-count{ display:none; }
 .igf-savedbar.on .igf-sb-sel{ display:none; }
 .igf-savedbar.on .igf-sb-ghost, .igf-savedbar.on .igf-sb-danger{ display:inline-block; }
@@ -742,75 +688,73 @@ html:not(.igf-dark){
 .igf-savedbar.busy .igf-sb-stop{ display:inline-block; }
 .igf-savedbar.busy .igf-sb-sel, .igf-savedbar.busy .igf-sb-all,
 .igf-savedbar.busy .igf-sb-cancel, .igf-savedbar.busy .igf-sb-coll, .igf-savedbar.busy .igf-sb-danger{ display:none; }
-/* REMOVIDO dos salvos: o card FICA no lugar (a grade não reflui no meio da limpeza), só apaga e
-   ganha o selo. Some de vez só no próximo carregamento da página. */
-.igf-card.igf-gone{ opacity:.32; filter:grayscale(.7); transition:opacity .25s ease, filter .25s ease; }
-.igf-card.igf-gone:hover{ opacity:.5; }
-.igf-card.igf-gone::before{ content:"removido"; position:absolute; z-index:7; top:10px; left:10px;
-  padding:3px 10px; border-radius:999px; pointer-events:none;
-  background:rgba(0,0,0,.78); color:#fff; font:700 11px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-.igf-card.igf-gone .igf-selovl{ display:none !important; }   /* não dá pra re-selecionar o que já saiu */
-/* falhou ao remover (API recusou): fica marcado em vermelho pra você ver o que sobrou */
-.igf-card.igf-failed{ outline:2px solid #ed4956; outline-offset:-2px; }
-.igf-card.igf-failed::before{ content:"falhou"; position:absolute; z-index:7; top:10px; left:10px;
-  padding:3px 10px; border-radius:999px; pointer-events:none;
-  background:#ed4956; color:#fff; font:700 11px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
 /* overlay de seleção: cobre o tile só no modo seleção (captura o clique → marca/desmarca) */
 .igf-selovl{ display:none; position:absolute; inset:0; z-index:6; cursor:pointer; transition:background .12s ease; }
 .igf-feed.igf-selecting .igf-card-saved .igf-selovl{ display:block; }
 .igf-feed.igf-selecting .igf-card-saved .igf-actions{ display:none; }   /* no modo seleção esconde a barra de ação */
-.igf-card.igf-sel .igf-selovl{ background:rgba(0,149,246,.22); }
-.igf-card.igf-sel{ outline:3px solid #0095f6; outline-offset:-3px; }
+.igf-card.igf-sel .igf-selovl{ background:var(--igf-accent-soft); }
+.igf-card.igf-sel{ outline:3px solid var(--igf-accent); outline-offset:-3px; }
 .igf-selcb{ position:absolute; top:10px; left:10px; width:24px; height:24px; border-radius:50%; border:2px solid #fff; background:rgba(0,0,0,.4); box-shadow:0 1px 5px rgba(0,0,0,.55); box-sizing:border-box; }
-.igf-card.igf-sel .igf-selcb{ background:#0095f6; }
+.igf-card.igf-sel .igf-selcb{ background:var(--igf-accent); }
 .igf-card.igf-sel .igf-selcb::after{ content:""; position:absolute; left:8px; top:4px; width:6px; height:11px; border:solid #fff; border-width:0 2.5px 2.5px 0; transform:rotate(45deg); }
-/* menu de coleções + toast */
-.igf-collmenu{ position:fixed; z-index:2147483647; min-width:220px; max-height:60vh; overflow-y:auto; padding:6px; background:var(--igs-bg); border:1px solid var(--igs-border); border-radius:12px; box-shadow:0 12px 34px var(--igs-shadow); }
-.igf-cm-head{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--igs-muted); padding:6px 10px 4px; }
-.igf-cm-item{ all:unset; cursor:pointer; display:block; width:100%; box-sizing:border-box; padding:9px 11px; border-radius:8px; color:var(--igs-fg); font:600 13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-.igf-cm-item:hover{ background:var(--igs-hover); }
-.igf-cm-new{ color:#0095f6; }
-.igf-toast{ position:fixed; left:50%; bottom:80px; transform:translateX(-50%) translateY(8px); z-index:2147483647; background:var(--igs-bg); color:var(--igs-fg); border:1px solid var(--igs-border); border-radius:999px; padding:9px 18px; font:13px -apple-system,sans-serif; box-shadow:0 6px 22px var(--igs-shadow); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
+/* REMOVIDO dos salvos: o card FICA no lugar (a grade não reflui no meio da limpeza), só apaga e ganha o selo */
+.igf-card.igf-gone{ opacity:.32; filter:grayscale(.7); transition:opacity .25s ease, filter .25s ease; }
+.igf-card.igf-gone:hover{ opacity:.5; }
+.igf-feed .igf-card.igf-gone .igf-selovl{ display:none; }   /* não dá pra re-selecionar o que já saiu */
+/* falhou ao remover (API recusou): fica marcado em vermelho pra você ver o que sobrou */
+.igf-card.igf-failed{ outline:2px solid var(--igf-danger); outline-offset:-2px; }
+.igf-card.igf-gone::before, .igf-card.igf-failed::before{ position:absolute; z-index:7; top:10px; left:10px;
+  padding:3px 10px; border-radius:999px; pointer-events:none; color:#fff;
+  font:700 11px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+.igf-card.igf-gone::before{ content:"removido"; background:rgba(0,0,0,.78); }
+.igf-card.igf-failed::before{ content:"falhou"; background:var(--igf-danger); }
+
+/* menu de coleções + toast (superfícies elevadas, mesma paleta do painel) */
+.igf-collmenu{ position:fixed; z-index:var(--igz-menu); min-width:220px; max-height:60vh; overflow-y:auto; padding:6px; background:var(--igf-elev); border:1px solid var(--igf-border); border-radius:12px; box-shadow:var(--igf-shadow-pop); }
+.igf-cm-head{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--igf-muted); padding:6px 10px 4px; }
+.igf-cm-item{ all:unset; cursor:pointer; display:block; width:100%; box-sizing:border-box; padding:9px 11px; border-radius:8px; color:var(--igf-text); font:600 13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+.igf-cm-item:hover{ background:var(--igf-hover-bg); }
+.igf-cm-new{ color:var(--igf-accent); }
+.igf-toast{ position:fixed; left:50%; bottom:80px; transform:translateX(-50%) translateY(8px); z-index:var(--igz-toast); background:var(--igf-elev); color:var(--igf-text); border:1px solid var(--igf-border); border-radius:999px; padding:9px 18px; font:13px -apple-system,sans-serif; box-shadow:var(--igf-shadow-pop); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
 .igf-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 `);
 
     /* ------------------------------------------------------------------ *
      * CSS — painel de ajustes flutuante (mesmo modelo do reddit/twitter,
-     *   prefixo igs-, accent azul do IG). FAB de engrenagem no canto.
+     *   prefixo igs-). FAB de engrenagem no canto. --k-* = aliases locais dos tokens.
      * ------------------------------------------------------------------ */
     addStyle(`
-#igs-fab{ position:fixed; right:18px; bottom:18px; z-index:2147483646; width:44px; height:44px;
-  display:flex; align-items:center; justify-content:center; background:var(--igs-bg); color:var(--igs-fg);
-  border:1px solid var(--igs-border); border-radius:50%; cursor:pointer; opacity:.72;
-  box-shadow:0 6px 20px var(--igs-shadow);
+#igs-fab, #igs-totop{ position:fixed; right:18px; z-index:var(--igz-fab);
+  display:flex; align-items:center; justify-content:center; background:var(--igf-elev); color:var(--igf-text);
+  border:1px solid var(--igf-border); border-radius:50%; cursor:pointer; opacity:.72;
+  box-shadow:0 6px 20px var(--igf-shade);
   transition:opacity .2s, color .15s, background .15s, border-color .15s, transform .2s; }
-#igs-fab:hover{ opacity:1; color:#fff; background:#0095f6; border-color:#0095f6; transform:rotate(30deg); }
+#igs-fab{ bottom:18px; width:44px; height:44px; }
+#igs-fab:hover{ opacity:1; color:#fff; background:var(--igf-accent); border-color:var(--igf-accent); transform:rotate(30deg); }
 #igs-fab svg{ width:21px; height:21px; fill:currentColor; display:block; }
-/* esconder o dock de mensagens */
-html.igf-no-msg .igf-msgdock{ display:none !important; }
 /* botão voltar-ao-topo: acima do FAB, aparece só ligado + rolado */
-#igs-totop{ position:fixed; right:18px; bottom:72px; z-index:2147483646; width:42px; height:42px;
-  display:none; align-items:center; justify-content:center; background:var(--igs-bg); color:var(--igs-fg);
-  border:1px solid var(--igs-border); border-radius:50%; cursor:pointer; opacity:.72; box-shadow:0 6px 20px var(--igs-shadow);
-  transition:opacity .2s, color .15s, background .15s, border-color .15s, transform .2s; }
-#igs-totop:hover{ opacity:1; color:#fff; background:#0095f6; border-color:#0095f6; transform:translateY(-2px); }
+#igs-totop{ bottom:72px; width:42px; height:42px; display:none; }
+#igs-totop:hover{ opacity:1; color:#fff; background:var(--igf-accent); border-color:var(--igf-accent); transform:translateY(-2px); }
 #igs-totop svg{ width:20px; height:20px; fill:currentColor; display:block; }
 html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
+/* esconder o dock de mensagens (nó DO IG) */
+html.igf-no-msg .igf-msgdock{ display:none !important; }
 /* ===== settings panel — fixed size, side tabs with labels, grouped cards ===== */
 #igs-panel {
-    --k-bg: var(--igs-bg); --k-fg: var(--igs-fg); --k-muted: var(--igs-muted); --k-border: var(--igs-border);
-    --k-line: var(--igs-line); --k-hover: var(--igs-hover); --k-input: var(--igs-input); --k-track: var(--igs-track);
-    --k-shadow: var(--igs-shadow); --k-accent: #0095f6; --k-accent-soft: rgba(0, 149, 246, .14);
+    --k-bg: var(--igf-elev); --k-fg: var(--igf-text); --k-muted: var(--igf-muted); --k-border: var(--igf-border);
+    --k-line: var(--igf-line); --k-hover: var(--igf-hover-bg); --k-input: var(--igf-input); --k-track: var(--igf-track);
+    --k-shadow: var(--igf-shade); --k-accent: var(--igf-accent); --k-accent-soft: var(--igf-accent-soft); --k-danger: var(--igf-danger);
     --k-card: color-mix(in srgb, var(--k-fg) 4%, var(--k-bg));
-    position: fixed; right: 16px; bottom: 72px; z-index: 2147483647;
+    position: fixed; right: 16px; bottom: 72px; z-index: var(--igz-panel);
     /* tamanho FIXO: não muda conforme a aba, a busca ou a página */
     width: min(600px, calc(100vw - 32px)); height: min(640px, calc(100vh - 96px));
-    flex-direction: column; overflow: hidden; box-sizing: border-box;
+    display: none; flex-direction: column; overflow: hidden; box-sizing: border-box;
     background: var(--k-bg); color: var(--k-fg); border: 1px solid var(--k-border);
     border-radius: 20px; box-shadow: 0 24px 64px var(--k-shadow);
     font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-transform: none; letter-spacing: normal; text-align: left;
     transform-origin: bottom right;
 }
+#igs-panel.open { display: flex; animation: igs-pop .16s cubic-bezier(.2,.7,.3,1); }
 #igs-panel *, #igs-panel *::before, #igs-panel *::after { box-sizing: border-box; }
 @keyframes igs-pop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
 .igs-head { display: flex; align-items: center; gap: 12px; padding: 16px 14px 12px 18px; }
@@ -839,41 +783,37 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
 .igs-content { min-width: 0; overflow-y: auto; padding: 16px 16px 20px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--k-track) transparent; }
 .igs-content::-webkit-scrollbar { width: 8px; }
 .igs-content::-webkit-scrollbar-thumb { background: var(--k-track); border-radius: 99px; border: 2px solid var(--k-bg); }
-.igs-sec { display: none; }
-.igs-sec { margin-bottom: 24px; }
+.igs-sec { display: none; margin-bottom: 24px; }
 .igs-sec-title { margin: 0 0 10px 2px; padding: 0; font-size: 17px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--k-fg); background: none; border: 0; }
 .igs-card { background: var(--k-card); border: 1px solid var(--k-line); border-radius: 14px; overflow: hidden; }
-.igs-card > * { margin: 0 !important; border-radius: 0 !important; }
+.igs-card > * { margin: 0; border-radius: 0; }
 .igs-card > * + * { border-top: 1px solid var(--k-line); }
 .igs-empty { display: none; color: var(--k-muted); text-align: center; padding: 48px 16px; font-size: 14px; }
 .igs-foot { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--k-line); }
+.igs-foot small { flex: 1; text-align: right; color: var(--k-muted); font-size: 12px; }
 .igs-reset { all: unset; cursor: pointer; color: var(--k-muted); font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 10px; transition: background .15s, color .15s; }
-.igs-reset:hover { color: #f4212e; background: rgba(244, 33, 46, .1); }
+.igs-reset:hover { color: var(--k-danger); background: color-mix(in srgb, var(--k-danger) 10%, transparent); }
 @media (max-width: 560px) {
     .igs-body { grid-template-columns: 56px 1fr; }
     .igs-tab { justify-content: center; padding: 0; }
     .igs-tab span { display: none; }
 }
-
-#igs-panel{ display:none; }
-#igs-panel.open{ display:flex; animation:igs-pop .16s cubic-bezier(.2,.7,.3,1); }
-.igs-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:48px; padding:10px 14px; cursor:pointer; transition:background .12s; }
-.igs-row:hover{ background:var(--igs-hover); }
-.igs-rowlbl{ flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; }
-.igs-hint{ color:var(--igs-muted); font-size:11px; line-height:1.3; font-weight:400; }
-.igs-row select{ background:var(--igs-input); color:var(--igs-fg); border:1px solid var(--igs-border); border-radius:8px; padding:5px 8px; font:inherit; cursor:pointer; flex:0 0 auto; }
-.igs-row.dim, .igs-slider.dim{ opacity:.4; pointer-events:none; }
-.igs-sw{ position:relative; width:38px; height:22px; flex:none; }
-.igs-sw input{ position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; }
-.igs-sw i{ position:absolute; inset:0; border-radius:999px; background:var(--igs-track); transition:.18s; pointer-events:none; }
-.igs-sw i::after{ content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:.18s; box-shadow:0 1px 2px rgba(0,0,0,.4); }
-.igs-sw input:checked + i{ background:#0095f6; }
-.igs-sw input:checked + i::after{ transform:translateX(16px); }
-.igs-slider{ display:flex; flex-direction:column; gap:10px; padding:12px 14px 14px; }
-.igs-lab{ display:flex; justify-content:space-between; align-items:center; color:var(--igs-fg2); }
-.igs-lab .val{ color:#0095f6; font-weight:700; background:rgba(0,149,246,.12); border-radius:6px; padding:1px 8px; font-size:13px; min-width:38px; text-align:center; }
-.igs-slider input[type=range]{ width:100%; accent-color:#0095f6; cursor:pointer; }
-.igs-foot small{ flex:1; text-align:right; color:var(--k-muted); font-size:12px; }
+.igs-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 10px 14px; cursor: pointer; transition: background .12s; }
+.igs-row:hover { background: var(--k-hover); }
+.igs-rowlbl { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.igs-hint { color: var(--k-muted); font-size: 11px; line-height: 1.3; font-weight: 400; }
+.igs-row select { background: var(--k-input); color: var(--k-fg); border: 1px solid var(--k-border); border-radius: 8px; padding: 5px 8px; font: inherit; cursor: pointer; flex: 0 0 auto; }
+.igs-row.dim, .igs-slider.dim { opacity: .4; pointer-events: none; }
+.igs-sw { position: relative; width: 38px; height: 22px; flex: none; }
+.igs-sw input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.igs-sw i { position: absolute; inset: 0; border-radius: 999px; background: var(--k-track); transition: .18s; pointer-events: none; }
+.igs-sw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: .18s; box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+.igs-sw input:checked + i { background: var(--k-accent); }
+.igs-sw input:checked + i::after { transform: translateX(16px); }
+.igs-slider { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; }
+.igs-lab { display: flex; justify-content: space-between; align-items: center; color: var(--k-fg); }
+.igs-lab .val { color: var(--k-accent); font-weight: 700; background: var(--k-accent-soft); border-radius: 6px; padding: 1px 8px; font-size: 13px; min-width: 38px; text-align: center; }
+.igs-slider input[type=range] { width: 100%; accent-color: var(--k-accent); cursor: pointer; }
 `);
 
     /* ------------------------------------------------------------------ *
@@ -2652,15 +2592,21 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         feedEl.classList.toggle("igf-nocounts", !prefs.showCounts);
     }
     // tema REAL do IG (independe do OS): luminância do fundo (--ig-background, fallback bg do body).
+    // No document-start nada disso existe ainda (fundo transparente = "rgba(0, 0, 0, 0)", que lia como
+    // ESCURO e pintava o 1º frame do tema claro de preto) → até o IG definir o fundo, vale o tema do SO.
+    const osDark = () => { try { return matchMedia("(prefers-color-scheme: dark)").matches; } catch { return false; } };
     function isDarkTheme() {
         try {
             const v = getComputedStyle(document.documentElement).getPropertyValue("--ig-background").trim();
             let rgb = null;
             if (v) { const m = v.split(",").map((s) => parseFloat(s)); if (m.length >= 3 && m.every((x) => !isNaN(x))) rgb = m; }
-            if (!rgb) { const bg = getComputedStyle(document.body || document.documentElement).backgroundColor; const m = bg && bg.match(/[\d.]+/g); if (m && m.length >= 3) rgb = m.map(Number); }
-            if (!rgb) return true;
+            if (!rgb && document.body) {
+                const m = (getComputedStyle(document.body).backgroundColor || "").match(/[\d.]+/g);
+                if (m && m.length >= 3 && !(m.length >= 4 && +m[3] === 0)) rgb = m.map(Number);   // alpha 0 = sem fundo ainda
+            }
+            if (!rgb) return osDark();
             return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) < 128;
-        } catch { return true; }
+        } catch { return osDark(); }
     }
     let lastDark = null;
     function applyTheme() {   // toggla html.igf-dark (guard "mudou?" → não reescreve a cada scan)
