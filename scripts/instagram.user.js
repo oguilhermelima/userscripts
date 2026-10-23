@@ -231,18 +231,21 @@
             caption: (m.caption && (m.caption.text || (typeof m.caption === "string" ? m.caption : ""))) || prev.caption || "",
             likes: fmtCountNum(m.like_count) || prev.likes || "",
             comments: fmtCountNum(m.comment_count) || prev.comments || "",
+            t: Date.now(),                      // hora da ingestão (o despejo nunca toca no que é recente)
         });
         if (igMedia.size > IGMEDIA_MAX) pruneIgMedia();
     }
     /* MEMÓRIA: o explore e o feed despejam centenas de itens de API por sessão e o igMedia só crescia.
-     * Teto com despejo dos MAIS ANTIGOS — mas nunca de um código que tem card nosso (o card ainda lê
-     * videoUrl/pk/slides daqui). `liveCodes` é mantido pelo harvest e zerado no teardown. */
-    const IGMEDIA_MAX = 600;
+     * Teto com despejo dos MAIS ANTIGOS — nunca de um código com card nosso (o card ainda lê videoUrl/pk/
+     * slides daqui) e nunca do que entrou há menos de IGMEDIA_MIN_AGE: o payload do boot da home (stories,
+     * sugestões, timeline) chega ANTES de o feed renderizar, e com o teto contado só por tamanho os
+     * primeiros posts eram despejados antes do harvest — card sem legenda e sem URL de vídeo. */
+    const IGMEDIA_MAX = 1500, IGMEDIA_MIN_AGE = 120000;
     const liveCodes = new Set();
     function pruneIgMedia() {
-        const target = Math.floor(IGMEDIA_MAX * 0.85);
-        for (const code of igMedia.keys()) {
-            if (igMedia.size <= target) break;
+        const target = Math.floor(IGMEDIA_MAX * 0.85), young = Date.now() - IGMEDIA_MIN_AGE;
+        for (const [code, rec] of igMedia) {
+            if (igMedia.size <= target || rec.t > young) break;   // ordem de ingestão: daqui pra frente é tudo mais novo
             if (!liveCodes.has(code)) igMedia.delete(code);
         }
     }
