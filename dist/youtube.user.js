@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube — Cinema Player, Sidebars & Advanced Settings
 // @namespace    youtube-cinema
-// @version      1.0.0
+// @version      1.0.1
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/youtube.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/youtube.user.js
 // @author       oguilhermelima
@@ -83,6 +83,7 @@
         svg.append(shape);
         return svg;
     }
+
 
     const state = {
         chatVisible: Boolean(getSetting('chatVisible', true)),
@@ -301,7 +302,24 @@
             color: #fff;
         }
         .ytc-bar-circle svg { width: 24px !important; height: 24px !important; flex: none; }
-        .ytc-bar-circle.is-active { color: #3ea6ff; fill: #3ea6ff; }
+        /* On is an "ON" badge over the same glyph (like the speed and
+           quality badges), never a colour change. */
+        .ytc-bar-circle { position: relative; overflow: visible !important; }
+        /* A real span, not ::after: YouTube already styles .ytp-button::after. */
+        .ytc-on-badge { display: none; }
+        .ytc-bar-circle.is-active > .ytc-on-badge {
+            display: block;
+            position: absolute;
+            top: 3px;
+            right: 1px;
+            padding: 2px 3px;
+            border-radius: 2px;
+            background: #b3001f;
+            color: #fff;
+            font: 700 9px/1 Roboto, Arial, sans-serif;
+            letter-spacing: 0.02em;
+            pointer-events: none;
+        }
         #movie_player:not(.ytc-playlist) .ytc-playlist-button { display: none !important; }
         /* The current player ("delhi") draws its controls as frosted pills;
            ours become circles like its play button, built from the same
@@ -1372,6 +1390,41 @@
         }, { passive: false });
     }
 
+    // Loop and boost come from other icon sets and drew ~20% smaller than
+    // YouTube's glyphs, by an amount that changes with the player layout. So
+    // size each svg until its ink is as big as the volume icon's ink.
+    function inkSize(svg) {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const shape of svg.querySelectorAll('path')) {
+            const r = shape.getBoundingClientRect();
+            if (!r.width) continue;
+            x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top);
+            x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom);
+        }
+        return x1 > x0 ? Math.max(x1 - x0, y1 - y0) : 0;
+    }
+    function fitBarIcon(button) {
+        const svg = button?.querySelector('svg');
+        const ref = player()?.querySelector('.ytp-mute-button svg');
+        const want = ref ? inkSize(ref) : 0;
+        if (!svg || !want) return;
+        // absolute, from the glyph's own geometry: calling it again never compounds
+        const box = svg.getBBox(), vb = svg.viewBox.baseVal;
+        const perUnit = want / Math.max(box.width, box.height);
+        if (!Number.isFinite(perUnit) || !vb?.width) return;
+        const w = `${(vb.width * perUnit).toFixed(1)}px`, h = `${(vb.height * perUnit).toFixed(1)}px`;
+        if (svg.style.width === w && svg.style.height === h) return;
+        svg.style.setProperty('width', w, 'important');
+        svg.style.setProperty('height', h, 'important');
+    }
+
+    function onBadge() {
+        const badge = document.createElement('span');
+        badge.className = 'ytc-on-badge';
+        badge.textContent = 'ON';
+        return badge;
+    }
+
     function syncBarControls() {
         const host = player();
         const left = host?.querySelector('.ytp-left-controls');
@@ -1380,14 +1433,14 @@
         let loop = left.querySelector('.ytc-loop');
         if (!loop) {
             loop = barButton('ytc-bar-circle ytc-loop', 'Repetir (r)', toggleLoop);
-            loop.append(icon(ICONS.loop));
+            loop.append(icon(ICONS.loop), onBadge());
             left.prepend(loop);
         }
         const volume = left.querySelector('.ytp-volume-area');
         let boost = left.querySelector('.ytc-boost');
         if (!boost && volume) {
             boost = barButton('ytc-bar-circle ytc-boost', 'Amplificador', () => setBoostOn(!state.boostOn));
-            boost.append(icon(ICONS.boost, BOOST_ICON));
+            boost.append(icon(ICONS.boost, BOOST_ICON), onBadge());
             volume.after(boost);
         }
         let speed = rightGroup.querySelector('.ytc-speed');
@@ -1435,6 +1488,8 @@
             const height = Number(/^(\d+)p/.exec(label)?.[1] ?? 0);
             quality.querySelector('.ytc-quality-badge').textContent = height >= 4320 ? '8K' : height >= 2160 ? '4K' : height ? String(height) : '';
         }
+        fitBarIcon(loop);
+        fitBarIcon(boost);
 
     }
 
