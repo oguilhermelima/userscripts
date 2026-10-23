@@ -24,9 +24,10 @@
      *     continua clicável e visível. Diferente do script de referência,
      *     que faz opacity:0 + reposiciona os botões nativos.
      *
-     * GUARDS (perf) — observer DEBOUNCED + WeakSet por nó + poda por
-     *   isConnected; sem polling permanente. AbortController por vídeo limpa
-     *   todos os listeners de uma vez no destroy.
+     * GUARDS (perf) — a ROTA dispara o trabalho de página; o observer só lê
+     *   addedNodes (vídeos novos) e checa a saúde da superfície. WeakSet por nó,
+     *   poda por isConnected, sem polling permanente. AbortController por vídeo
+     *   limpa todos os listeners de uma vez no destroy.
      * ==================================================================== */
 
     /* ------------------------------------------------------------------ *
@@ -1265,42 +1266,60 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     const keyOf = (node) => surface === "home" ? postKey(node) : tileKey(node);
 
     function feedArticleList() {
-        // The home can start from one article; other surfaces still require two siblings.
+        // A lista = o pai que segura MAIS <article> (não o pai do 1º: um post solto fora da lista enganava).
+        // A home pode começar com um só; as outras superfícies exigem dois irmãos.
         const arts = document.querySelectorAll("main article");
         const minArticles = isHome() ? 1 : 2;
         if (arts.length < minArticles) return null;
-        const p = arts[0].parentElement;
-        let n = 0;
-        for (const a of arts) if (a.parentElement === p) n++;
-        return n >= minArticles ? p : null;
+        const count = new Map();
+        let best = null, bestN = 0;
+        for (const a of arts) {
+            const p = a.parentElement, n = (count.get(p) || 0) + 1;
+            count.set(p, n);
+            if (n > bestN) { bestN = n; best = p; }
+        }
+        return bestN >= minArticles ? best : null;
     }
 
-    // coluna do feed + a(s) rail(s) irmã(s). A coluna = filho direto da "row" de
-    // 2 colunas. Ancoro no cap inline de 630px (constante de layout do IG); a
-    // stories-tray mora DENTRO do cap630, então nunca é confundida com rail.
-    // Fallback (se o 630 sumir): o split de 2 colunas mais EXTERNO antes do <main>.
+    // coluna do feed + a(s) rail(s) irmã(s). ESTRUTURA primeiro: a coluna = o ancestral mais EXTERNO
+    // (abaixo do <main>) que tem um irmão À DIREITA dele — a rail. O teste geométrico é o que separa a
+    // rail da tray de stories (que mora ACIMA da lista, dentro da coluna) e de qualquer bloco acima/abaixo.
+    // Uma rail que nós mesmos já escondemos (.igm-norail, sem caixa) conta. Só roda na montagem (rota).
+    // Fallback: o cap inline de 630px que o IG usa hoje na coluna (constante de layout, frágil por natureza).
     function feedColumnSplit(list) {
-        let col = null;
-        for (let n = list.parentElement; n && n.tagName !== "MAIN" && n !== document.body; n = n.parentElement) {
-            if (/max-width\s*:\s*630px/.test(n.getAttribute("style") || "")) { col = n; break; }
+        let col = null, rails = null;
+        for (let c = list.parentElement; c && c.parentElement; c = c.parentElement) {
+            const row = c.parentElement;
+            if (row.tagName === "MAIN" || row === document.body) break;
+            const sibs = [...row.children].filter((k) => k !== c && !k.contains(list));
+            if (!sibs.length) continue;
+            const cr = c.getBoundingClientRect();
+            const right = sibs.filter((k) => {
+                if (k.classList.contains("igm-norail")) return true;
+                const r = k.getBoundingClientRect();
+                return r.width > 0 && r.left >= cr.right - 2;
+            });
+            if (right.length) { col = c; rails = right; }   // mantém o mais externo
         }
         if (!col) {
-            for (let c = list.parentElement; c && c.parentElement; c = c.parentElement) {
-                const row = c.parentElement;
-                if (row.tagName === "MAIN" || row === document.body) break;
-                const kids = [...row.children].filter((k) => k.nodeType === 1);
-                if (kids.length >= 2 && kids.some((k) => k !== c && !k.contains(list))) col = c; // mantém o mais externo
+            for (let n = list.parentElement; n && n.tagName !== "MAIN" && n !== document.body; n = n.parentElement) {
+                if (/max-width\s*:\s*630px/.test(n.getAttribute("style") || "")) { col = n; break; }
             }
+            if (!col || !col.parentElement) return null;
+            rails = [...col.parentElement.children].filter((k) => k.nodeType === 1 && k !== col && !k.contains(list));
         }
-        if (!col || !col.parentElement) return null;
-        const rails = [...col.parentElement.children].filter((k) => k.nodeType === 1 && k !== col && !k.contains(list));
         return { col, rails };
     }
 
     // caixa de largura do nav esquerdo: ancestral (com width px + transition) dos
     // links de nav (explore/reels). É o que o IG anima no hover. Uso a.pathname
     // (não o href cru) p/ casar tanto href relativo quanto absoluto.
+    // Cache POR ROTA (zerado em onRoute) e revalidado por isConnected: antes era 1 querySelectorAll de
+    // links + subida de ancestrais a cada scan.
+    let navBoxCache = null;
     function leftNavWidthBox() {
+        if (navBoxCache && navBoxCache.isConnected) return navBoxCache;
+        navBoxCache = null;
         let a = null;
         for (const x of document.querySelectorAll('a[href*="explore"], a[href*="reels"]')) {
             const p = x.pathname || "";
@@ -1310,8 +1329,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         let n = a.parentElement, best = null;
         for (let d = 0; d < 16 && n && n.tagName !== "MAIN" && n !== document.body; d++, n = n.parentElement) {
             const st = n.getAttribute("style") || "";
-            if (/width\s*:\s*\d+px/i.test(st)) { best = n; if (/transition/i.test(st)) return n; }
+            if (/width\s*:\s*\d+px/i.test(st)) { best = n; if (/transition/i.test(st)) break; }
         }
+        navBoxCache = best;
         return best;
     }
 
@@ -1388,14 +1408,34 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (a.dataset.igfKey !== m[0]) a.dataset.igfKey = m[0];   // hint p/ nativeArticle (lá é VERIFICADO — React pode reciclar o nó com outro post)
         return m[0];
     }
+    // MOLDURA DA MÍDIA de um <article>: a maior <img>/<video> do post (o avatar é minúsculo) e, a partir
+    // dela, o ancestral mais alto que ainda tem o MESMO tamanho (a caixa só da mídia — o header e a barra de
+    // ações ficam fora, e somam altura). Antes ancorava no cap inline de 470px do IG; ele vira só o fallback
+    // quando nada tem caixa ainda (artigo recém-montado, sem layout). Roda 1× por post novo (harvest).
+    function mediaBoxOf(a) {
+        let best = null, area = 0;
+        for (const m of a.querySelectorAll("video, img")) {
+            const r = m.getBoundingClientRect(), ar = r.width * r.height;
+            if (ar > area) { area = ar; best = m; }
+        }
+        if (!best || area < 120 * 120) return a.querySelector('[style*="470px"]');
+        const br = best.getBoundingClientRect();
+        let box = best.parentElement || best;
+        for (let n = box.parentElement; n && n !== a; n = n.parentElement) {
+            const r = n.getBoundingClientRect();
+            if (Math.abs(r.width - br.width) > 2 || Math.abs(r.height - br.height) > 2) break;
+            box = n;
+        }
+        return box;
+    }
     // lê um post de um <article> do IG. true se um NOVO post entrou.
     function harvestPost(a) {
         const key = postKey(a);
         if (!key || posts.has(key)) return false;
-        const box = a.querySelector('[style*="470px"]');
+        const box = mediaBoxOf(a);
         if (!box) return false;
         const video = box.querySelector("video");
-        // o carrier de 470px só contém a MÍDIA (o avatar fica no header, fora dele) → 1ª img = a mídia/poster
+        // a moldura só contém a MÍDIA (o avatar fica no header, fora dela) → 1ª img = a mídia/poster
         const mainImg = box.querySelector("img");
         // `currentSrc` (a variante que o browser REALMENTE baixou) antes do atributo `src` — com
         // srcset os dois costumam ser variantes diferentes, e pedir a errada duplica o download.
@@ -2757,14 +2797,15 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
 
     let chromeApplied = false;   // alguma classe .igm-* viva no DOM → o unmasonry tem o que limpar
+    let pinnedNav = null;        // a caixa do nav que pinamos (referência direta, sem varrer o documento)
     function applyNavPin() {
         if (!prefs.masonry || !prefs.pinNav) {   // flag off → garante que nenhum nav fica pinado
-            for (const e of document.querySelectorAll(".igm-navpin")) e.classList.remove("igm-navpin");
+            if (pinnedNav) { pinnedNav.classList.remove("igm-navpin"); pinnedNav = null; }
             return;
         }
-        if (document.querySelector(".igm-navpin")) return;
+        if (pinnedNav && pinnedNav.isConnected && pinnedNav.classList.contains("igm-navpin")) return;
         const box = leftNavWidthBox();
-        if (box) { box.classList.add("igm-navpin"); chromeApplied = true; }
+        if (box) { box.classList.add("igm-navpin"); pinnedNav = box; chromeApplied = true; }
     }
     function applyFeed() {
         const list = feedArticleList();
@@ -2774,19 +2815,19 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // scaffolding: da lista até o col tudo full-width (.igm-wide, tira o cap de 630), MENOS o
         // wrapper-comum (.igm-content, capado) → stories + meu feed centram juntos = alinhados.
         const cwrap = contentWrapper(split.col, list);
-        chromeApplied = true;
+        chromeApplied = true; mountedChrome = cwrap;
         for (let n = list.parentElement, i = 0; n && n.tagName !== "MAIN" && i < 16; n = n.parentElement, i++) {
             n.classList.add(n === cwrap ? "igm-content" : "igm-wide");
             if (n === split.col) break;
         }
         // offset só se o feed começa SOB o nav (overlay); senão dobraria o respiro
-        const navBox = document.querySelector(".igm-navpin") || leftNavWidthBox();
+        const navBox = (pinnedNav && pinnedNav.isConnected) ? pinnedNav : leftNavWidthBox();
         const navW = navBox ? (navBox.getBoundingClientRect().width || 72) : 0;
         syncNavWidth(navBox, navW);
         const colLeft = split.col.getBoundingClientRect().left;
         split.col.classList.toggle("igm-col", navW > 0 && colLeft < navW - 4);
         const tray = storiesTray(split.col);
-        if (tray) tray.classList.add("igm-stories");
+        if (tray) { tray.classList.add("igm-stories"); trayEl = tray; }
         for (const r of split.rails) r.classList.toggle("igm-norail", !!prefs.hideRail);   // flag: esconder coluna direita
         mountOwnFeed(list, cwrap);   // esconde a lista nativa + renderiza MEU feed em masonry
     }
@@ -2813,7 +2854,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     /* botão de COPIAR o username, colado no nome do perfil. Acha o nó FOLHA cujo texto é exatamente
      * o usuário da URL (o IG muda a tag conforme o layout/experimento, então não dá pra fixar h1/h2).
-     * Idempotente: o React re-renderiza o header o tempo todo e isto roda a cada scan. */
+     * Idempotente: o React re-renderiza o header; isto roda no trabalho de rota (ver needsRouteWork). */
     const ICO_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
     function profileUser() {
         const segs = location.pathname.split("/").filter(Boolean);
@@ -2823,7 +2864,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const user = profileUser();
         if (!user) return;
         const header = document.querySelector("main header");
-        if (!header || header.querySelector(".igp-copy")) return;
+        if (!header) return;
+        const had = header.querySelector(".igp-copy");
+        if (had) { copyBtn = had; return; }
         let nameEl = null;
         for (const n of header.querySelectorAll("h1, h2, span, a, div")) {
             if (!n.children.length && (n.textContent || "").trim() === user) { nameEl = n; break; }
@@ -2853,6 +2896,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         }
         if (box && hop < 3) child.insertAdjacentElement("afterend", btn);
         else nameEl.insertAdjacentElement("afterend", btn);
+        copyBtn = btn;
     }
     function applyGrid() {
         const grid = gridContainer();
@@ -2871,6 +2915,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (let n = grid; n && n !== col; n = n.parentElement) n.classList.add("igm-wide");   // tira os caps internos do IG
         // a COLUNA inteira (header + grid) ganha a MESMA largura/centragem do feed da home (--igm-maxw)
         col.classList.add("igm-content", "igm-gridcol");
+        mountedChrome = col;
         if (underNav) col.classList.add("igm-gridnav");   // main nasce sob o nav fixo → desloca p/ centrar em (viewport − nav), igual home
         mountOwnFeed(grid, cwrap);   // grid vira .igf-src (off-screen, vivo) + renderiza nosso mosaico
     }
@@ -2894,11 +2939,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (const s of feedEl.querySelectorAll(".igf-skel")) s.remove();
     }
     function syncMasonry() {
-        applyTheme();    // mantém html.igf-dark em dia com o tema atual do IG (claro/escuro)
         const surf = targetSurface();
         if (surf !== mountedSurface) { unmasonry(); lastHarvestSig = ""; mountedSurface = surf; }   // trocou de superfície → limpa tudo (sig inclusive)
-        applyNavPin();   // gating próprio (masonry && pinNav) — só home
-        if (isProfile() || isSaved()) enhanceProfileHeader();   // copiar @ vale mesmo com o grid do perfil off
+        applyNavPin();   // gating próprio (masonry && pinNav)
         if (surf === "home") { surface = "home"; applyFeed(); }
         else if (surf === "explore" || surf === "profile" || surf === "saved") { surface = surf; applyGrid(); }
         else unmasonry();
@@ -2908,7 +2951,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // sem nada aplicado, não há o que limpar — sem este flag os 5 querySelectorAll full-doc rodavam
         // a CADA burst de mutação em reels/stories (as superfícies mais churnentas do IG), sempre vazios
         if (!chromeApplied) return;
-        chromeApplied = false;
+        chromeApplied = false; mountedChrome = null; trayEl = null;
         teardownOwnFeed();   // tira o off-screen da lista nativa + remove meu feed
         for (const e of document.querySelectorAll(".igm-wide")) e.classList.remove("igm-wide");
         for (const e of document.querySelectorAll(".igm-content")) e.classList.remove("igm-content");
@@ -2920,50 +2963,146 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
 
     /* ------------------------------------------------------------------ *
-     * Scan + observação (debounced) + SPA. Sem polling permanente.
+     * ROTA + observação. Quem dispara trabalho de página inteira (montar a superfície, tema,
+     * header do perfil, dock) é a ROTA: o patch do history + popstate. O MutationObserver só faz
+     * trabalho barato:
+     *   • lê os addedNodes atrás de <video> novos (nada de querySelectorAll("video") no documento);
+     *   • se a superfície da rota ainda não montou, ou o React a desmontou, agenda a montagem — com
+     *     ela saudável, uma mutação custa alguns isConnected (needsRouteWork).
+     * Ele fica no <body>, não no <main>: o post aberto em modal e os stories renderizam em portais
+     * fora do <main>, e o player precisa achar esses <video> também. O feed próprio tem o observer
+     * dele, escopado na lista nativa (srcMO).
      * ------------------------------------------------------------------ */
-    let retryPending = false;
-    const retryCount = new WeakMap();   // tentativas de attach por <video> sem layout (cap anti-polling)
-    function scheduleRetry() {
-        if (retryPending) return;
-        retryPending = true;
-        setTimeout(() => { retryPending = false; scan(); }, 400);   // vídeo sem layout ainda
+    let mountedChrome = null;   // nó que ganhou .igm-content (home: cwrap; grid: coluna) — o React re-renderiza = some
+    let trayEl = null, copyBtn = null;
+    let routeTries = 0, extrasTries = 0, routeMounted = false;
+    const ROUTE_MAX = 80;       // montagens tentadas por rota antes de desistir (página sem a estrutura esperada)
+    const EXTRAS_MAX = 20;      // idem pros extras (pino do nav, tray de stories, copiar @) — podem nem existir
+    function coreHealthy() {
+        const surf = targetSurface();
+        if (surf !== mountedSurface) return false;
+        if (!surf) return true;
+        return !!(feedEl && feedEl.isConnected && igSrc && igSrc.isConnected &&
+            mountedChrome && mountedChrome.isConnected && mountedChrome.classList.contains("igm-content"));
     }
+    function needsRouteWork() {
+        // quebrou DEPOIS de montar (React re-renderizou) → sempre conserta; nunca montou → até ROUTE_MAX
+        if (!coreHealthy() && (routeMounted || routeTries < ROUTE_MAX)) return true;
+        if (extrasTries >= EXTRAS_MAX) return false;
+        if (prefs.masonry && prefs.pinNav && !(pinnedNav && pinnedNav.isConnected)) return true;
+        if (mountedSurface === "home" && !(trayEl && trayEl.isConnected)) return true;
+        if ((isProfile() || isSaved()) && !(copyBtn && copyBtn.isConnected)) return true;
+        return false;
+    }
+    function routeWork() {
+        if (routeQ) { clearTimeout(routeQ); routeQ = null; }
+        if (coreHealthy()) extrasTries++; else routeTries++;
+        applyTheme();
+        syncMasonry();                                          // monta/re-assegura a superfície + pino do nav
+        if (feedEl && feedEl.isConnected) routeMounted = true;
+        if (isProfile() || isSaved()) enhanceProfileHeader();   // copiar @ vale mesmo com o grid do perfil off
+        schedulePanel();                                        // FAB do painel, fora do primeiro paint
+    }
+    // throttle (não debounce): numa rajada contínua de mutações o debounce adiava a montagem indefinidamente
+    let routeQ = null;
+    function routeSoon() { if (routeQ) return; routeQ = setTimeout(() => { routeQ = null; routeWork(); }, 180); }
 
-    function scan() {
-        // poda mortos / reconstrói barras que o React removeu
+    /* ---- <video>: descoberta pelos addedNodes, attach em lote por frame ---- */
+    const pendingVideos = new Set();
+    let videoQ = false, prunePending = false;
+    function collectVideos(n) {
+        if (!n || n.nodeType !== 1) return;
+        if (n.tagName === "VIDEO") { pendingVideos.add(n); return; }
+        if (!n.firstElementChild) return;
+        const vs = n.getElementsByTagName("video");
+        for (let i = 0; i < vs.length; i++) pendingVideos.add(vs[i]);
+    }
+    function queueVideoWork() { if (videoQ) return; videoQ = true; raf(flushVideos); }
+    // vídeo ainda sem caixa (preload 0×0, comum em reels/stories): em vez de re-agendar scan, espera
+    // ele GANHAR tamanho (ResizeObserver) e só então anexa o player.
+    let sizeRO = null;
+    const sizeWatched = new Set();
+    function unwatchSize(v) { sizeWatched.delete(v); try { sizeRO && sizeRO.unobserve(v); } catch (_) { /**/ } }
+    function watchSize(v) {
+        if (typeof ResizeObserver === "undefined" || sizeWatched.has(v)) return;
+        if (!sizeRO) sizeRO = new ResizeObserver((ents) => {
+            for (const e of ents) {
+                const v = e.target;
+                if (!v.isConnected) { unwatchSize(v); continue; }
+                const r = e.contentRect;
+                if (r.width >= MIN_SIZE && r.height >= MIN_SIZE) { unwatchSize(v); pendingVideos.add(v); queueVideoWork(); }
+            }
+        });
+        sizeWatched.add(v);
+        sizeRO.observe(v);
+    }
+    // poda mortos / reconstrói barras que o React removeu (só quando houve remoção no DOM)
+    function pruneVideos() {
         for (const v of [...live]) {
             const c = controllers.get(v);
-            if (!v.isConnected) { c && c.destroy(); continue; }
-            if (c && c.bar && !c.bar.isConnected) { c.destroy(); }   // será re-attachado abaixo
+            if (!v.isConnected) { if (c) c.destroy(); continue; }
+            if (c && c.bar && !c.bar.isConnected) { c.destroy(); pendingVideos.add(v); }   // re-attach logo abaixo
         }
-        // Monta/oculta o fornecedor nativo antes de medir vídeos. No primeiro scan isso evita
-        // construir controles para dezenas de vídeos que serão imediatamente movidos para fora
-        // da tela pelo .igf-src; também deixa o skeleton ser o primeiro conteúdo pintado.
-        syncMasonry();
-        for (const v of document.querySelectorAll("video")) {
-            if (bound.has(v)) continue;
+        for (const v of [...sizeWatched]) if (!v.isConnected) unwatchSize(v);
+    }
+    function flushVideos() {
+        videoQ = false;
+        if (prunePending) { prunePending = false; pruneVideos(); }
+        if (!pendingVideos.size) return;
+        // a superfície da rota ainda não montou → monta ANTES: os vídeos da lista nativa vão pro
+        // .igf-src e não ganham um player que seria escondido no mesmo instante
+        const surf = targetSurface();
+        if (surf && surf !== mountedSurface) routeWork();
+        const batch = [...pendingVideos];
+        pendingVideos.clear();
+        for (const v of batch) {
+            if (bound.has(v) || !v.isConnected) continue;
             const r = v.getBoundingClientRect();
-            if (r.width < MIN_SIZE || r.height < MIN_SIZE) {
-                // CAP por vídeo: preload 0x0 PERSISTENTE (comum em reels/stories) re-agendava o scan
-                // a cada 400ms p/ sempre — vira polling permanente. Se ele ganhar tamanho depois,
-                // a própria mutação do React dispara o scanSoon e o attach acontece por evento.
-                const n = (retryCount.get(v) || 0) + 1; retryCount.set(v, n);
-                if (n <= 5) scheduleRetry();
-                continue;
-            }
+            if (r.width < MIN_SIZE || r.height < MIN_SIZE) { watchSize(v); continue; }
             attach(v);
         }
-        schedulePanel();  // FAB do painel sobrevive aos re-renders do IG (SPA), fora do primeiro paint
-        if (prefs.hideMessages) tagMessagesDock();   // re-marca o dock de mensagens (React re-renderiza)
     }
-    const scanSoon = debounce(scan, 180);
 
-    const mo = new MutationObserver(scanSoon);
-    mo.observe(document.documentElement, { childList: true, subtree: true });
+    function onMutations(recs) {
+        for (const r of recs) {
+            const add = r.addedNodes;
+            for (let i = 0; i < add.length; i++) collectVideos(add[i]);
+            if (r.removedNodes.length && live.size) prunePending = true;
+        }
+        if (pendingVideos.size || prunePending) queueVideoWork();
+        if (needsRouteWork()) routeSoon();
+        if (!document.getElementById("igs-fab")) schedulePanel();          // o FAB sobrevive a re-render do IG
+        if (prefs.hideMessages && dockEl && !dockEl.isConnected) { dockEl = null; scheduleDockTag(); }
+    }
+    const mo = new MutationObserver(onMutations);
+    function startObserving() {
+        if (!document.body) return false;
+        mo.observe(document.body, { childList: true, subtree: true });
+        collectVideos(document.body); queueVideoWork();
+        return true;
+    }
+    if (!startObserving()) {   // document-start: ainda sem <body> → espera ele nascer (só filhos diretos do <html>)
+        const bodyMO = new MutationObserver(() => { if (startObserving()) { bodyMO.disconnect(); routeSoon(); } });
+        bodyMO.observe(document.documentElement, { childList: true });
+    }
 
-    // SPA: patch no history + popstate → re-scan (IG troca de tela sem reload)
-    function onNav() { scanSoon(); setTimeout(scan, 450); }
+    // tema: o IG troca de claro/escuro por classe no <html> (e o SO pelo media query) — não por scan
+    let themeQ = false;
+    function applyThemeSoon() { if (themeQ) return; themeQ = true; raf(() => { themeQ = false; applyTheme(); }); }
+    new MutationObserver(applyThemeSoon).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyThemeSoon); } catch (_) { /**/ }
+
+    // SPA: patch no history + popstate → trabalho de rota (IG troca de tela sem reload)
+    let lastPath = location.pathname;
+    function onNav() {
+        if (location.pathname !== lastPath) {
+            lastPath = location.pathname;
+            navBoxCache = null; routeTries = 0; extrasTries = 0; routeMounted = false;   // caches e limites são POR ROTA
+            scheduleDockTag();
+        }
+        routeSoon();
+        setTimeout(() => { if (needsRouteWork()) routeWork(); }, 450);   // o IG costuma renderizar a tela nova logo depois do push
+    }
     for (const m of ["pushState", "replaceState"]) {
         const orig = history[m];
         history[m] = function () { const r = orig.apply(this, arguments); onNav(); return r; };
@@ -2983,15 +3122,24 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         de.classList.toggle("igf-totop-on", !!prefs.backToTop);    // habilita o botão voltar-ao-topo
         de.style.setProperty("--igm-maxw", (prefs.feedWidth || 1320) + "px");
         GAP = prefs.density === "compact" ? 14 : 24;   // densidade → gap entre cards (layout em JS)
-        if (prefs.hideMessages) tagMessagesDock();     // marca o dock p/ o CSS escondê-lo
+        scheduleDockTag();                             // marca o dock p/ o CSS escondê-lo (tentativas limitadas)
         syncMasonry();          // monta/atualiza o feed (mountOwnFeed aplica as classes no 1º paint)
         applyFeedClasses();     // garante sombra/densidade/legenda/contadores com o feed já montado
         relayoutFeed();         // densidade/legenda mudam as faixas → recalcula colunas + a dica de altura
     }
     // marca o DOCK DE MENSAGENS (balão flutuante) p/ o CSS escondê-lo. Acha por link /direct/ ou ícone/texto
     // perto do rodapé-direito e sobe até o ancestral FIXO (o container do dock).
+    // Roda por ROTA (e quando a flag liga), com poucas tentativas espaçadas — antes rodava a cada scan
+    // enquanto não achasse, com querySelectorAll + getComputedStyle no documento inteiro.
+    let dockEl = null, dockTimers = [];
+    function scheduleDockTag() {
+        for (const t of dockTimers) clearTimeout(t);
+        dockTimers = [];
+        if (!prefs.hideMessages || (dockEl && dockEl.isConnected)) return;
+        for (const ms of [0, 700, 2000, 4500]) dockTimers.push(setTimeout(() => { if (prefs.hideMessages) tagMessagesDock(); }, ms));
+    }
     function tagMessagesDock() {
-        if (document.querySelector(".igf-msgdock")) return;   // já marcado (ainda vivo)
+        if (dockEl && dockEl.isConnected) return;             // já marcado (ainda vivo)
         const vw = window.innerWidth || 1200, vh = window.innerHeight || 800;
         const nearDock = (r) => r.width && r.bottom > vh - 280 && r.right > vw - 760;
         let hit = null;
@@ -3004,7 +3152,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         }
         if (!hit) return;
         for (let n = hit, i = 0; n && n !== document.body && i < 9; n = n.parentElement, i++) {
-            if (getComputedStyle(n).position === "fixed") { n.classList.add("igf-msgdock"); return; }
+            if (getComputedStyle(n).position === "fixed") { n.classList.add("igf-msgdock"); dockEl = n; for (const t of dockTimers) clearTimeout(t); dockTimers = []; return; }
         }
     }
     let totopBound = false;
@@ -3176,7 +3324,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (initialWorkTask !== null) return;
         const run = () => {
             initialWorkTask = null;
-            scan();
+            routeWork();
         };
         // O mosaico e o skeleton precisam nascer antes da primeira oportunidade de paint do IG.
         // Trabalho secundário (painel, JSON inline) continua nos agendadores próprios.
@@ -3191,6 +3339,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     document.documentElement.classList.toggle("igf-totop-on", !!prefs.backToTop);
     applyTheme();   // html.igf-dark já no 1º paint (paleta correta dos cards)
     scheduleInitialWork();
-    window.addEventListener("DOMContentLoaded", scheduleInitialWork);
-    window.addEventListener("load", () => { scheduleInitialWork(); setTimeout(scan, 1200); });
+    scheduleDockTag();
+    window.addEventListener("DOMContentLoaded", () => { applyTheme(); scheduleInitialWork(); });
+    window.addEventListener("load", () => { applyTheme(); scheduleInitialWork(); setTimeout(() => { if (needsRouteWork()) routeWork(); }, 1200); });
 })();
