@@ -2,7 +2,7 @@
 // @name         Instagram — Native Video Controls & Mosaic Feed
 // @namespace    instagram-native-player
 // @version      3.25.0
-// @description  Camada aditiva sobre a interface do Instagram. (1) Player de vídeo integrado (feed, reels, explore, stories): progresso scrubável, play/pause, mudo+volume, velocidade, PiP, fullscreen e atalhos — SEMPRE ligado. (2) Feed da home em MASONRY com DOM próprio (OPCIONAL, off por padrão): lê os posts da lista nativa (harvest) e renderiza cards nossos em multicolunas estáveis (altura reservada por aspect-ratio), stories alinhadas, right rail escondida e nav esquerdo fixo. v3.0: TODAS as funcionalidades (menos o player) viram FLAGS num painel de ajustes flutuante (mesmo modelo do reddit/twitter: FAB de engrenagem no canto inferior-direito → painel com toggles/sliders agrupados). v3.1+: polish visual do mosaico — paleta própria (PRETO premium no escuro com texto mais legível; claro no light, detectado por luminância do fundo), cards com hover (eleva + zoom da mídia), tray de stories emoldurada, skeleton neutro. Colunas (Auto/2/3/4), densidade, sombra/legenda/contadores são FLAGS no painel. Galeria navega por scroll horizontal do mouse/trackpad. Em STORIES o player vira só a barra de progresso (scrub) — o post original fica intacto (nada de subir o reply). v3.5: o MESMO mosaico (proporção real) também no /explore/ e nos perfis (/usuario/) — tiles só-mídia, reels com preview no hover, clique abre em modal; flags Grid no Explore / Grid no perfil / Grid nos salvos (off por padrão; EXPLORE e SALVOS usam o MESMO card da home (header + barra de ação like/comentar/compartilhar/salvar + legenda), clicar abre modal; perfil segue como tile só-mídia. Salvos: o "salvar" vira REMOVER, + MULTISSELEÇÃO no header pra remover/mover vários pra coleção de uma vez. Ações do grid via API (like/save). v3.6: largura/colunas/densidade viram ajustes de CONTEÚDO que valem pra home, explore E perfil (a coluna toda do perfil acompanha a largura); thumbnails dos tiles usam a versão pequena da API (carregam bem mais rápido). v3.12: o mosaico vira GRADE UNIFORME — todos os itens com a MESMA altura (mídia em 4:5, faixas de altura fixa), em CSS Grid. O motor de masonry em JS (posicionamento absoluto, medição por card, congelamento de coluna, re-empacotamento a cada imagem que carregava) foi REMOVIDO: o layout não tem mais custo proporcional ao tamanho da sessão. Carregamento reescrito junto: content-visibility pula layout/paint/decode do que está fora da tela, srcset+sizes baixam a variante do tamanho da coluna em vez da imagem cheia, render em lote por DocumentFragment, e o carregar-mais ficou menos agressivo (3 páginas por disparo, lookahead de ~2 telas). v3.13: proporção 4:6 (mais vertical) e o MESMO card completo — header com avatar/nome, barra de ação (curtir, comentar, repostar, copiar link, salvar) e legenda — em TODAS as superfícies; o perfil deixou de ser tile só-mídia. Legenda maior e mais legível: UMA linha, com "mais" no fim dela que abre a descrição INTEIRA por cima da mídia (sem mudar a altura do card, então a grade não se mexe); na home ela agora vem também da API quando o <h1> do post não renderiza. v3.14: hover-to-play reescrito — debounce na entrada (atravessar a grade não dispara nada), o vídeo SOBREVIVE ao fim do hover (volta instantâneo, sem re-download) sob um LRU curto, só aparece quando tem frame (fim do piscar preto) e o hover vale o card inteiro; clicar em comentar SEMPRE abre a overlay (espera o post renderizar em vez de desistir e redirecionar); e o skeleton de carregamento saiu do overlay em tela cheia para dentro da própria grade. v3.15: @menções e #hashtags da legenda viram links (cor de link do IG); COMPORTAMENTO ÚNICO em todas as páginas — clicar no item abre a modal, seja foto, vídeo ou galeria, na home, no explore, no perfil e nos salvos (o clique no vídeo não muta mais); e o player ganhou botão de SOM fixo no canto (34px, sempre visível, em vez do mute escondido na fileira do hover) com a barra de progresso nas cores do Instagram no lugar do azul. v3.16: SEGUIR, CURTIR e SALVAR passam a ir pela API (o pk do autor sai do post, da API ou do perfil) em vez de depender do botão nativo dentro do <article> virtualizado — na home o seguir não fazia nada e o curtir chegava a NAVEGAR pro post; agora há fallback no botão nativo e aviso quando nada funciona, nunca silêncio. Header do perfil ocupa a largura toda do conteúdo (era um bloco estreito com um vazio ao lado) e ganhou botão de COPIAR o @ ao lado do nome. v3.17: o alargamento do header de perfil da v3.16 foi REVERTIDO (mexer em flex/min-width dos filhos colapsava o texto para uma letra por linha) — ele volta a crescer só por zoom, e o botão de copiar o @ continua. TRÁFEGO: cada foto era baixada DUAS vezes — o <img> nativo off-screen pedia uma variante do srcset e o nosso card pedia outra; agora copiamos srcset+sizes do nativo (mesma escolha = cache hit) e o avatar deixou de cair na própria mídia do post quando o alt não é reconhecível. Medido em bancada: 24 requisições de imagem para 12 posts caíram para 12. Vídeo da lista nativa é pausado no evento `play` (não mais até 1s depois, já bufferizando), a janela off-screen caiu de 150vh para 90vh, o carregar-mais puxa 2 páginas por disparo em vez de 3, e o scroll só sincroniza a lista nativa quando algum vídeo visível depende dela. v3.18 (SALVOS): a barra de seleção GRUDA no topo enquanto está ligada (numa limpeza longa não é mais preciso voltar ao topo pra clicar em Remover), ganhou botão 'Todos', barra de PROGRESSO com contador durante a remoção em lote e um 'Parar' pra abortar no meio. O item removido dos salvos NÃO some mais da página: escurece e ganha o selo 'removido', saindo de vez só no próximo carregamento — assim a grade não reflui embaixo do cursor e não se perde a posição no meio da limpeza; o que falhar fica marcado em vermelho. v3.20: proporção passa a 9:16 (a mais alta que o IG produz, de reels/stories) — um reel cabe inteiro, sem corte. Conteúdo mais LARGO que a caixa não é ampliado pra preencher: entra inteiro (contain) com o fundo preenchido por uma cópia borrada da própria mídia, em vez de mostrar só uma faixa ampliada do meio. E o conteúdo ganhou respiro lateral em qualquer largura de janela (antes, com a janela estreita, os cards encostavam no nav de um lado e na borda do outro). O teto de altura por viewport da v3.19 foi revertido. Prefs em localStorage.
+// @description  Additive layer over Instagram: an integrated video player on every surface, plus an optional uniform card grid for the home feed, explore, profiles and saved posts, all configured from a floating settings panel.
 // @author       oguilhermelima
 // @match        https://www.instagram.com/*
 // @run-at       document-start
@@ -45,28 +45,28 @@
     // do painel). `dep` esmaece o item quando a flag-pai está off; `hint` vira a linha de descrição.
     const GROUPS = [
         { title: "Feed (home)", items: [
-            { key: "masonry",   label: "Feed em mosaico",        hint: "Troca o feed da home por cards em multicolunas (masonry). Off = feed nativo do IG.", def: false },
-            { key: "hideRail",  label: "Esconder coluna direita", hint: "Remove a barra lateral direita (perfil/sugestões/rodapé) no feed em mosaico.", def: true, dep: "masonry" },
-            { key: "pinNav",    label: "Fixar menu lateral",      hint: "Trava a largura do menu esquerdo (sem expandir no hover).", def: true, dep: "masonry" },
-            { key: "showCaption", label: "Mostrar legenda",       hint: "Exibe a legenda (até 2 linhas) abaixo de cada card. (só home)", def: true, dep: "masonry" },
-            { key: "showCounts",  label: "Mostrar contadores",    hint: "Exibe curtidas/comentários/reposts na barra de ações. (só home)", def: true, dep: "masonry" },
+            { key: "masonry",   label: "Feed em mosaico",        hint: "Troca o feed da home por uma grade de cards do mesmo tamanho (9:16), em colunas. Off = feed nativo do IG.", def: false },
+            { key: "hideRail",  label: "Esconder coluna direita", hint: "Remove a coluna lateral direita (perfil, sugestões, rodapé) enquanto o mosaico da home está ligado.", def: true, dep: "masonry" },
+            { key: "pinNav",    label: "Fixar menu lateral",      hint: "Trava a largura do menu esquerdo (sem expandir no hover) enquanto o mosaico da home está ligado.", def: true, dep: "masonry" },
         ] },
         { title: "Grid (Explore / Perfil / Salvos)", items: [
-            { key: "gridExplore", label: "Grid no Explore", hint: "Troca a grade quadrada do /explore/ por um mosaico em proporção REAL (tiles só-mídia, clicar abre em modal).", def: false },
-            { key: "gridProfile", label: "Grid no perfil",  hint: "Mesmo mosaico na grade de posts dos perfis (/usuario/). Off = grade quadrada nativa.", def: false },
-            { key: "gridSaved",   label: "Grid nos salvos", hint: "Mosaico na página de Salvos (/usuario/saved/), com barra de ação em cada tile pra REMOVER dos salvos direto. Também liga junto com 'Grid no perfil'.", def: false },
+            { key: "gridExplore", label: "Grid no Explore", hint: "Troca a grade quadrada do /explore/ pelos mesmos cards da home (autor, ações e legenda). Off = grade nativa.", def: false },
+            { key: "gridProfile", label: "Grid no perfil",  hint: "Os mesmos cards na grade de posts dos perfis (/usuario/). Off = grade quadrada nativa.", def: false },
+            { key: "gridSaved",   label: "Grid nos salvos", hint: "Os mesmos cards nos Salvos, com remover direto no card e seleção múltipla pra remover ou mover pra uma coleção. Liga junto com 'Grid no perfil'.", def: false },
         ] },
-        { title: "Mosaico — largura · colunas · densidade", items: [   // valem p/ TODAS as superfícies (home + explore + perfil)
-            { key: "feedWidth", label: "Largura do conteúdo",     hint: "Largura máxima do bloco de conteúdo — vale pra home, explore E perfil.", type: "slider", min: 960, max: 1840, def: 1320, unit: "px", step: 20 },
-            { key: "cols",      label: "Colunas",                 hint: "Nº de colunas do mosaico (Auto se adapta à largura). 3 é o recomendado; 4 carrega muito mais mídia por tela e pode causar lentidão.", type: "select", def: "auto",
+        { title: "Cards — largura · colunas · densidade", items: [   // valem p/ TODAS as superfícies (home + explore + perfil + salvos)
+            { key: "feedWidth", label: "Largura do conteúdo",     hint: "Largura máxima do bloco de conteúdo — vale pra home, explore, perfil e salvos.", type: "slider", min: 960, max: 1840, def: 1320, unit: "px", step: 20 },
+            { key: "cols",      label: "Colunas",                 hint: "Nº de colunas da grade (Auto se adapta à largura). 3 é o recomendado; 4 carrega muito mais mídia por tela e pode causar lentidão.", type: "select", def: "auto",
               options: [{ value: "auto", label: "Auto" }, { value: "2", label: "2" }, { value: "3", label: "3 (Recomendado)" }, { value: "4", label: "4 (pode travar)" }] },
             { key: "density",   label: "Densidade",               hint: "Compacto = colunas mais estreitas, menos respiro, mais itens na tela.", type: "select", def: "comfortable",
               options: [{ value: "comfortable", label: "Confortável" }, { value: "compact", label: "Compacto" }] },
-            { key: "cardShadow",  label: "Sombra nos cards",      hint: "Eleva os cards/tiles com sombra (resting + realce no hover). Off = só borda.", def: true },
+            { key: "cardShadow",  label: "Sombra nos cards",      hint: "Eleva os cards com sombra (em repouso e no hover). Off = só borda.", def: true },
+            { key: "showCaption", label: "Mostrar legenda",       hint: "Uma linha de legenda em cada card; \"mais\" abre o texto inteiro por cima da mídia.", def: true },
+            { key: "showCounts",  label: "Mostrar contadores",    hint: "Exibe o nº de curtidas e comentários na barra de ações dos cards.", def: true },
         ] },
         { title: "Vídeo", items: [
             { key: "autoUnmute", label: "Auto-desmutar vídeos", hint: "Tira o mudo dos vídeos novos automaticamente (o player respeita seu mute manual).", def: false },
-            { key: "stories",    label: "Player nos stories",   hint: "Mostra a barra do player (no hover) também em /stories/.", def: true },
+            { key: "stories",    label: "Player nos stories",   hint: "Mostra a barra de progresso do player (arrastar pra avançar/voltar) também em /stories/.", def: true },
             { key: "keyboard",   label: "Atalhos de teclado",   hint: "Espaço/K play, J/L e setas seek, M mudo, F tela cheia, ,/. frame, [ ] velocidade…", def: true },
         ] },
         { title: "Interface", items: [
@@ -596,7 +596,7 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
   z-index:2; padding-bottom:26px; background:var(--igf-card-bg);
   border-top:1px solid var(--igf-line); box-shadow:0 -10px 24px var(--igf-shade); }
 .igf-card.igf-capopen .igf-capmore{ background:var(--igf-card-bg); padding-left:12px; border-radius:8px 0 0 0; }
-/* barra de ações única abaixo da mídia (like/comment/share … save) */
+/* barra de ações única abaixo da mídia (like/comment/copiar link … save). Repost saiu: o web não reposta, só abria o post. */
 .igf-actions{ display:flex; align-items:center; gap:2px; padding:0 7px; height:var(--igf-acth); box-sizing:border-box; }
 .igf-act{ display:inline-flex; align-items:center; gap:5px; background:none; border:0; cursor:pointer; padding:6px 7px; border-radius:8px;
   color:var(--igf-text); font-size:13px; font-weight:600; line-height:1; }
@@ -1344,7 +1344,6 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     const ICO = {
         like: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1 7.8 7.8 7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>',
         comment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.8-.8L3 20.5l1.4-4.1A8.4 8.4 0 0 1 3.5 11.5a8.5 8.5 0 0 1 17 0z"/></svg>',
-        repost: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
         share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>',
         save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>',
         open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>',
@@ -1417,14 +1416,14 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (!avatar) for (const im of a.querySelectorAll("img")) { if (!box.contains(im)) { avatar = im; break; } }
         const capEl = a.querySelector("h1");
         const link = a.querySelector('a[href*="/p/"], a[href*="/reel/"]');
-        // contadores (na área de ações, DEPOIS da mídia, em ordem: like, comment, repost)
+        // contadores (na área de ações, DEPOIS da mídia, em ordem: like, comment)
         const nums = [];
         let afterMedia = false;
         for (const e of a.querySelectorAll("span, a, div")) {
             if (e === box || box.contains(e)) { afterMedia = true; continue; }
             if (!afterMedia || e.children.length) continue;
             const t = (e.textContent || "").trim();
-            if (/^\d[\d.,]*\s?[KMmilB]*$/.test(t) && t.length < 10 && !nums.includes(t)) { nums.push(t); if (nums.length >= 3) break; }
+            if (/^\d[\d.,]*\s?[KMmilB]*$/.test(t) && t.length < 10 && !nums.includes(t)) { nums.push(t); if (nums.length >= 2) break; }
         }
         // follow: existe um botão "Follow"/"Seguir" no post? (= ainda não sigo)
         let canFollow = false;
@@ -1434,14 +1433,14 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // LEGENDA: o <h1> do post nem sempre existe no momento do harvest (o IG renderiza a legenda tarde,
         // e no <article> virtualizado às vezes nem chega) — daí a descrição sumir na home. Caio na API
         // (igMedia, alimentada por feed/timeline), e se ela ainda não respondeu o updateCardsMeta completa
-        // depois. Limite alto: o texto inteiro é o que o "mais" expande; só as 2 primeiras linhas ficam à mostra.
+        // depois. Limite alto: o texto inteiro é o que o "mais" expande; só a 1ª linha fica à mostra.
         const code = codeOf(key);
         const capText = (capEl && (capEl.textContent || "").trim()) || (igMedia.get(code) || {}).caption || "";
         posts.set(key, {
             key, code, href: (link.pathname || link.getAttribute("href") || ""), author,
             avatar: avatar ? avatar.src : "", media, srcset, sizes, isVideo: !!video,
             caption: capText.slice(0, 1500),
-            likes: nums[0] || "", comments: nums[1] || "", reposts: nums[2] || "", follow: canFollow,
+            likes: nums[0] || "", comments: nums[1] || "", follow: canFollow,
         });
         order.push(key);
         return true;
@@ -1454,7 +1453,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (a.dataset.igfKey !== m[0]) a.dataset.igfKey = m[0];
         return m[0];
     }
-    // lê um TILE (explore/profile) → post só-mídia. Proporção REAL: API (igMedia w/h) → senão naturalW/H
+    // lê um TILE (explore/perfil/salvos) → post; autor/legenda vêm da API (igMedia), a mídia do thumb
     // do thumbnail (o IG serve a imagem em aspecto real e só CORTA por CSS p/ quadrado) → senão 1:1.
     function harvestTile(a) {
         const key = tileKey(a);
@@ -1484,7 +1483,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         posts.set(key, {
             key, code, href: (a.getAttribute("href") || a.href || ""), media, isVideo, tile: true,
             // dados p/ o CARD COMPLETO (explore/perfil/salvos): vêm da API (igMedia), não do DOM do tile
-            author: rec.author || "", avatar: rec.avatar || "", caption: rec.caption || "", likes: rec.likes || "", comments: rec.comments || "", reposts: "",
+            author: rec.author || "", avatar: rec.avatar || "", caption: rec.caption || "", likes: rec.likes || "", comments: rec.comments || "",
             authorPk: rec.authorPk || "", following: rec.following, follow: rec.following !== true,   // mostra "Seguir" a menos que JÁ siga
         });
         order.push(key);
@@ -2308,7 +2307,6 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         };
         actions.appendChild(act(ICO.like, p.likes, (e) => likeItem(p, card, e.currentTarget), "igf-like"));
         actions.appendChild(act(ICO.comment, p.comments, () => openItem(p, card)));   // → modal (comentários)
-        actions.appendChild(act(ICO.repost, p.reposts, () => openItem(p, card)));
         const sh = act(ICO.link, "", (e) => copyLink(p, e.currentTarget), "igf-share"); sh.title = "Copiar link";
         actions.appendChild(sh);                              // share → COPIAR link limpo (sem tracking)
         actions.appendChild(el("div", { class: "igf-act-sp" }));
@@ -2327,7 +2325,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     /* LEGENDA — sempre presente (vazia inclusive): a faixa tem altura fixa e é ela que garante que um card
      * sem legenda meça exatamente o mesmo que um com legenda (o texto pode chegar depois, via API).
-     * Mostra 2 linhas; se sobrar texto, "mais" ABRE a legenda inteira POR CIMA da mídia (o card não muda
+     * Mostra 1 linha; se sobrar texto, "mais" ABRE a legenda inteira POR CIMA da mídia (o card não muda
      * de altura → a grade fica parada). "Tem mais texto?" é medido no 1º hover do card: aí ele está
      * visível (com content-visibility, card fora da tela não tem layout pra medir) e é 1 leitura só. */
     /* @menções e #hashtags viram LINKS de verdade (cor de link do IG). O clique navega normalmente
@@ -3019,11 +3017,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         }, { passive: true });
     }
     const TOTOP_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l-8 8h5v8h6v-8h5z"/></svg>';
-    // Ícones do rail de categorias — ordem = ordem de GROUPS (Feed, Grid, Mosaico, Vídeo, Interface).
+    // Ícones do rail de categorias — ordem = ordem de GROUPS (Feed, Grid, Cards, Vídeo, Interface).
     const PANEL_ICONS = [
         "M12 3l9 8h-3v9h-4v-6H10v6H6v-9H3l9-8z",                                                              // Feed (home)
         "M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z",                                         // Grid
-        "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5zm2 0v14h6V5H5zm8 0v14h6V5h-6z",  // Mosaico (colunas)
+        "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5zm2 0v14h6V5H5zm8 0v14h6V5h-6z",  // Cards (colunas)
         "M8 5v14l11-7z",                                                                                       // Vídeo (play)
         "M3 17h6v-2H3v2zm0-5h10v-2H3v2zm0-7v2h14V5H3zm18 12v-2h-6v2h6zm0-5v-2H11v2h10zm-6-7v2h6V5h-6z",         // Interface (tune)
     ];
@@ -3111,7 +3109,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         });
 
         function showTab(i) {
-            active = i; panel.classList.remove("searching"); empty.style.display = "none";
+            active = i; empty.style.display = "none";
             sections.forEach((sec, idx) => {
                 sec.style.display = idx === i ? "block" : "none";
                 sec.querySelectorAll("[data-label]").forEach((r) => (r.style.display = ""));
@@ -3140,15 +3138,30 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         panel.append(el("div", { class: "igs-foot" },
             el("button", { class: "igs-reset", type: "button", onClick: () => {
                 prefs = Object.assign({}, DEFAULTS); savePrefs(); panel.remove(); fab.remove(); toTop.remove(); buildPanel(); applySettings();
+                const np = document.getElementById("igs-panel"); if (np) np.classList.add("open");   // segue aberto, já com os padrões
             } }, "Restaurar padrões"),
             el("small", {}, "Salvo automaticamente")));
 
         fab.addEventListener("click", () => { panel.classList.toggle("open"); refreshDimming(); });
-        document.addEventListener("click", (e) => { if (!panel.contains(e.target) && e.target !== fab && !fab.contains(e.target)) panel.classList.remove("open"); });
+        bindPanelOutsideClick();
         (document.body || document.documentElement).append(fab, panel, toTop);
         bindBackToTop();
         showTab(0);
         refreshDimming();
+    }
+    // clique fora fecha o painel. UM listener por página: o "Restaurar padrões" reconstrói o painel e,
+    // com o listener dentro do buildPanel, cada reset deixava mais um preso ao document (como no twitter).
+    // Acha painel/FAB pelo id na hora → vale para o painel atual, seja qual for.
+    let panelOutsideBound = false;
+    function bindPanelOutsideClick() {
+        if (panelOutsideBound) return;
+        panelOutsideBound = true;
+        document.addEventListener("click", (e) => {
+            const panel = document.getElementById("igs-panel"), fab = document.getElementById("igs-fab");
+            if (!panel || !panel.classList.contains("open") || !e.target.isConnected) return;
+            if (panel.contains(e.target) || (fab && fab.contains(e.target))) return;
+            panel.classList.remove("open");
+        });
     }
     function ensurePanel() { if (!document.getElementById("igs-fab") && document.body) buildPanel(); }
     let panelTask = null;
