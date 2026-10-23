@@ -381,16 +381,15 @@ html.igf-dark{
   --igvc-grad:var(--igf-grad);
 }
 .igvc-bar.igvc-show .igvc-track{ height:9px; }
-.igvc-buffered{ position:absolute; left:0; top:0; bottom:0; width:0; background:rgba(255,255,255,.32); }
-/* progresso nas cores do INSTAGRAM. O gradiente é pintado no tamanho da TRILHA e recortado pela
-   largura da fill → as cores ficam ancoradas na barra em vez de esticarem conforme o vídeo avança. */
-.igvc-fill{ position:absolute; left:0; top:0; bottom:0; width:0; overflow:hidden; }
-.igvc-fill::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:420px; background:var(--igvc-grad); }
-/* com container queries o gradiente casa exatamente a largura da trilha (o 420px acima é o fallback) */
-@supports (width: 100cqw){
-  .igvc-track{ container-type:inline-size; }
-  .igvc-fill::before{ width:100cqw; }
-}
+/* PROGRESSO SÓ POR TRANSFORM (compositor): nada de width/left por timeupdate/pointermove.
+   .igvc-rail recorta; a fill tem a largura TODA da trilha e desliza (translateX(p−100%)), e o gradiente
+   dentro dela desliza de volta na mesma medida → as cores ficam ANCORADAS na trilha. O buffer escala
+   (scaleX) e o thumb anda num posicionador do tamanho da trilha (translateX(p)). */
+.igvc-rail{ position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+.igvc-buffered{ position:absolute; inset:0; background:rgba(255,255,255,.32); transform-origin:0 50%; transform:scaleX(0); }
+.igvc-fill{ position:absolute; inset:0; overflow:hidden; transform:translateX(-100%); }
+.igvc-grad{ position:absolute; inset:0; background:var(--igvc-grad); transform:translateX(100%); }
+.igvc-thumbpos{ position:absolute; inset:0; pointer-events:none; transform:translateX(0); }
 .igvc-thumb{
   position:absolute; top:50%; left:0; width:12px; height:12px; margin-left:-6px;
   border-radius:50%; background:#fff; box-shadow:0 0 0 2px #d62976, 0 1px 4px rgba(0,0,0,.5); pointer-events:none;
@@ -868,9 +867,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
 
         /* ---- DOM ---- */
         const buffered = el("div", { class: "igvc-buffered" });
-        const fill = el("div", { class: "igvc-fill" });
-        const thumb = el("div", { class: "igvc-thumb" });
-        const track = el("div", { class: "igvc-track", title: "" }, buffered, fill, thumb);
+        const grad = el("div", { class: "igvc-grad" });
+        const fill = el("div", { class: "igvc-fill" }, grad);
+        const thumbPos = el("div", { class: "igvc-thumbpos" }, el("div", { class: "igvc-thumb" }));
+        const track = el("div", { class: "igvc-track", title: "" }, el("div", { class: "igvc-rail" }, buffered, fill), thumbPos);
 
         const playBtn = el("button", { class: "igvc-btn", "aria-label": "Play/Pause", html: ICONS.play });
         const time = el("span", { class: "igvc-time" }, "0:00");
@@ -932,14 +932,12 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // LINK, com a imagem do post como ghost ("puxa a imagem de trás"). O dragstart
         // dispara no <a> (ancestral), não no controle — então marco o press na barra e
         // cancelo o dragstart no document (capture) enquanto durar.
-        let pressing = false;
-        on(bar, "pointerdown", (e) => { pressing = true; e.stopPropagation(); });
-        on(document, "pointerup", () => { pressing = false; });
-        on(document, "pointercancel", () => { pressing = false; });
-        on(document, "dragstart", (e) => { if (pressing) e.preventDefault(); }, { capture: true });
+        // (o press e o dragstart moram nos listeners COMPARTILHADOS do document — ver bindPlayerShared)
+        on(bar, "pointerdown", (e) => { playerShared.pressing = true; e.stopPropagation(); });
 
-        const controller = { video, host, bar, destroy };
+        const controller = { video, host, bar, destroy, closePops: () => closePops(), syncFs: () => syncFs(), endVolDrag: () => endVolDrag() };
         controllers.set(video, controller);
+        bindPlayerShared();
 
         // stories: se o card/rodapé ainda não montou, tenta de novo e RELOCA a barra
         // do host pro card (+ religa o hover no card).
@@ -968,29 +966,35 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         sig.addEventListener("abort", () => { clearTimeout(t1); clearTimeout(t2); });
 
         /* ---- progresso / tempo ---- */
-        let dragging = false;
+        let dragging = false, lastPc = -1;
+        function setProgress(f) {                 // só transform: o compositor anda a barra, sem layout
+            const pc = Math.round(clamp(f, 0, 1) * 1000) / 10;   // 0.1% de resolução → pula escrita idêntica
+            if (pc === lastPc) return;
+            lastPc = pc;
+            fill.style.transform = "translateX(" + (pc - 100) + "%)";
+            grad.style.transform = "translateX(" + (100 - pc) + "%)";
+            thumbPos.style.transform = "translateX(" + pc + "%)";
+        }
         function renderTime() {
             if (dragging) return;
             const d = video.duration;
-            if (!isFinite(d) || d <= 0) { fill.style.width = "0%"; thumb.style.left = "0%"; if (time.textContent) time.textContent = ""; return; }
-            const pc = clamp(video.currentTime / d, 0, 1) * 100;
-            fill.style.width = pc + "%";
-            thumb.style.left = pc + "%";
+            if (!isFinite(d) || d <= 0) { setProgress(0); if (time.textContent) time.textContent = ""; return; }
+            setProgress(video.currentTime / d);
             const tt = fmt(video.currentTime) + " / " + fmt(d);   // guard "mudou?" (mesmo padrão do setVolIcon): timeupdate é ~4Hz, o texto só muda 1×/s
             if (time.textContent !== tt) time.textContent = tt;
         }
         function renderBuffered() {
             try {
                 const b = video.buffered, d = video.duration;
-                if (b && b.length && isFinite(d) && d > 0) buffered.style.width = clamp(b.end(b.length - 1) / d, 0, 1) * 100 + "%";
+                if (b && b.length && isFinite(d) && d > 0) buffered.style.transform = "scaleX(" + clamp(b.end(b.length - 1) / d, 0, 1).toFixed(3) + ")";
             } catch { /**/ }
         }
-        let dragRect = null;   // rect do track cacheado no pointerdown (não muda no meio do drag) — getBoundingClientRect por pointermove forçava layout (os writes de fill/thumb sujam o layout entre moves)
+        let dragRect = null;   // rect do track cacheado no pointerdown (não muda no meio do drag) — sem getBoundingClientRect por pointermove
         const fracAt = (clientX) => { const r = dragRect || track.getBoundingClientRect(); return r.width ? clamp((clientX - r.left) / r.width, 0, 1) : 0; };
         function seekTo(f) {
             const d = video.duration;
             if (isFinite(d) && d > 0) video.currentTime = f * d;
-            fill.style.width = f * 100 + "%"; thumb.style.left = f * 100 + "%";
+            setProgress(f);
         }
         on(track, "pointerdown", (e) => { e.preventDefault(); dragging = true; dragRect = track.getBoundingClientRect(); try { track.setPointerCapture(e.pointerId); } catch { /**/ } seekTo(fracAt(e.clientX)); });
         on(track, "pointermove", (e) => { if (dragging) seekTo(fracAt(e.clientX)); });
@@ -1046,8 +1050,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // gesto e o arraste "cai" na imagem do post atrás (drag nativo da <img>).
         on(volGroup, "mouseenter", () => volGroup.classList.add("igvc-vol-open"));
         on(volGroup, "mouseleave", () => { if (!volDragging) volGroup.classList.remove("igvc-vol-open"); });
-        on(range, "pointerdown", () => { volDragging = true; volGroup.classList.add("igvc-vol-open"); });
-        on(document, "pointerup", () => { if (volDragging) { volDragging = false; if (!isHover(volGroup)) volGroup.classList.remove("igvc-vol-open"); } });
+        on(range, "pointerdown", () => { volDragging = true; playerShared.volDrag = controller; volGroup.classList.add("igvc-vol-open"); });
+        function endVolDrag() { if (volDragging) { volDragging = false; if (!isHover(volGroup)) volGroup.classList.remove("igvc-vol-open"); } }
         on(video, "volumechange", () => {
             setVolIcon();
             if (video._igvcSettled && !video.muted && video.volume > 0) { prefs.volume = video.volume; savePrefsSoon(); }
@@ -1060,12 +1064,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             speedBtn.textContent = speedLabel(r);
             for (const b of speedPop.children) b.classList.toggle("igvc-on", parseFloat(b.dataset.r) === r);
         }
-        for (const r of SPEEDS) {
-            const b = el("button", { "data-r": String(r) }, speedLabel(r));
-            b.addEventListener("click", () => { setSpeed(r); closePops(); });
-            speedPop.appendChild(b);
-        }
-        on(speedBtn, "click", () => { const open = speedPop.classList.contains("igvc-open"); closePops(); if (!open) speedPop.classList.add("igvc-open"); });
+        for (const r of SPEEDS) speedPop.appendChild(el("button", { "data-r": String(r) }, speedLabel(r)));
+        on(speedPop, "click", (e) => { const b = e.target.closest && e.target.closest("button[data-r]"); if (b) { setSpeed(parseFloat(b.dataset.r)); closePops(); } });
+        on(speedBtn, "click", () => { const open = speedPop.classList.contains("igvc-open"); closePops(); if (!open) { speedPop.classList.add("igvc-open"); playerShared.openPop = controller; } });
         on(video, "ratechange", () => { speedBtn.textContent = speedLabel(video.playbackRate); });
 
         /* ---- PiP ---- */
@@ -1078,15 +1079,15 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
 
         /* ---- fullscreen (no host, pra barra continuar visível) ---- */
         on(fsBtn, "click", () => { toggleFullscreen(host, video); });
-        on(document, "fullscreenchange", () => {
+        function syncFs() {                       // chamado pelo listener compartilhado de fullscreenchange
             const fs = document.fullscreenElement === host;
+            if (fs === host.classList.contains("igvc-fs")) return;
             host.classList.toggle("igvc-fs", fs);
             fsBtn.innerHTML = fs ? ICONS.fsExit : ICONS.fs;
-        });
+        }
 
         /* ---- popovers (só velocidade; ajustes ficam no painel flutuante) ---- */
-        function closePops() { speedPop.classList.remove("igvc-open"); }
-        on(document, "click", (e) => { if (!bar.contains(e.target)) closePops(); }, { capture: true });
+        function closePops() { speedPop.classList.remove("igvc-open"); if (playerShared.openPop === controller) playerShared.openPop = null; }
 
         /* ---- show/hide da fileira (hover) ---- */
         let hideTimer = 0;
@@ -1116,12 +1117,38 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
 
         function destroy() {
             ac.abort();
+            if (playerShared.openPop === controller) playerShared.openPop = null;
+            if (playerShared.volDrag === controller) playerShared.volDrag = null;
             bar.remove();
             host.classList.remove("igvc-host", "igvc-show", "igvc-fs");
             live.delete(video);
             controllers.delete(video);
             bound.delete(video);
         }
+    }
+
+    /* Listeners de DOCUMENT do player — UM conjunto para todos os vídeos (antes eram 6 por vídeo:
+     * pointerup ×2, pointercancel, dragstart, fullscreenchange, click). O estado por vídeo fica no
+     * controller; aqui só o "quem está com o popover aberto / arrastando o volume".
+     *   • dragstart: o player vive DENTRO do <a href="/reels/..."> e anchors são draggable — arrastar um
+     *     controle arrastaria o LINK (com a imagem do post de ghost). Cancelo enquanto há press na barra. */
+    const playerShared = { bound: false, pressing: false, openPop: null, volDrag: null };
+    function bindPlayerShared() {
+        if (playerShared.bound) return;
+        playerShared.bound = true;
+        const endPress = () => {
+            playerShared.pressing = false;
+            const c = playerShared.volDrag; playerShared.volDrag = null;
+            if (c) c.endVolDrag();
+        };
+        document.addEventListener("pointerup", endPress);
+        document.addEventListener("pointercancel", endPress);
+        document.addEventListener("dragstart", (e) => { if (playerShared.pressing) e.preventDefault(); }, true);
+        document.addEventListener("click", (e) => {
+            const c = playerShared.openPop;
+            if (c && !c.bar.contains(e.target)) c.closePops();
+        }, true);
+        document.addEventListener("fullscreenchange", () => { for (const v of live) { const c = controllers.get(v); if (c) c.syncFs(); } });
     }
 
     /* ------------------------------------------------------------------ *
@@ -1381,7 +1408,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     const carouselWait = new Map(); // key -> 1ª vez vista como galeria (espera os slides da API p/ ter ‹ ›)
     let feedEl = null, igSrc = null, srcMO = null, srcMOTarget = null, resizeBound = false, layoutQ = false;
     let feedNcols = 0, feedColw = 0;
-    let loaderEl = null, loaderIO = null, loading = false, nativePauseTimer = null, nativePlayBound = false, feedExhausted = false, nativeHideTimer = null;
+    let loaderEl = null, loaderIO = null, loading = false, nativePlayBound = false, feedExhausted = false, nativeHideTimer = null;
     const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
     let inlineJSONTask = null;
     function scheduleInlineJSON() {
@@ -1602,15 +1629,16 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
      * O gatilho tem que ser o nó NATIVO do post (é o React do IG que abre o lightbox), mas a lista
      * nativa vive off-screen e virtualizada: o artigo/tile do post clicado pode não estar no DOM.
      * Antes: tentativa a cada ~100ms e desistência em <1s → caía no redirect com frequência.
-     * Agora: EVENT-DRIVEN — um MutationObserver no igSrc clica no instante em que o nó aparece,
-     * enquanto um nudge periódico varre a janela virtualizada em torno da posição estimada. O
-     * redirect virou último recurso de verdade (só se nada renderizar em OPEN_MAX_MS). */
+     * Agora: EVENT-DRIVEN — um MutationObserver no igSrc clica no instante em que o nó aparece.
+     * A varredura da janela virtualizada (±1 tela em torno da posição estimada) não é mais um
+     * setInterval: é UM timeout re-armado a cada mutação, então o próximo passo só sai quando a
+     * lista PAROU de renderizar o passo anterior. O redirect é último recurso (OPEN_MAX_MS). */
     const OPEN_MAX_MS = 4000;
     let openWait = null;
     function cancelOpenWait() {
         if (!openWait) return;
         try { openWait.obs.disconnect(); } catch (_) { /**/ }
-        clearTimeout(openWait.timer); clearInterval(openWait.nudge);
+        clearTimeout(openWait.timer); openWait.stopSweep();
         if (openWait.card) openWait.card.classList.remove("igf-opening");
         openWait = null;
     }
@@ -1640,14 +1668,15 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             src.scrollTop = Math.max(0, Math.min(max, frac * max + bias * src.clientHeight * 0.5 - src.clientHeight / 2));
         };
         const check = () => { if (igSrc !== src) { cancelOpenWait(); return true; } if (!tryOpen()) return false; cancelOpenWait(); return true; };
+        let n = 0, sweepT = 0;
+        const arm = () => { clearTimeout(sweepT); sweepT = setTimeout(sweep, 220); };
+        const sweep = () => { if (check()) return; n++; seek((n % 5) - 2); arm(); };   // varre ±1 tela em torno do palpite
         seek(0);
-        const obs = new MutationObserver(check);
+        const obs = new MutationObserver(() => { if (!check()) arm(); });
         try { obs.observe(src, { childList: true, subtree: true }); } catch (_) { /**/ }
-        let n = 0;
-        const nudge = setInterval(() => { if (check()) return; n++; seek((n % 5) - 2); }, 200);   // varre ±1 tela em torno do palpite
         const timer = setTimeout(() => { const pend = openWait; cancelOpenWait(); if (pend && !tryOpen()) go(cleanPostUrl(p)); }, OPEN_MAX_MS);
-        openWait = { obs, timer, nudge, card };
-        check();
+        openWait = { obs, timer, card, stopSweep: () => clearTimeout(sweepT) };
+        if (!check()) arm();
     }
     // acha o <article> nativo (vivo no igSrc) pelo permalink — p/ like/follow real e mover o vídeo.
     // FAST-PATH pelo data-igf-key estampado no postKey (chamado por frame de scroll via syncSrcScroll):
@@ -1989,16 +2018,14 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     // galeria/carrossel: navega os slides com SETAS (+ dots + contador). A caixa é a mesma do card e não
     // muda de slide pra slide → trocar de slide não mexe em NADA do layout; quem se ajusta é a mídia
     // (mediaFit por slide). Slide de vídeo mostra a capa + ▶ (abre a modal).
+    // passo do carrossel por card (os cliques/rodas chegam pelo handler DELEGADO do feed, ver bindFeedEvents)
+    const carouselStep = new WeakMap();   // card -> (delta) => void
     function buildCarousel(p, card, slides) {
-        const wrap = el("a", { class: "igf-media igf-carousel", href: cleanPostUrl(p) });
-        wrap.addEventListener("click", (e) => {               // clicar o slide → modal (ctrl/cmd/meio = nova aba)
-            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
-            e.preventDefault(); openItem(p, card);            // home → modal in-feed; tile → clica o <a> nativo
-        });
+        const wrap = el("a", { class: "igf-media igf-carousel", href: cleanPostUrl(p), "data-open": "1" });   // clicar o slide → modal
         let idx = 0;
         const stage = el("div", { class: "igf-cstage" });
-        const prev = el("button", { class: "igf-cnav igf-cprev", type: "button", "aria-label": "Anterior", html: ICO.chevL });
-        const next = el("button", { class: "igf-cnav igf-cnext", type: "button", "aria-label": "Próximo", html: ICO.chevR });
+        const prev = el("button", { class: "igf-cnav igf-cprev", type: "button", "aria-label": "Anterior", "data-act": "cprev", html: ICO.chevL });
+        const next = el("button", { class: "igf-cnav igf-cnext", type: "button", "aria-label": "Próximo", "data-act": "cnext", html: ICO.chevR });
         const dots = el("div", { class: "igf-cdots" });
         for (let i = 0; i < slides.length; i++) dots.appendChild(el("span", { class: "igf-cdot" }));
         const counter = el("div", { class: "igf-ccount" });
@@ -2026,24 +2053,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             prev.hidden = idx === 0;
             next.hidden = idx === slides.length - 1;
         }
-        const step = (d) => { const ni = clamp(idx + d, 0, slides.length - 1); if (ni === idx) return; idx = ni; render(); };
-        const nav = (d, e) => { e.preventDefault(); e.stopPropagation(); step(d); };
-        prev.addEventListener("click", (e) => nav(-1, e));
-        next.addEventListener("click", (e) => nav(1, e));
-        // SCROLL HORIZONTAL do mouse/trackpad (ou shift+roda) navega os slides — 1 por gesto (lock + acúmulo).
-        let wheelAcc = 0, wheelLock = false;
-        wrap.addEventListener("wheel", (e) => {
-            const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
-            if (!dx) return;                                 // gesto vertical puro → deixa a página rolar
-            e.preventDefault(); e.stopPropagation();
-            if (wheelLock) return;
-            wheelAcc += dx;
-            if (Math.abs(wheelAcc) >= 40) {                  // limiar → 1 passo (trackpad manda muitos deltas pequenos)
-                step(wheelAcc > 0 ? 1 : -1);
-                wheelAcc = 0; wheelLock = true;
-                setTimeout(() => { wheelLock = false; }, 240);
-            }
-        }, { passive: false });
+        carouselStep.set(card, (d) => { const ni = clamp(idx + d, 0, slides.length - 1); if (ni === idx) return; idx = ni; render(); });
         wrap.append(stage, prev, next, counter, dots);
         render();
         return wrap;
@@ -2268,15 +2278,16 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const a = nativeTile(p.key);
         if (!a) { openTile(p, card); return; }
         btn.classList.add("igf-busy");
-        a.click();                                            // abre a modal
-        let tries = 0;
-        const iv = setInterval(() => {
-            tries++;
+        // espera o botão de salvar da modal APARECER (observer no body, sem polling) — teto de ~3.3s
+        let done = false, obs = null, to = 0;
+        const stop = () => { done = true; if (obs) obs.disconnect(); clearTimeout(to); };
+        const check = () => {
+            if (done) return;
             const dlg = document.querySelector('[role="dialog"]');
             const svg = dlg && dlg.querySelector('svg[aria-label="Remove" i], svg[aria-label="Remover" i], svg[aria-label="Save" i], svg[aria-label="Salvar" i]');
             const sb = svg && svg.closest('[role="button"], button, div[role="button"]');
             if (sb) {
-                clearInterval(iv);
+                stop();
                 sb.click();                                   // des-salva
                 // fecha a modal (botão X, senão Escape) e remove o card
                 setTimeout(() => {
@@ -2285,11 +2296,17 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                     if (xb) xb.click(); else document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
                     markUnsaved(card);   // mesma regra do caminho por API: escurece, não some
                 }, 140);
-            } else if (tries > 30) { clearInterval(iv); btn.classList.remove("igf-busy"); }
-        }, 110);
+            }
+        };
+        obs = new MutationObserver(check);
+        obs.observe(document.body, { childList: true, subtree: true });
+        to = setTimeout(() => { if (!done) { stop(); btn.classList.remove("igf-busy"); } }, 3300);
+        a.click();                                            // abre a modal
+        check();
     }
     // UM card pra TODAS as superfícies (home, explore, perfil, salvos): header + mídia + barra de ações
-    // + legenda. O perfil também usa este — era tile só-mídia até a v3.13.
+    // + legenda. Nenhum listener por card: cada controle leva um data-act e o feed trata TUDO num
+    // handler delegado (bindFeedEvents) — antes eram ~10 listeners por card, crescendo com a sessão.
     function buildCard(p) {
         const code = p.code || codeOf(p.key);
         const card = el("div", { class: "igf-card" + (surface === "saved" ? " igf-card-saved" : ""), "data-key": p.key, "data-code": code });
@@ -2302,9 +2319,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // "Seguir" não aparece no PERFIL: lá todo card é do mesmo autor, então o botão viraria ruído
         // repetido em cada item (e o header do próprio perfil já tem o dele).
         if (p.follow && surface !== "profile") {              // só quando ainda não sigo — home + explore + salvos
-            const fb = el("button", { class: "igf-follow" }, "Seguir");
+            const fb = el("button", { class: "igf-follow", type: "button", "data-act": "follow" }, "Seguir");
             if (p.following) { fb.classList.add("on"); fb.textContent = "Seguindo"; }   // estado real, quando a API já disse
-            fb.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); followUser(p, fb); });
             head.appendChild(fb);
         }
         card.appendChild(head);
@@ -2313,55 +2329,101 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         let media;
         if (isCarousel) {
             media = buildCarousel(p, card, slides);            // galeria: setas + dots + contador (cada slide se enquadra sozinho)
+        } else if (p.isVideo) {
+            media = el("div", { class: "igf-media igf-video", "data-open": "1" });
+            if (p.media) media.appendChild(mediaImg(p, media));
+            media.appendChild(el("div", { class: "igf-play", html: PLAY_SVG }));
         } else {
-            // mídia: imagem = link pro post; vídeo = autoplay/pause (hover) + click liga/desliga som
-            media = p.isVideo ? el("div", { class: "igf-media igf-video" }) : el("a", { class: "igf-media", href: cleanPostUrl(p) });
-            if (!p.isVideo) media.addEventListener("click", (e) => {   // clique na IMAGEM → modal do IG (post + comentários), sem sair da página
-                if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;   // ctrl/cmd/meio = deixa abrir em nova aba
-                e.preventDefault(); openItem(p, card);
-            });
+            // imagem = link pro post (ctrl/cmd/meio abre em nova aba; clique normal → modal do IG)
+            media = el("a", { class: "igf-media", href: cleanPostUrl(p), "data-open": "1" });
             if (p.media) media.appendChild(mediaImg(p, media));   // altura já é a final (aspect-ratio fixo no CSS) — o load não mexe em layout
-            if (p.isVideo) {
-                media.appendChild(el("div", { class: "igf-play", html: PLAY_SVG }));
-                // hover no CARD INTEIRO (não só na mídia): passar o mouse pela barra de ações ou pela
-                // legenda não interrompe mais o vídeo — era um corte constante ao mirar um botão.
-                card.addEventListener("mouseenter", () => onCardEnter(card));
-                card.addEventListener("mouseleave", () => onCardLeave(card));
-                media.addEventListener("click", (e) => {
-                    if (e.target.closest && e.target.closest(".igvc-bar")) return;   // clique no player (seek/mudo/etc) → ignora
-                    // MESMO comportamento em toda superfície: clique no item = abre em MODAL. (O som
-                    // saiu daqui pro botão dedicado do player — antes, na home, clicar no vídeo mutava.)
-                    e.preventDefault(); openItem(p, card);
-                });
-            }
         }
         card.appendChild(media);
         // barra de ações única abaixo da mídia
         const actions = el("div", { class: "igf-actions" });
-        const act = (icon, count, onClick, cls) => {
-            const b = el("button", { class: "igf-act" + (cls ? " " + cls : "") });
+        const act = (icon, count, name, cls, title) => {
+            const b = el("button", { class: "igf-act" + (cls ? " " + cls : ""), type: "button", "data-act": name, title });
             b.innerHTML = icon;
             if (count) b.appendChild(el("span", {}, count));
-            b.addEventListener("click", onClick);
             return b;
         };
-        actions.appendChild(act(ICO.like, p.likes, (e) => likeItem(p, card, e.currentTarget), "igf-like"));
-        actions.appendChild(act(ICO.comment, p.comments, () => openItem(p, card)));   // → modal (comentários)
-        const sh = act(ICO.link, "", (e) => copyLink(p, e.currentTarget), "igf-share"); sh.title = "Copiar link";
-        actions.appendChild(sh);                              // share → COPIAR link limpo (sem tracking)
+        actions.appendChild(act(ICO.like, p.likes, "like", "igf-like"));
+        actions.appendChild(act(ICO.comment, p.comments, "comment"));                        // → modal (comentários)
+        actions.appendChild(act(ICO.link, "", "share", "igf-share", "Copiar link"));         // share → COPIAR link limpo (sem tracking)
         actions.appendChild(el("div", { class: "igf-act-sp" }));
-        const sv = act(ICO.save, "", (e) => saveItem(p, card, e.currentTarget), "igf-save");
-        sv.title = surface === "saved" ? "Remover dos salvos" : "Salvar";
-        if (surface === "saved") sv.classList.add("on");      // já está salvo → bookmark preenchido (clicar des-salva + some o card)
+        const sv = act(ICO.save, "", "save", "igf-save", surface === "saved" ? "Remover dos salvos" : "Salvar");
+        if (surface === "saved") sv.classList.add("on");      // já está salvo → bookmark preenchido (clicar des-salva)
         actions.appendChild(sv);
         card.appendChild(actions);
-        if (surface === "saved") {                            // overlay de multisseleção (cobre o card no modo seleção)
-            const ovl = el("div", { class: "igf-selovl" }, el("div", { class: "igf-selcb" }));
-            ovl.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); toggleSelect(p, card); });
-            card.appendChild(ovl);
-        }
-        card.appendChild(buildCaption(p, card));
+        if (surface === "saved")                              // overlay de multisseleção (cobre o card no modo seleção)
+            card.appendChild(el("div", { class: "igf-selovl", "data-act": "select" }, el("div", { class: "igf-selcb" })));
+        card.appendChild(buildCaption(p));
         return card;
+    }
+
+    /* HANDLERS DELEGADOS do feed — um conjunto por feed montado, no próprio container. */
+    function bindFeedEvents(feed) {
+        const cardOf = (t) => t && t.closest ? t.closest(".igf-card") : null;
+        feed.addEventListener("click", (e) => {
+            const t = e.target;
+            if (!t || !t.closest || t.closest(".igvc-bar")) return;        // player: tem a guarda dele
+            const card = cardOf(t);
+            const p = card && posts.get(card.dataset.key || "");
+            if (!p) return;
+            if (t.closest(".igf-tag")) return;                              // @menção/#hashtag → navega (não alterna o "mais")
+            const actEl = t.closest("[data-act]");
+            const name = actEl && card.contains(actEl) ? actEl.dataset.act : "";
+            if (name) {
+                e.preventDefault(); e.stopPropagation();
+                switch (name) {
+                    case "like": likeItem(p, card, actEl); break;
+                    case "comment": openItem(p, card); break;
+                    case "share": copyLink(p, actEl); break;
+                    case "save": saveItem(p, card, actEl); break;
+                    case "follow": followUser(p, actEl); break;
+                    case "select": toggleSelect(p, card); break;
+                    case "capmore": toggleCaption(card); break;
+                    case "cprev": case "cnext": { const st = carouselStep.get(card); if (st) st(name === "cprev" ? -1 : 1); break; }
+                }
+                return;
+            }
+            if (t.closest(".igf-cap")) { toggleCaption(card); return; }
+            const media = t.closest("[data-open]");
+            if (media) {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;   // nova aba (só nos <a>)
+                e.preventDefault(); openItem(p, card);   // home → modal in-feed; tile → clica o <a> nativo
+            }
+        });
+        // entrar/sair de um CARD (não de cada filho): pointerover/out + relatedTarget fora do card
+        feed.addEventListener("pointerover", (e) => {
+            const card = cardOf(e.target);
+            if (!card || card.contains(e.relatedTarget)) return;
+            measureCaption(card);
+            if (card.querySelector(".igf-video")) onCardEnter(card);
+        });
+        feed.addEventListener("pointerout", (e) => {
+            const card = cardOf(e.target);
+            if (!card || card.contains(e.relatedTarget)) return;
+            if (card.querySelector(".igf-video")) onCardLeave(card);
+        });
+        // SCROLL HORIZONTAL do mouse/trackpad (ou shift+roda) navega a galeria — 1 slide por gesto.
+        // passive:false só porque o gesto horizontal precisa do preventDefault; o vertical sai na 1ª linha.
+        let wheelAcc = 0, wheelLock = false;
+        feed.addEventListener("wheel", (e) => {
+            const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
+            if (!dx) return;
+            const card = e.target.closest && e.target.closest(".igf-carousel") && cardOf(e.target);
+            const st = card && carouselStep.get(card);
+            if (!st) return;
+            e.preventDefault(); e.stopPropagation();
+            if (wheelLock) return;
+            wheelAcc += dx;
+            if (Math.abs(wheelAcc) >= 40) {                  // limiar → 1 passo (trackpad manda muitos deltas pequenos)
+                st(wheelAcc > 0 ? 1 : -1);
+                wheelAcc = 0; wheelLock = true;
+                setTimeout(() => { wheelLock = false; }, 240);
+            }
+        }, { passive: false });
     }
     /* LEGENDA — sempre presente (vazia inclusive): a faixa tem altura fixa e é ela que garante que um card
      * sem legenda meça exatamente o mesmo que um com legenda (o texto pode chegar depois, via API).
@@ -2380,28 +2442,23 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             const c = part[0], body = part.slice(1);
             if ((c === "@" || c === "#") && body) {
                 const href = c === "@" ? "/" + body.replace(/\.+$/, "") + "/" : "/explore/tags/" + body.toLowerCase() + "/";
-                const a = el("a", { class: "igf-tag", href }, part);
-                a.addEventListener("click", (e) => e.stopPropagation());   // não alterna o "mais"
-                cap.appendChild(a);
+                cap.appendChild(el("a", { class: "igf-tag", href }, part));   // o handler delegado não alterna o "mais" nele
             } else cap.appendChild(document.createTextNode(part));
         }
     }
-    function buildCaption(p, card) {
+    function buildCaption(p) {
         const wrap = el("div", { class: "igf-capwrap" });
         const cap = el("div", { class: "igf-cap" });
         renderCaption(cap, p.caption || "");
-        const more = el("button", { class: "igf-capmore", type: "button" }, "mais");
-        const toggle = () => {
-            if (!card.dataset.capmore) return;
-            const open = card.classList.toggle("igf-capopen");
-            more.textContent = open ? "menos" : "mais";
-            if (!open) cap.scrollTop = 0;
-        };
-        cap.addEventListener("click", toggle);
-        more.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); toggle(); });
-        card.addEventListener("mouseenter", () => measureCaption(card));
-        wrap.append(cap, more);
+        wrap.append(cap, el("button", { class: "igf-capmore", type: "button", "data-act": "capmore" }, "mais"));
         return wrap;
+    }
+    function toggleCaption(card) {
+        if (!card.dataset.capmore) return;
+        const open = card.classList.toggle("igf-capopen");
+        const more = card.querySelector(".igf-capmore"), cap = card.querySelector(".igf-cap");
+        if (more) more.textContent = open ? "menos" : "mais";
+        if (!open && cap) cap.scrollTop = 0;
     }
     // 1 medição por card (cacheada). Re-medida quando a legenda chega depois: updateCardsMeta limpa o flag.
     function measureCaption(card) {
@@ -2501,7 +2558,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (rendered.size) {
             unmountSkeleton();
             if (nativeHideTimer) { clearTimeout(nativeHideTimer); nativeHideTimer = null; }
-            if (igSrc) igSrc.classList.add("igf-src");
+            if (igSrc && !igSrc.classList.contains("igf-src")) { igSrc.classList.add("igf-src"); pauseNativeVideos(); }
         }   // 1º card real → tira o skeleton + esconde a grade nativa (grid: só agora, pra não dar tela preta)
         else if (surface !== "home" && igSrc) igSrc.classList.remove("igf-src");           // GRID vazio → mostra a grade NATIVA (nunca deixa só o spinner numa tela vazia)
         updateCardsMeta();      // preenche autor/avatar/legenda dos cards que renderizaram antes do igMedia
@@ -2571,15 +2628,14 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             const src = igSrc;
             if (!src) return resolve(false);
             let done = false;
-            const finish = (grew) => { if (done) return; done = true; try { obs.disconnect(); } catch (_) { /**/ } clearInterval(iv); clearTimeout(to); resolve(grew); };
+            const finish = (grew) => { if (done) return; done = true; try { obs.disconnect(); } catch (_) { /**/ } clearTimeout(to); resolve(grew); };
             const check = () => {
                 if (igSrc !== src) return finish(false);          // trocou de superfície no meio → para
                 for (const a of itemsIn(src)) harvestOne(a);      // harvest baila barato em key já vista
                 if (order.length > beforeOrder) finish(true);
             };
-            const obs = new MutationObserver(check);
+            const obs = new MutationObserver(check);   // post novo = mutação na lista; o teto é o timeout (sem polling)
             try { obs.observe(src, { childList: true, subtree: true }); } catch (_) { /**/ }
-            const iv = setInterval(check, 100);
             const to = setTimeout(() => finish(false), maxMs);
             check();
         });
@@ -2679,6 +2735,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         }
         if (firstMount) {
             feedEl = el("div", { class: "igf-feed" });
+            bindFeedEvents(feedEl);
             applyFeedClasses();                      // sombra/densidade/legenda/contadores desde o 1º paint
             cwrap.appendChild(feedEl);               // meu feed depois das stories
             if (surface === "saved") { savedToolbar = buildSavedToolbar(); cwrap.insertBefore(savedToolbar, feedEl); }   // toolbar de multisseleção ACIMA do mosaico
@@ -2686,9 +2743,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             cwrap.appendChild(loaderEl);             // spinner no fim (escondido se o grid já esgotou) — feedback + sentinela do carregar-mais
             rendered.clear(); renderedUpTo = 0; metaPending.clear(); feedNcols = 0; feedColw = 0;   // feed novo (React pode ter removido) → re-renderiza tudo
             scheduleInlineJSON();                    // parse server-rendered fora do caminho crítico do primeiro paint
-            // F5: o igMedia (autor/legenda) pode chegar DEPOIS que a página assentou (sem mais mutações p/ re-disparar).
-            // Poll por alguns segundos preenchendo o header/legenda dos cards conforme a API chega.
-            [600, 1500, 3000, 5000, 8000].forEach((t) => setTimeout(() => { if (feedEl) updateCardsMeta(); }, t));
+            // (o header/legenda que chegam DEPOIS vêm pelo queueMetaUpdate do ingestText — sem poll aqui)
             layoutFeed();                            // colunas + altura do card ANTES do skeleton (ele usa --igf-cardh)
             mountSkeleton();                         // cards fantasmas no lugar dos posts enquanto o 1º lote não chega
             if (typeof IntersectionObserver !== "undefined") {
@@ -2732,9 +2787,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             }, { passive: true });
         }
         // O IG autoplaya os vídeos da lista off-screen: decode invisível (lag) e, pior, DOWNLOAD de
-        // vídeo que ninguém vai ver. O polling de 1s deixava cada um bufferizar até um segundo —
-        // agora pauso no próprio evento `play` (capture), antes de começar a baixar. O intervalo
-        // fica só como rede de segurança, e bem mais espaçado.
+        // vídeo que ninguém vai ver. Pauso no próprio evento `play` (capture), antes de começar a
+        // baixar — e uma varredura só, na montagem, pros que já tocavam antes do .igf-src entrar.
+        // (O setInterval de 3s "de segurança" saiu: todo play novo passa pelo listener.)
         if (!nativePlayBound) {
             nativePlayBound = true;
             document.addEventListener("play", (e) => {
@@ -2745,7 +2800,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                 }
             }, true);
         }
-        if (!nativePauseTimer && typeof setInterval === "function") nativePauseTimer = setInterval(pauseNativeVideos, 3000);
+        if (igSrc.classList.contains("igf-src")) pauseNativeVideos();
         queueSyncFeed();                              // primeiro lote entra no próximo frame, após o skeleton pintar
     }
     function pauseNativeVideos() {
@@ -2759,7 +2814,6 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (srcMO) { srcMO.disconnect(); srcMO = null; } srcMOTarget = null;
         if (loaderIO) { loaderIO.disconnect(); loaderIO = null; }
         if (videoIO) { videoIO.disconnect(); videoIO = null; }
-        if (nativePauseTimer) { clearInterval(nativePauseTimer); nativePauseTimer = null; }
         visVids.clear(); hoverCard = null; videoState.clear(); feedSoundOn = false;
         if (igSrc) { igSrc.classList.remove("igf-src"); igSrc = null; }
         if (feedEl) { feedEl.remove(); feedEl = null; }
@@ -3115,6 +3169,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
      *   salva e re-aplica. As flags do feed re-aplicam via applySettings; as
      *   do vídeo (autoUnmute/stories/keyboard) são lidas ao vivo pelo player.
      * ------------------------------------------------------------------ */
+    let settingsQ = false;
+    function applySettingsSoon() { if (settingsQ) return; settingsQ = true; raf(() => { settingsQ = false; applySettings(); }); }
     // Reaplica o que é dirigido por CSS var / classes / re-montagem do feed (toggles de vídeo são lidos ao vivo).
     function applySettings() {
         const de = document.documentElement;
@@ -3217,7 +3273,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                     const valEl = el("span", { class: "val" }, prefs[item.key] + (item.unit || ""));
                     const input = el("input", {
                         type: "range", min: String(item.min), max: String(item.max), step: String(item.step || 1), value: String(prefs[item.key]),
-                        onInput: (e) => { prefs[item.key] = +e.target.value; valEl.textContent = e.target.value + (item.unit || ""); savePrefs(); applySettings(); refreshDimming(); },
+                        // arrastar dispara input a cada pixel: o número segue na hora, mas aplicar fica em 1×/frame
+                        // e salvar no debounce (antes era savePrefs + applySettings inteiros por evento)
+                        onInput: (e) => { prefs[item.key] = +e.target.value; valEl.textContent = e.target.value + (item.unit || ""); savePrefsSoon(); applySettingsSoon(); },
                     });
                     card.append(el("div", { class: "igs-slider", "data-dep": item.dep, "data-label": lbl },
                         el("div", { class: "igs-lab" }, el("span", {}, item.label), valEl), input,
