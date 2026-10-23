@@ -251,7 +251,9 @@
     }
     const igCollections = new Map();        // collection_id -> collection_name (capturadas do tráfego do IG)
     function walkForMedia(node, depth) {    // varre o JSON inteiro atrás de itens de mídia (schema aninhado/variável)
-        if (!node || typeof node !== "object" || depth > 12) return;
+        // o HTML server-rendered embrulha os dados em camadas de require/__bbox: os posts iniciais ficam
+        // além de 12 níveis, e com o limite antigo eles nunca entravam no igMedia (card sem legenda/vídeo)
+        if (!node || typeof node !== "object" || depth > 64) return;
         if (Array.isArray(node)) { for (const x of node) walkForMedia(x, depth + 1); return; }
         if (node.code && (node.video_versions || node.image_versions2 || node.carousel_media)) ingestNode(node);
         if (node.collection_id && node.collection_name) igCollections.set(String(node.collection_id), String(node.collection_name));   // coleções de salvos
