@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instagram — Native Video Controls & Mosaic Feed
 // @namespace    instagram-native-player
-// @version      3.24.0
+// @version      3.25.0
 // @description  Camada aditiva sobre a interface do Instagram. (1) Player de vídeo integrado (feed, reels, explore, stories): progresso scrubável, play/pause, mudo+volume, velocidade, PiP, fullscreen e atalhos — SEMPRE ligado. (2) Feed da home em MASONRY com DOM próprio (OPCIONAL, off por padrão): lê os posts da lista nativa (harvest) e renderiza cards nossos em multicolunas estáveis (altura reservada por aspect-ratio), stories alinhadas, right rail escondida e nav esquerdo fixo. v3.0: TODAS as funcionalidades (menos o player) viram FLAGS num painel de ajustes flutuante (mesmo modelo do reddit/twitter: FAB de engrenagem no canto inferior-direito → painel com toggles/sliders agrupados). v3.1+: polish visual do mosaico — paleta própria (PRETO premium no escuro com texto mais legível; claro no light, detectado por luminância do fundo), cards com hover (eleva + zoom da mídia), tray de stories emoldurada, skeleton neutro. Colunas (Auto/2/3/4), densidade, sombra/legenda/contadores são FLAGS no painel. Galeria navega por scroll horizontal do mouse/trackpad. Em STORIES o player vira só a barra de progresso (scrub) — o post original fica intacto (nada de subir o reply). v3.5: o MESMO mosaico (proporção real) também no /explore/ e nos perfis (/usuario/) — tiles só-mídia, reels com preview no hover, clique abre em modal; flags Grid no Explore / Grid no perfil / Grid nos salvos (off por padrão; EXPLORE e SALVOS usam o MESMO card da home (header + barra de ação like/comentar/compartilhar/salvar + legenda), clicar abre modal; perfil segue como tile só-mídia. Salvos: o "salvar" vira REMOVER, + MULTISSELEÇÃO no header pra remover/mover vários pra coleção de uma vez. Ações do grid via API (like/save). v3.6: largura/colunas/densidade viram ajustes de CONTEÚDO que valem pra home, explore E perfil (a coluna toda do perfil acompanha a largura); thumbnails dos tiles usam a versão pequena da API (carregam bem mais rápido). v3.12: o mosaico vira GRADE UNIFORME — todos os itens com a MESMA altura (mídia em 4:5, faixas de altura fixa), em CSS Grid. O motor de masonry em JS (posicionamento absoluto, medição por card, congelamento de coluna, re-empacotamento a cada imagem que carregava) foi REMOVIDO: o layout não tem mais custo proporcional ao tamanho da sessão. Carregamento reescrito junto: content-visibility pula layout/paint/decode do que está fora da tela, srcset+sizes baixam a variante do tamanho da coluna em vez da imagem cheia, render em lote por DocumentFragment, e o carregar-mais ficou menos agressivo (3 páginas por disparo, lookahead de ~2 telas). v3.13: proporção 4:6 (mais vertical) e o MESMO card completo — header com avatar/nome, barra de ação (curtir, comentar, repostar, copiar link, salvar) e legenda — em TODAS as superfícies; o perfil deixou de ser tile só-mídia. Legenda maior e mais legível: UMA linha, com "mais" no fim dela que abre a descrição INTEIRA por cima da mídia (sem mudar a altura do card, então a grade não se mexe); na home ela agora vem também da API quando o <h1> do post não renderiza. v3.14: hover-to-play reescrito — debounce na entrada (atravessar a grade não dispara nada), o vídeo SOBREVIVE ao fim do hover (volta instantâneo, sem re-download) sob um LRU curto, só aparece quando tem frame (fim do piscar preto) e o hover vale o card inteiro; clicar em comentar SEMPRE abre a overlay (espera o post renderizar em vez de desistir e redirecionar); e o skeleton de carregamento saiu do overlay em tela cheia para dentro da própria grade. v3.15: @menções e #hashtags da legenda viram links (cor de link do IG); COMPORTAMENTO ÚNICO em todas as páginas — clicar no item abre a modal, seja foto, vídeo ou galeria, na home, no explore, no perfil e nos salvos (o clique no vídeo não muta mais); e o player ganhou botão de SOM fixo no canto (34px, sempre visível, em vez do mute escondido na fileira do hover) com a barra de progresso nas cores do Instagram no lugar do azul. v3.16: SEGUIR, CURTIR e SALVAR passam a ir pela API (o pk do autor sai do post, da API ou do perfil) em vez de depender do botão nativo dentro do <article> virtualizado — na home o seguir não fazia nada e o curtir chegava a NAVEGAR pro post; agora há fallback no botão nativo e aviso quando nada funciona, nunca silêncio. Header do perfil ocupa a largura toda do conteúdo (era um bloco estreito com um vazio ao lado) e ganhou botão de COPIAR o @ ao lado do nome. v3.17: o alargamento do header de perfil da v3.16 foi REVERTIDO (mexer em flex/min-width dos filhos colapsava o texto para uma letra por linha) — ele volta a crescer só por zoom, e o botão de copiar o @ continua. TRÁFEGO: cada foto era baixada DUAS vezes — o <img> nativo off-screen pedia uma variante do srcset e o nosso card pedia outra; agora copiamos srcset+sizes do nativo (mesma escolha = cache hit) e o avatar deixou de cair na própria mídia do post quando o alt não é reconhecível. Medido em bancada: 24 requisições de imagem para 12 posts caíram para 12. Vídeo da lista nativa é pausado no evento `play` (não mais até 1s depois, já bufferizando), a janela off-screen caiu de 150vh para 90vh, o carregar-mais puxa 2 páginas por disparo em vez de 3, e o scroll só sincroniza a lista nativa quando algum vídeo visível depende dela. v3.18 (SALVOS): a barra de seleção GRUDA no topo enquanto está ligada (numa limpeza longa não é mais preciso voltar ao topo pra clicar em Remover), ganhou botão 'Todos', barra de PROGRESSO com contador durante a remoção em lote e um 'Parar' pra abortar no meio. O item removido dos salvos NÃO some mais da página: escurece e ganha o selo 'removido', saindo de vez só no próximo carregamento — assim a grade não reflui embaixo do cursor e não se perde a posição no meio da limpeza; o que falhar fica marcado em vermelho. v3.20: proporção passa a 9:16 (a mais alta que o IG produz, de reels/stories) — um reel cabe inteiro, sem corte. Conteúdo mais LARGO que a caixa não é ampliado pra preencher: entra inteiro (contain) com o fundo preenchido por uma cópia borrada da própria mídia, em vez de mostrar só uma faixa ampliada do meio. E o conteúdo ganhou respiro lateral em qualquer largura de janela (antes, com a janela estreita, os cards encostavam no nav de um lado e na borda do outro). O teto de altura por viewport da v3.19 foi revertido. Prefs em localStorage.
 // @author       oguilhermelima
 // @match        https://www.instagram.com/*
@@ -796,36 +796,68 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
 #igs-totop:hover{ opacity:1; color:#fff; background:#0095f6; border-color:#0095f6; transform:translateY(-2px); }
 #igs-totop svg{ width:20px; height:20px; fill:currentColor; display:block; }
 html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
-#igs-panel{ position:fixed; right:18px; bottom:70px; z-index:2147483647; width:min(384px, calc(100vw - 36px)); max-height:min(88vh, calc(100vh - 88px));
-  display:none; flex-direction:column; overflow:hidden;
-  background:var(--igs-bg); color:var(--igs-fg); border:1px solid var(--igs-border); border-radius:18px; box-shadow:0 16px 50px var(--igs-shadow);
-  font:14px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; transform-origin:bottom right; }
+/* ===== settings panel — fixed size, side tabs with labels, grouped cards ===== */
+#igs-panel {
+    --k-bg: var(--igs-bg); --k-fg: var(--igs-fg); --k-muted: var(--igs-muted); --k-border: var(--igs-border);
+    --k-line: var(--igs-line); --k-hover: var(--igs-hover); --k-input: var(--igs-input); --k-track: var(--igs-track);
+    --k-shadow: var(--igs-shadow); --k-accent: #0095f6; --k-accent-soft: rgba(0, 149, 246, .14);
+    --k-card: color-mix(in srgb, var(--k-fg) 4%, var(--k-bg));
+    position: fixed; right: 16px; bottom: 72px; z-index: 2147483647;
+    /* tamanho FIXO: não muda conforme a aba, a busca ou a página */
+    width: min(600px, calc(100vw - 32px)); height: min(640px, calc(100vh - 96px));
+    flex-direction: column; overflow: hidden; box-sizing: border-box;
+    background: var(--k-bg); color: var(--k-fg); border: 1px solid var(--k-border);
+    border-radius: 20px; box-shadow: 0 24px 64px var(--k-shadow);
+    font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-transform: none; letter-spacing: normal; text-align: left;
+    transform-origin: bottom right;
+}
+#igs-panel *, #igs-panel *::before, #igs-panel *::after { box-sizing: border-box; }
+@keyframes igs-pop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+.igs-head { display: flex; align-items: center; gap: 12px; padding: 16px 14px 12px 18px; }
+.igs-logo { width: 36px; height: 36px; border-radius: 11px; background: var(--k-accent); display: flex; align-items: center; justify-content: center; flex: none; }
+.igs-logo svg { width: 20px; height: 20px; fill: #fff; color: #fff; }
+.igs-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.igs-titles b { font-size: 16px; font-weight: 700; line-height: 20px; color: var(--k-fg); }
+.igs-titles small { font-size: 12px; line-height: 16px; color: var(--k-muted); }
+.igs-x { all: unset; box-sizing: border-box; cursor: pointer; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--k-muted); transition: background .15s, color .15s; }
+.igs-x svg { width: 20px; height: 20px; fill: currentColor; }
+.igs-x:hover { background: var(--k-hover); color: var(--k-fg); }
+.igs-search { padding: 0 16px 12px; border: 0; }
+.igs-search > div { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; border-radius: 12px; background: var(--k-input); border: 1px solid transparent; transition: border-color .15s, background .15s; }
+.igs-search > div:focus-within { border-color: var(--k-accent); background: var(--k-bg); }
+.igs-search svg { width: 17px; height: 17px; fill: var(--k-muted); color: var(--k-muted); flex: none; }
+.igs-search input { all: unset; flex: 1; min-width: 0; color: var(--k-fg); font: inherit; }
+.igs-search input::placeholder { color: var(--k-muted); }
+.igs-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 188px 1fr; border-top: 1px solid var(--k-line); }
+.igs-rail { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; border-right: 1px solid var(--k-line); overflow-y: auto; scrollbar-width: none; }
+.igs-tab { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 8px 10px; line-height: 1.25; border-radius: 10px; color: var(--k-muted); cursor: pointer; font-size: 13.5px; font-weight: 600; transition: background .15s, color .15s; }
+.igs-tab svg { width: 19px; height: 19px; fill: currentColor; flex: none; }
+.igs-tab span { min-width: 0; overflow-wrap: anywhere; }
+.igs-tab:hover { background: var(--k-hover); color: var(--k-fg); }
+.igs-tab.active { background: var(--k-accent-soft); color: var(--k-accent); }
+.igs-tab:focus-visible, .igs-x:focus-visible { outline: 2px solid var(--k-accent); outline-offset: 1px; }
+.igs-content { min-width: 0; overflow-y: auto; padding: 16px 16px 20px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--k-track) transparent; }
+.igs-content::-webkit-scrollbar { width: 8px; }
+.igs-content::-webkit-scrollbar-thumb { background: var(--k-track); border-radius: 99px; border: 2px solid var(--k-bg); }
+.igs-sec { display: none; }
+.igs-sec { margin-bottom: 24px; }
+.igs-sec-title { margin: 0 0 10px 2px; padding: 0; font-size: 17px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--k-fg); background: none; border: 0; }
+.igs-card { background: var(--k-card); border: 1px solid var(--k-line); border-radius: 14px; overflow: hidden; }
+.igs-card > * { margin: 0 !important; border-radius: 0 !important; }
+.igs-card > * + * { border-top: 1px solid var(--k-line); }
+.igs-empty { display: none; color: var(--k-muted); text-align: center; padding: 48px 16px; font-size: 14px; }
+.igs-foot { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--k-line); }
+.igs-reset { all: unset; cursor: pointer; color: var(--k-muted); font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 10px; transition: background .15s, color .15s; }
+.igs-reset:hover { color: #f4212e; background: rgba(244, 33, 46, .1); }
+@media (max-width: 560px) {
+    .igs-body { grid-template-columns: 56px 1fr; }
+    .igs-tab { justify-content: center; padding: 0; }
+    .igs-tab span { display: none; }
+}
+
+#igs-panel{ display:none; }
 #igs-panel.open{ display:flex; animation:igs-pop .16s cubic-bezier(.2,.7,.3,1); }
-@keyframes igs-pop{ from{ opacity:0; transform:translateY(10px) scale(.97); } to{ opacity:1; transform:none; } }
-.igs-head{ display:flex; align-items:center; gap:10px; padding:14px 14px 12px; border-bottom:1px solid var(--igs-line); }
-.igs-logo{ width:28px; height:28px; border-radius:9px; background:#0095f6; display:flex; align-items:center; justify-content:center; flex:none; }
-.igs-logo svg{ width:17px; height:17px; fill:#fff; }
-.igs-head b{ font-size:16px; font-weight:800; flex:1; }
-.igs-x{ all:unset; cursor:pointer; color:var(--igs-muted); width:28px; height:28px; display:flex; align-items:center; justify-content:center; font-size:16px; border-radius:50%; transition:.15s; }
-.igs-x:hover{ color:var(--igs-fg); background:var(--igs-hover); }
-.igs-search{ padding:10px 14px; border-bottom:1px solid var(--igs-line); }
-.igs-search > div{ display:flex; align-items:center; gap:8px; background:var(--igs-input); border:1px solid var(--igs-border); border-radius:999px; padding:7px 12px; transition:border-color .15s; }
-.igs-search > div:focus-within{ border-color:#0095f6; }
-.igs-search svg{ width:16px; height:16px; fill:var(--igs-muted); flex:none; }
-.igs-search input{ all:unset; flex:1; color:var(--igs-fg); font:inherit; }
-.igs-search input::placeholder{ color:var(--igs-muted); }
-.igs-body{ display:flex; min-height:0; flex:1; }
-.igs-rail{ display:flex; flex-direction:column; gap:4px; padding:10px 8px; border-right:1px solid var(--igs-line); flex:none; }
-.igs-tab{ all:unset; box-sizing:border-box; width:40px; height:40px; border-radius:11px; display:flex; align-items:center; justify-content:center; color:var(--igs-muted); cursor:pointer; transition:background .15s,color .15s; }
-.igs-tab svg{ width:21px; height:21px; fill:currentColor; }
-.igs-tab:hover{ background:var(--igs-hover); color:var(--igs-fg); }
-.igs-tab.active{ background:rgba(0,149,246,.15); color:#0095f6; }
-.igs-content{ flex:1; min-width:0; overflow-y:auto; padding:6px 0 12px; scrollbar-width:thin; scrollbar-color:var(--igs-track) transparent; }
-.igs-content::-webkit-scrollbar{ width:8px; }
-.igs-content::-webkit-scrollbar-thumb{ background:var(--igs-track); border-radius:99px; border:2px solid var(--igs-bg); }
-.igs-sec{ display:none; }
-.igs-sec-title{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--igs-muted); padding:12px 16px 6px; }
-.igs-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 12px; cursor:pointer; border-radius:9px; margin:1px 6px; transition:background .12s; }
+.igs-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:48px; padding:10px 14px; cursor:pointer; transition:background .12s; }
 .igs-row:hover{ background:var(--igs-hover); }
 .igs-rowlbl{ flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; }
 .igs-hint{ color:var(--igs-muted); font-size:11px; line-height:1.3; font-weight:400; }
@@ -837,15 +869,11 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
 .igs-sw i::after{ content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:.18s; box-shadow:0 1px 2px rgba(0,0,0,.4); }
 .igs-sw input:checked + i{ background:#0095f6; }
 .igs-sw input:checked + i::after{ transform:translateX(16px); }
-.igs-slider{ display:flex; flex-direction:column; gap:8px; padding:10px 12px; margin:1px 6px; }
+.igs-slider{ display:flex; flex-direction:column; gap:10px; padding:12px 14px 14px; }
 .igs-lab{ display:flex; justify-content:space-between; align-items:center; color:var(--igs-fg2); }
 .igs-lab .val{ color:#0095f6; font-weight:700; background:rgba(0,149,246,.12); border-radius:6px; padding:1px 8px; font-size:13px; min-width:38px; text-align:center; }
 .igs-slider input[type=range]{ width:100%; accent-color:#0095f6; cursor:pointer; }
-.igs-empty{ display:none; color:var(--igs-muted); text-align:center; padding:32px 16px; }
-.igs-foot{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-top:1px solid var(--igs-line); }
-.igs-ver{ color:var(--igs-muted2); font-size:12px; }
-.igs-reset{ all:unset; cursor:pointer; color:var(--igs-muted); font-size:13px; font-weight:600; padding:4px 8px; border-radius:7px; transition:.15s; }
-.igs-reset:hover{ color:#ff3040; background:rgba(255,48,64,.1); }
+.igs-foot small{ flex:1; text-align:right; color:var(--k-muted); font-size:12px; }
 `);
 
     /* ------------------------------------------------------------------ *
@@ -3053,6 +3081,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         "M8 5v14l11-7z",                                                                                       // Vídeo (play)
         "M3 17h6v-2H3v2zm0-5h10v-2H3v2zm0-7v2h14V5H3zm18 12v-2h-6v2h6zm0-5v-2H11v2h10zm-6-7v2h6V5h-6z",         // Interface (tune)
     ];
+    const CLOSE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z"/></svg>';
     function buildPanel() {
         if (document.getElementById("igs-fab")) return;
         const fab = el("button", { id: "igs-fab", type: "button", title: "Ajustes do Instagram", html: ICONS.gear });
@@ -3061,10 +3090,11 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         const panel = el("div", { id: "igs-panel", role: "dialog", "aria-label": "Ajustes do Instagram" });
 
         // cabeçalho
-        const close = el("button", { class: "igs-x", type: "button", title: "Fechar", onClick: () => panel.classList.remove("open") }, "✕");
+        const close = el("button", { class: "igs-x", type: "button", title: "Fechar", "aria-label": "Fechar", html: CLOSE_SVG, onClick: () => panel.classList.remove("open") });
         panel.append(el("div", { class: "igs-head" },
             el("span", { class: "igs-logo", html: ICONS.gear }),
-            el("b", {}, "Instagram"), close));
+            el("div", { class: "igs-titles" }, el("b", {}, "Ajustes do Instagram"), el("small", {}, (typeof GM_info !== "undefined" && GM_info.script ? "v" + GM_info.script.version : "Userscript"))),
+            close));
 
         // busca (filtra todas as categorias)
         const search = el("input", {
@@ -3087,6 +3117,8 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         GROUPS.forEach((grp, gi) => {
             const sec = el("div", { class: "igs-sec" });
             sec.append(el("div", { class: "igs-sec-title" }, grp.title));
+            const card = el("div", { class: "igs-card" });
+            sec.append(card);
             for (const item of grp.items) {
                 const lbl = item.label.toLowerCase();
                 if (item.type === "slider") {
@@ -3095,20 +3127,20 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
                         type: "range", min: String(item.min), max: String(item.max), step: String(item.step || 1), value: String(prefs[item.key]),
                         onInput: (e) => { prefs[item.key] = +e.target.value; valEl.textContent = e.target.value + (item.unit || ""); savePrefs(); applySettings(); refreshDimming(); },
                     });
-                    sec.append(el("div", { class: "igs-slider", "data-dep": item.dep, "data-label": lbl },
+                    card.append(el("div", { class: "igs-slider", "data-dep": item.dep, "data-label": lbl },
                         el("div", { class: "igs-lab" }, el("span", {}, item.label), valEl), input,
                         item.hint ? el("small", { class: "igs-hint" }, item.hint) : null));
                 } else if (item.type === "select") {
                     const sel = el("select", { onChange: (e) => { prefs[item.key] = e.target.value; savePrefs(); applySettings(); refreshDimming(); } },
                         ...item.options.map((o) => el("option", Object.assign({ value: o.value }, String(prefs[item.key]) === o.value ? { selected: "" } : {}), o.label)));
-                    sec.append(el("div", { class: "igs-row", "data-label": lbl },
+                    card.append(el("div", { class: "igs-row", "data-label": lbl },
                         el("span", { class: "igs-rowlbl" }, el("span", {}, item.label), item.hint ? el("small", { class: "igs-hint" }, item.hint) : null), sel));
                 } else {
                     const input = el("input", Object.assign({
                         type: "checkbox",
                         onChange: (e) => { prefs[item.key] = e.target.checked; savePrefs(); applySettings(); refreshDimming(); },
                     }, prefs[item.key] ? { checked: "" } : {}));
-                    sec.append(el("label", { class: "igs-row", "data-dep": item.dep, "data-label": lbl },
+                    card.append(el("label", { class: "igs-row", "data-dep": item.dep, "data-label": lbl },
                         el("span", { class: "igs-rowlbl" },
                             el("span", {}, item.label),
                             item.hint ? el("small", { class: "igs-hint" }, item.hint) : null),
@@ -3119,7 +3151,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             sections.push(sec);
 
             const tab = el("button", { class: "igs-tab", type: "button", title: grp.title,
-                html: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${PANEL_ICONS[gi] || PANEL_ICONS[0]}"/></svg>` });
+                html: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${PANEL_ICONS[gi] || PANEL_ICONS[0]}"/></svg>` }, el("span", {}, grp.title));
             tab.addEventListener("click", () => { search.value = ""; showTab(gi); });
             rail.append(tab); tabs.push(tab);
         });
@@ -3127,12 +3159,17 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         content.append(empty);
         panel.append(el("div", { class: "igs-body" }, rail, content));
 
+        // um card some quando a busca esconde todas as linhas dele
+        const syncCards = (sec) => sec.querySelectorAll(".igs-card").forEach((c) => {
+            c.style.display = [...c.children].some((r) => r.style.display !== "none") ? "" : "none";
+        });
+
         function showTab(i) {
             active = i; panel.classList.remove("searching"); empty.style.display = "none";
             sections.forEach((sec, idx) => {
                 sec.style.display = idx === i ? "block" : "none";
                 sec.querySelectorAll("[data-label]").forEach((r) => (r.style.display = ""));
-                const t = sec.querySelector(".igs-sec-title"); if (t) t.style.display = "";
+                syncCards(sec);
             });
             tabs.forEach((tb, idx) => tb.classList.toggle("active", idx === i));
             content.scrollTop = 0;
@@ -3149,7 +3186,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
                     r.style.display = m ? "" : "none"; if (m) { vis = true; any = true; }
                 });
                 sec.style.display = vis ? "block" : "none";
-                const t = sec.querySelector(".igs-sec-title"); if (t) t.style.display = vis ? "" : "none";
+                syncCards(sec);
             });
             empty.style.display = any ? "none" : "block";
         });
@@ -3158,7 +3195,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             el("button", { class: "igs-reset", type: "button", onClick: () => {
                 prefs = Object.assign({}, DEFAULTS); savePrefs(); panel.remove(); fab.remove(); toTop.remove(); buildPanel(); applySettings();
             } }, "Restaurar padrões"),
-            el("span", { class: "igs-ver" }, (typeof GM_info !== "undefined" && GM_info.script ? "v" + GM_info.script.version : ""))));
+            el("small", {}, "Salvo automaticamente")));
 
         fab.addEventListener("click", () => { panel.classList.toggle("open"); refreshDimming(); });
         document.addEventListener("click", (e) => { if (!panel.contains(e.target) && e.target !== fab && !fab.contains(e.target)) panel.classList.remove("open"); });
