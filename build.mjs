@@ -82,6 +82,7 @@ for (const entry of entries) {
 
 const descriptions = {
   crunchyroll: "Full-height player mode, direct speed and episode controls, official auto-skip for intros and credits without redirects, and clean UI.",
+  immich: "YouTube-style video player for self-hosted Immich: original quality, speed and audio boost, seek keys, reorganised bars and an album sidebar.",
   instagram: "Native video controls, unified mosaic feed, responsive grids, lightbox viewer, and saved-post tools for Instagram.",
   reddit: "Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs.",
   twitch: "Streamer top navigation plus a YouTube-style Clips and VOD theater with filtering, sorting, and native playback controls.",
@@ -124,6 +125,15 @@ For all userscript features to work, allow the userscript manager to run scripts
 4. Allow the manager to access the sites you want to customize, then install one of the scripts above.
 
 If **Allow User Scripts** is not available, update the browser and userscript manager first.
+
+### Self-hosted sites (Immich)
+
+Immich runs on your own server, so the **immich** script only matches the public demo out of the box. Add your server once as a user match; it is kept across script updates:
+
+- **Tampermonkey:** open the script, go to **Settings → Includes/Excludes → User matches**, and add your address, for example \`https://photos.example.com/*\`.
+- **Violentmonkey:** open the script, go to **Settings → @match rules**, and add the same address (with **Keep original** checked).
+
+The script checks that the page really is Immich before doing anything, so a broader rule will not affect other sites.
 
 ### Available scripts
 
