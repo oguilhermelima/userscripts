@@ -109,13 +109,48 @@
     const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
     const isHover = (n) => { try { return n.matches(":hover"); } catch { return false; } };
 
-    // Builder de DOM mínimo. props: class/html/style(obj)/on<Event>/attr.
+    /* RÓTULOS DO IG que a gente procura (aria-label / texto de botão) — en + pt num lugar só. O IG muda
+     * esses textos por locale/experimento: quando quebrar, é aqui. Onde há API (curtir/salvar/seguir),
+     * ela vem antes e o rótulo é só o plano B. "...Part" = trecho (casa por *=, sem caixa). */
+    const LABELS = {
+        like: ["Like", "Curtir", "Unlike", "Descurtir"],
+        save: ["Save", "Salvar", "Remove", "Remover"],
+        close: ["Close", "Fechar"],
+        follow: ["Follow", "Seguir"],
+        following: ["Following", "Seguindo"],
+        messages: ["Messages", "Mensagens"],
+        commentPart: ["omment", "oment"],                 // Comment / Comentar / Comentário
+        reelPart: ["eel", "lip"],                         // Reel / Clip
+        carouselPart: ["arousel"],
+        storiesPart: ["Stories"],
+        messagesPart: ["essage", "ensage", "essenger"],
+        volumePart: ["olume"], audioPart: ["Audio"], toggleAudioPart: ["Toggle audio"],
+        tagPart: ["Tag", "marca"],                        // botão de marcados no vídeo
+        searchPart: ["esquis", "earch"],                  // Pesquisar / Search
+    };
+    // tag omitida = svg (o IG rotula os ÍCONES); "" = qualquer elemento
+    const ariaIs = (key, tag = "svg") => LABELS[key].map((l) => tag + '[aria-label="' + l + '" i]').join(", ");
+    const ariaHas = (key, tag = "svg", tail = "") => LABELS[key].map((l) => tag + '[aria-label*="' + l + '" i]' + tail).join(", ");
+    const textRe = (...keys) => new RegExp("^(" + keys.flatMap((k) => LABELS[k]).join("|") + ")$", "i");
+    const SEL = {
+        reel: ariaHas("reelPart"),
+        carousel: ariaHas("carouselPart"),
+        comment: ariaHas("commentPart"),
+        commentBtn: ariaHas("commentPart", '[role="button"]') + ", " + ariaHas("commentPart", "button"),
+        save: ariaIs("save"),
+        close: ariaIs("close"),
+        stories: ariaHas("storiesPart", ""),
+        messages: 'a[href*="/direct/"], ' + ariaHas("messagesPart"),
+    };
+    const RE_FOLLOW = textRe("follow"), RE_FOLLOW_ANY = textRe("follow", "following");
+
+    // Builder de DOM mínimo. props: class/icon(spec SVG)/style(obj)/on<Event>/attr.
     function el(tag, props, ...kids) {
         const n = document.createElement(tag);
         if (props) for (const [k, v] of Object.entries(props)) {
             if (v == null) continue;
             if (k === "class") n.className = v;
-            else if (k === "html") n.innerHTML = v;
+            else if (k === "icon") n.appendChild(svgIcon(v));
             else if (k === "style" && typeof v === "object") Object.assign(n.style, v);
             else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2).toLowerCase(), v);
             else n.setAttribute(k, v);
@@ -292,17 +327,33 @@
     /* ------------------------------------------------------------------ *
      * Ícones (Material, fill:currentColor)
      * ------------------------------------------------------------------ */
-    const svg = (p) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${p}"/></svg>`;
+    /* Ícones são DADOS ({ a: attrs do <svg>, k: [[tag, attrs], ...] }) e viram nó por createElementNS —
+     * nada de innerHTML (seguro sob Trusted Types, sem parser de HTML a cada troca de ícone). */
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    function svgIcon(spec) {
+        const root = document.createElementNS(SVG_NS, "svg");
+        root.setAttribute("viewBox", "0 0 24 24");
+        root.setAttribute("aria-hidden", "true");
+        if (spec.a) for (const k in spec.a) root.setAttribute(k, spec.a[k]);
+        for (const [tag, attrs] of spec.k) {
+            const n = document.createElementNS(SVG_NS, tag);
+            for (const k in attrs) n.setAttribute(k, attrs[k]);
+            root.appendChild(n);
+        }
+        return root;
+    }
+    const setIcon = (node, spec) => node.replaceChildren(svgIcon(spec));
+    const mIcon = (d) => ({ k: [["path", { d }]] });   // Material: 1 path, fill pelo CSS (currentColor)
     const ICONS = {
-        play: svg("M8 5v14l11-7z"),
-        pause: svg("M6 19h4V5H6v14zm8-14v14h4V5h-4z"),
-        volHigh: svg("M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"),
-        volLow: svg("M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"),
-        volMute: svg("M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4 9.91 6.09 12 8.18V4z"),
-        pip: svg("M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.11.9 2 2 2h18c1.1 0 2-.89 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z"),
-        fs: svg("M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"),
-        fsExit: svg("M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"),
-        gear: svg("M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84a.484.484 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.488.488 0 0 0-.59.22L2.74 8.87a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"),
+        play: mIcon("M8 5v14l11-7z"),
+        pause: mIcon("M6 19h4V5H6v14zm8-14v14h4V5h-4z"),
+        volHigh: mIcon("M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"),
+        volLow: mIcon("M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"),
+        volMute: mIcon("M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4 9.91 6.09 12 8.18V4z"),
+        pip: mIcon("M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.11.9 2 2 2h18c1.1 0 2-.89 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z"),
+        fs: mIcon("M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"),
+        fsExit: mIcon("M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"),
+        gear: mIcon("M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84a.484.484 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.488.488 0 0 0-.59.22L2.74 8.87a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"),
     };
 
     /* ------------------------------------------------------------------ *
@@ -347,11 +398,10 @@ html.igf-dark{
 /* IG nativo (modo padrão/feed): escondo o controle de volume do IG — temos o nosso —
    e subo o botão de "marcados" pra não ficar atrás da barra. Em stories esses
    elementos vivem no header (fora do host), então a regra é naturalmente só do feed. */
-.igvc-host div[role="slider"][aria-label*="olume" i],
-.igvc-host [role="slider"]:has(svg[aria-label*="Audio" i]),
-.igvc-host button[aria-label*="Toggle audio" i]{ display:none !important; }
-.igvc-host div:has(> button svg[aria-label*="Tag" i]),
-.igvc-host div:has(> button svg[aria-label*="marca" i]){
+${ariaHas("volumePart", '.igvc-host div[role="slider"]')},
+${ariaHas("audioPart", '.igvc-host [role="slider"]:has(svg', ")")},
+${ariaHas("toggleAudioPart", ".igvc-host button")}{ display:none !important; }
+${ariaHas("tagPart", ".igvc-host div:has(> button svg", ")")}{
   bottom:calc(var(--igvc-bar-h,44px) + 8px) !important; top:auto !important;
 }
 /* a barra cobre o vídeo inteiro (pointer-events:none) só pra poder ancorar o botão de SOM no topo;
@@ -507,8 +557,8 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igm-gridcol [role="tablist"]{ justify-content:center !important; }
 /* explore/search: a barra de busca e o bloco de resultados acompanham a largura do conteúdo (best-effort) */
 .igm-gridcol [role="search"], .igm-gridcol form[role="search"],
-.igm-gridcol div:has(> input[aria-label*="esquis" i]), .igm-gridcol div:has(> input[aria-label*="earch" i]),
-.igm-gridcol input[aria-label*="esquis" i], .igm-gridcol input[aria-label*="earch" i]{ max-width:none !important; width:100% !important; }
+${ariaHas("searchPart", ".igm-gridcol div:has(> input", ")")},
+${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width:100% !important; }
 /* tray de stories: emoldurada como um card e alinhada à 1ª coluna (mesmo respiro lateral do feed) */
 .igm-stories{ width:calc(100% - 2 * var(--igf-pad)) !important; max-width:none !important;
   margin:0 var(--igf-pad) 10px !important; padding:12px 14px !important; box-sizing:border-box !important;
@@ -900,20 +950,20 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const thumbPos = el("div", { class: "igvc-thumbpos" }, el("div", { class: "igvc-thumb" }));
         const track = el("div", { class: "igvc-track", title: "" }, el("div", { class: "igvc-rail" }, buffered, fill), thumbPos);
 
-        const playBtn = el("button", { class: "igvc-btn", "aria-label": "Play/Pause", html: ICONS.play });
+        const playBtn = el("button", { class: "igvc-btn", "aria-label": "Play/Pause", icon: ICONS.play });
         const time = el("span", { class: "igvc-time" }, "0:00");
 
         const speedBtn = el("button", { class: "igvc-btn igvc-speed", "aria-label": "Velocidade" }, speedLabel(prefs.speed));
         const speedPop = el("div", { class: "igvc-pop igvc-pop-speed" });
 
         // botão de som SEMPRE visível no canto (o mute/desmute não fica mais só na fileira do hover)
-        const soundBtn = el("button", { class: "igvc-sound", type: "button", "aria-label": "Ativar/desativar som", html: ICONS.volHigh });
-        const muteBtn = el("button", { class: "igvc-btn", "aria-label": "Mudo", html: ICONS.volHigh });
+        const soundBtn = el("button", { class: "igvc-sound", type: "button", "aria-label": "Ativar/desativar som", icon: ICONS.volHigh });
+        const muteBtn = el("button", { class: "igvc-btn", "aria-label": "Mudo", icon: ICONS.volHigh });
         const range = el("input", { class: "igvc-range", type: "range", min: "0", max: "1", step: "0.01", value: String(prefs.volume), "aria-label": "Volume" });
         const volGroup = el("div", { class: "igvc-vol" }, muteBtn, range);
 
-        const pipBtn = el("button", { class: "igvc-btn", "aria-label": "Picture-in-Picture", html: ICONS.pip });
-        const fsBtn = el("button", { class: "igvc-btn", "aria-label": "Tela cheia", html: ICONS.fs });
+        const pipBtn = el("button", { class: "igvc-btn", "aria-label": "Picture-in-Picture", icon: ICONS.pip });
+        const fsBtn = el("button", { class: "igvc-btn", "aria-label": "Tela cheia", icon: ICONS.fs });
         // (config/ajustes saíram do player → painel flutuante único, ver buildPanel)
 
         const row = el("div", { class: "igvc-row" },
@@ -1036,7 +1086,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         on(video, "loadedmetadata", () => { renderTime(); renderBuffered(); });
 
         /* ---- play / pause ---- */
-        function setPlayIcon() { playBtn.innerHTML = video.paused ? ICONS.play : ICONS.pause; }
+        function setPlayIcon() { setIcon(playBtn, video.paused ? ICONS.play : ICONS.pause); }
         on(playBtn, "click", () => { if (video.paused) video.play().catch(() => { }); else video.pause(); });
         on(video, "play", setPlayIcon);
         on(video, "pause", setPlayIcon);
@@ -1050,8 +1100,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             const want = (video.muted || video.volume === 0) ? "mute" : (video.volume < 0.5 ? "low" : "high");
             if (want !== lastVolIcon) {
                 const svg = want === "mute" ? ICONS.volMute : want === "low" ? ICONS.volLow : ICONS.volHigh;
-                muteBtn.innerHTML = svg;
-                soundBtn.innerHTML = svg;
+                setIcon(muteBtn, svg);
+                setIcon(soundBtn, svg);
                 soundBtn.classList.toggle("igvc-muted", want === "mute");
                 soundBtn.title = want === "mute" ? "Ativar som" : "Silenciar";
                 lastVolIcon = want;
@@ -1111,7 +1161,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             const fs = document.fullscreenElement === host;
             if (fs === host.classList.contains("igvc-fs")) return;
             host.classList.toggle("igvc-fs", fs);
-            fsBtn.innerHTML = fs ? ICONS.fsExit : ICONS.fs;
+            setIcon(fsBtn, fs ? ICONS.fsExit : ICONS.fs);
         }
 
         /* ---- popovers (só velocidade; ajustes ficam no painel flutuante) ---- */
@@ -1421,20 +1471,19 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     // ampliado pra preencher: ganha .igf-fit e entra inteiro na caixa (ver mediaFit).
     // Espelha --igf-ar no CSS; mudar aqui exige mudar lá.
     const AR_W = 9, AR_H = 16;
-    const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>';
+    const PLAY_SVG = { a: { fill: "#fff" }, k: [["path", { d: "M8 5v14l11-7z" }]] };
     // ícones da barra de ações (outline, herdam currentColor)
+    const OUTLINE = { fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" };
     const ICO = {
-        like: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1 7.8 7.8 7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>',
-        comment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.8-.8L3 20.5l1.4-4.1A8.4 8.4 0 0 1 3.5 11.5a8.5 8.5 0 0 1 17 0z"/></svg>',
-        share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>',
-        save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>',
-        open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>',
-        link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>',
-        check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
-        chevL: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>',
-        chevR: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>',
+        like: { a: OUTLINE, k: [["path", { d: "M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1 7.8 7.8 7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" }]] },
+        comment: { a: OUTLINE, k: [["path", { d: "M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.8-.8L3 20.5l1.4-4.1A8.4 8.4 0 0 1 3.5 11.5a8.5 8.5 0 0 1 17 0z" }]] },
+        save: { a: OUTLINE, k: [["path", { d: "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" }]] },
+        open: { a: OUTLINE, k: [["path", { d: "M15 3h6v6" }], ["path", { d: "M10 14 21 3" }], ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }]] },
+        link: { a: OUTLINE, k: [["path", { d: "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5" }], ["path", { d: "M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5" }]] },
+        check: { a: Object.assign({}, OUTLINE, { "stroke-width": "2.5" }), k: [["path", { d: "M20 6 9 17l-5-5" }]] },
+        chevL: { a: { fill: "currentColor" }, k: [["path", { d: "M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" }]] },
+        chevR: { a: { fill: "currentColor" }, k: [["path", { d: "M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" }]] },
     };
-    const SPIN_HTML = '<div class="igf-spin"></div><span>Carregando mais…</span>';
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const posts = new Map();        // key -> dados do post (dedup por permalink)
     const order = [];               // keys na ordem de harvest
@@ -1532,7 +1581,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // follow: existe um botão "Follow"/"Seguir" no post? (= ainda não sigo)
         let canFollow = false;
         for (const b of a.querySelectorAll('button, [role="button"]')) {
-            if (/^(follow|seguir)$/i.test((b.textContent || "").trim())) { canFollow = true; break; }
+            if (RE_FOLLOW.test((b.textContent || "").trim())) { canFollow = true; break; }
         }
         // LEGENDA: o <h1> do post nem sempre existe no momento do harvest (o IG renderiza a legenda tarde,
         // e no <article> virtualizado às vezes nem chega) — daí a descrição sumir na home. Caio na API
@@ -1573,8 +1622,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // o <img> da grade nativa off-screen carregar, que é o gargalo). Fallbacks: img/poster nativo, imagem cheia.
         const media = rec.thumbUrl || (img && img.getAttribute("src")) || (vid && (vid.getAttribute("poster") || vid.poster)) || rec.imageUrl || "";
         if (!media) return false;                             // sem poster/thumb ainda → NÃO commita (re-tenta quando renderizar) → nunca tela preta
-        const isVideo = !!rec.isVideo || !!vid || !!a.querySelector('svg[aria-label="Reel" i], svg[aria-label="Clip" i], svg[aria-label*="eel" i], svg[aria-label*="lip" i]');
-        const iconCarousel = !!a.querySelector('svg[aria-label*="arousel" i]');   // ícone de galeria no tile
+        const isVideo = !!rec.isVideo || !!vid || !!a.querySelector(SEL.reel);
+        const iconCarousel = !!a.querySelector(SEL.carousel);   // ícone de galeria no tile
         const hasSlides = !!(rec.carousel && rec.carousel.length > 1);
         // GALERIA: se o tile É galeria mas a API ainda não trouxe os slides, ESPERA até ~1.5s (a navegação ‹ ›
         // precisa deles). Sem isto, harvestava cedo demais e a galeria virava capa única (sem setas).
@@ -1613,8 +1662,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function copyLink(p, btn) {            // share = COPIAR o link limpo pro clipboard (+ feedback de check)
         const url = cleanPostUrl(p);
         const done = () => {
-            btn.classList.add("igf-copied"); btn.innerHTML = ICO.check; btn.title = "Link copiado";
-            setTimeout(() => { btn.classList.remove("igf-copied"); btn.innerHTML = ICO.link; btn.title = "Copiar link"; }, 1500);
+            btn.classList.add("igf-copied"); setIcon(btn, ICO.check); btn.title = "Link copiado";
+            setTimeout(() => { btn.classList.remove("igf-copied"); setIcon(btn, ICO.link); btn.title = "Copiar link"; }, 1500);
         };
         try {
             if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, done));
@@ -1628,13 +1677,13 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function nativeModalTrigger(art) {
         if (!art) return null;
         // ícone de comentário (locale varia: Comment / Comentar / Comentário) → seu botão clicável (role=button)
-        const svg = art.querySelector('svg[aria-label="Comment" i], svg[aria-label="Comentar" i], svg[aria-label="Comentário" i], svg[aria-label*="omment" i], svg[aria-label*="oment" i]');
+        const svg = art.querySelector(SEL.comment);
         const btn = svg && svg.closest('[role="button"], button, a');
         if (btn) return btn;
         // FALLBACKS (o aria-label muda com locale/experimento e era aí que a modal falhava e virava
         // redirect): 1) botão cujo próprio aria-label fala de comentário; 2) o link do permalink com
         // role=link, que o roteador do IG intercepta e abre como overlay.
-        const byLabel = art.querySelector('[role="button"][aria-label*="oment" i], button[aria-label*="oment" i]');
+        const byLabel = art.querySelector(SEL.commentBtn);
         if (byLabel) return byLabel;
         return art.querySelector('a[role="link"][href*="/p/"], a[role="link"][href*="/reel/"]');
     }
@@ -1734,10 +1783,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
      * Na home dependiam do botão nativo dentro do <article> virtualizado: curtir NAVEGAVA pro post
      * quando não achava (`go(p.href)`) e salvar desistia calado. Agora vai pela API (pk da mídia),
      * com o clique no nativo como plano B e aviso quando nada funciona. */
-    function nativeActionBtn(key, labels) {
+    function nativeActionBtn(key, labelKey) {
         const art = nativeArticle(key);
         if (!art) return null;
-        const svg = art.querySelector(labels.map((l) => 'svg[aria-label="' + l + '" i]').join(", "));
+        const svg = art.querySelector(ariaIs(labelKey));
         return svg && svg.closest('[role="button"], button, a, div');
     }
     async function toggleAction(p, btn, kind) {
@@ -1751,9 +1800,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                 ? "/api/v1/web/likes/" + pk + (on ? "/like/" : "/unlike/")
                 : "/api/v1/web/save/" + pk + (on ? "/save/" : "/unsave/");
             if (pk && await igApiPost(path, "")) return;
-            const nb = nativeActionBtn(p.key, kind === "like"
-                ? ["Like", "Curtir", "Unlike", "Descurtir"]
-                : ["Save", "Salvar", "Remove", "Remover"]);
+            const nb = nativeActionBtn(p.key, kind === "like" ? "like" : "save");
             if (nb) { nb.click(); return; }                    // plano B: o botão nativo do post
             btn.classList.toggle("on", !on);                   // não deu → desfaz e avisa (nunca em silêncio)
             toast(pk ? "O Instagram recusou a ação" : "A API ainda não trouxe este post");
@@ -1793,7 +1840,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const art = nativeArticle(key);
         if (!art) return null;
         for (const b of art.querySelectorAll('button, [role="button"]')) {
-            if (/^(follow|seguir|following|seguindo)$/i.test((b.textContent || "").trim())) return b;
+            if (RE_FOLLOW_ANY.test((b.textContent || "").trim())) return b;
         }
         return null;
     }
@@ -2168,8 +2215,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const wrap = el("a", { class: "igf-media igf-carousel", href: cleanPostUrl(p), "data-open": "1" });   // clicar o slide → modal
         let idx = 0;
         const stage = el("div", { class: "igf-cstage" });
-        const prev = el("button", { class: "igf-cnav igf-cprev", type: "button", "aria-label": "Anterior", "data-act": "cprev", html: ICO.chevL });
-        const next = el("button", { class: "igf-cnav igf-cnext", type: "button", "aria-label": "Próximo", "data-act": "cnext", html: ICO.chevR });
+        const prev = el("button", { class: "igf-cnav igf-cprev", type: "button", "aria-label": "Anterior", "data-act": "cprev", icon: ICO.chevL });
+        const next = el("button", { class: "igf-cnav igf-cnext", type: "button", "aria-label": "Próximo", "data-act": "cnext", icon: ICO.chevR });
         const dots = el("div", { class: "igf-cdots" });
         for (let i = 0; i < slides.length; i++) dots.appendChild(el("span", { class: "igf-cdot" }));
         const counter = el("div", { class: "igf-ccount" });
@@ -2191,7 +2238,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (s.w && s.h) mediaFit(wrap, s.w, s.h, url);
             if (si.complete && si.naturalWidth) fit();             // do cache: `complete` no mesmo tick, sem evento `load`
             else si.addEventListener("load", fit, { once: true });
-            if (s.isVideo) stage.appendChild(el("div", { class: "igf-play", html: PLAY_SVG }));   // capa de vídeo: ▶ (abre na modal)
+            if (s.isVideo) stage.appendChild(el("div", { class: "igf-play", icon: PLAY_SVG }));   // capa de vídeo: ▶ (abre na modal)
             for (let i = 0; i < dots.children.length; i++) dots.children[i].classList.toggle("on", i === idx);
             counter.textContent = (idx + 1) + "/" + slides.length;
             prev.hidden = idx === 0;
@@ -2431,14 +2478,14 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const check = () => {
             if (done) return;
             const dlg = document.querySelector('[role="dialog"]');
-            const svg = dlg && dlg.querySelector('svg[aria-label="Remove" i], svg[aria-label="Remover" i], svg[aria-label="Save" i], svg[aria-label="Salvar" i]');
+            const svg = dlg && dlg.querySelector(SEL.save);
             const sb = svg && svg.closest('[role="button"], button, div[role="button"]');
             if (sb) {
                 stop();
                 sb.click();                                   // des-salva
                 // fecha a modal (botão X, senão Escape) e remove o card
                 setTimeout(() => {
-                    const x = dlg.querySelector('svg[aria-label="Close" i], svg[aria-label="Fechar" i]');
+                    const x = dlg.querySelector(SEL.close);
                     const xb = x && x.closest('[role="button"], button');
                     if (xb) xb.click(); else document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
                     markUnsaved(card);   // mesma regra do caminho por API: escurece, não some
@@ -2480,8 +2527,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             // vídeo: clique TOCA/PAUSA; abrir o post é o ↗ no canto (um <a>: ctrl/cmd/meio = nova aba)
             media = el("div", { class: "igf-media igf-video" });
             if (p.media) media.appendChild(mediaImg(p, media));
-            media.appendChild(el("div", { class: "igf-play", html: PLAY_SVG }));
-            media.appendChild(el("a", { class: "igf-open", href: cleanPostUrl(p), "data-act": "open", title: "Abrir post", "aria-label": "Abrir post", html: ICO.open }));
+            media.appendChild(el("div", { class: "igf-play", icon: PLAY_SVG }));
+            media.appendChild(el("a", { class: "igf-open", href: cleanPostUrl(p), "data-act": "open", title: "Abrir post", "aria-label": "Abrir post", icon: ICO.open }));
         } else {
             // imagem = link pro post (ctrl/cmd/meio abre em nova aba; clique normal → modal do IG)
             media = el("a", { class: "igf-media", href: cleanPostUrl(p), "data-open": "1" });
@@ -2491,8 +2538,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // barra de ações única abaixo da mídia
         const actions = el("div", { class: "igf-actions" });
         const act = (icon, count, name, cls, title) => {
-            const b = el("button", { class: "igf-act" + (cls ? " " + cls : ""), type: "button", "data-act": name, title });
-            b.innerHTML = icon;
+            const b = el("button", { class: "igf-act" + (cls ? " " + cls : ""), type: "button", "data-act": name, title, icon });
             if (count) b.appendChild(el("span", {}, count));
             return b;
         };
@@ -2891,7 +2937,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             applyFeedClasses();                      // sombra/densidade/legenda/contadores desde o 1º paint
             cwrap.appendChild(feedEl);               // meu feed depois das stories
             if (surface === "saved") { savedToolbar = buildSavedToolbar(); cwrap.insertBefore(savedToolbar, feedEl); }   // toolbar de multisseleção ACIMA do mosaico
-            loaderEl = el("div", { class: "igf-loader" + (feedExhausted ? " igf-done" : "") }); loaderEl.innerHTML = SPIN_HTML;
+            loaderEl = el("div", { class: "igf-loader" + (feedExhausted ? " igf-done" : "") }, el("div", { class: "igf-spin" }), el("span", {}, "Carregando mais…"));
             cwrap.appendChild(loaderEl);             // spinner no fim (escondido se o grid já esgotou) — feedback + sentinela do carregar-mais
             rendered.clear(); renderedUpTo = 0; metaPending.clear(); feedNcols = 0; feedColw = 0;   // feed novo (React pode ter removido) → re-renderiza tudo
             scheduleInlineJSON();                    // parse server-rendered fora do caminho crítico do primeiro paint
@@ -2987,7 +3033,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     // a tray de stories (atributo semântico estável do IG)
     function storiesTray(col) {
-        return col.querySelector('[data-pagelet="story_tray"]') || col.querySelector('[aria-label*="Stories" i]');
+        return col.querySelector('[data-pagelet="story_tray"]') || col.querySelector(SEL.stories);
     }
 
     // --igm-navw = largura REAL do nav (o offset do conteúdo). Era 72px fixo: com o nav expandido (sem o
@@ -3063,7 +3109,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     /* botão de COPIAR o username, colado no nome do perfil. Acha o nó FOLHA cujo texto é exatamente
      * o usuário da URL (o IG muda a tag conforme o layout/experimento, então não dá pra fixar h1/h2).
      * Idempotente: o React re-renderiza o header; isto roda no trabalho de rota (ver needsRouteWork). */
-    const ICO_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+    const ICO_COPY = { a: OUTLINE, k: [["rect", { x: "9", y: "9", width: "11", height: "11", rx: "2" }], ["path", { d: "M5 15V5a2 2 0 0 1 2-2h10" }]] };
     function profileUser() {
         const segs = location.pathname.split("/").filter(Boolean);
         return segs.length && !RESERVED.has(segs[0]) ? segs[0] : "";
@@ -3080,12 +3126,12 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (!n.children.length && (n.textContent || "").trim() === user) { nameEl = n; break; }
         }
         if (!nameEl || !nameEl.parentElement) return;
-        const btn = el("button", { class: "igp-copy", type: "button", title: "Copiar @" + user, html: ICO_COPY });
+        const btn = el("button", { class: "igp-copy", type: "button", title: "Copiar @" + user, icon: ICO_COPY });
         btn.addEventListener("click", (e) => {
             e.preventDefault(); e.stopPropagation();
             const done = () => {
-                btn.innerHTML = ICO.check; btn.classList.add("igf-copied");
-                setTimeout(() => { btn.innerHTML = ICO_COPY; btn.classList.remove("igf-copied"); }, 1400);
+                setIcon(btn, ICO.check); btn.classList.add("igf-copied");
+                setTimeout(() => { setIcon(btn, ICO_COPY); btn.classList.remove("igf-copied"); }, 1400);
                 toast("@" + user + " copiado");
             };
             try {
@@ -3353,12 +3399,12 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const vw = window.innerWidth || 1200, vh = window.innerHeight || 800;
         const nearDock = (r) => r.width && r.bottom > vh - 280 && r.right > vw - 760;
         let hit = null;
-        for (const a of document.querySelectorAll('a[href*="/direct/"], svg[aria-label*="essage" i], svg[aria-label*="ensage" i], svg[aria-label*="essenger" i]')) {
+        for (const a of document.querySelectorAll(SEL.messages)) {
             if (nearDock(a.getBoundingClientRect())) { hit = a; break; }
         }
         if (!hit) for (const e of document.querySelectorAll('div[role="button"]')) {   // fallback: texto "Messages"/"Mensagens"
             const t = (e.textContent || "").trim();
-            if ((t === "Messages" || t === "Mensagens") && nearDock(e.getBoundingClientRect())) { hit = e; break; }
+            if (LABELS.messages.includes(t) && nearDock(e.getBoundingClientRect())) { hit = e; break; }
         }
         if (!hit) return;
         for (let n = hit, i = 0; n && n !== document.body && i < 9; n = n.parentElement, i++) {
@@ -3374,7 +3420,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (s !== cur) { cur = s; document.documentElement.classList.toggle("igf-scrolled", s); }
         }, { passive: true });
     }
-    const TOTOP_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l-8 8h5v8h6v-8h5z"/></svg>';
+    const TOTOP_SVG = { k: [["path", { d: "M12 4l-8 8h5v8h6v-8h5z" }]] };
     // Ícones do rail de categorias — ordem = ordem de GROUPS (Feed, Grid, Cards, Vídeo, Interface).
     const PANEL_ICONS = [
         "M12 3l9 8h-3v9h-4v-6H10v6H6v-9H3l9-8z",                                                              // Feed (home)
@@ -3383,18 +3429,18 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         "M8 5v14l11-7z",                                                                                       // Vídeo (play)
         "M3 17h6v-2H3v2zm0-5h10v-2H3v2zm0-7v2h14V5H3zm18 12v-2h-6v2h6zm0-5v-2H11v2h10zm-6-7v2h6V5h-6z",         // Interface (tune)
     ];
-    const CLOSE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z"/></svg>';
+    const CLOSE_SVG = { k: [["path", { d: "M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z" }]] };
     function buildPanel() {
         if (document.getElementById("igs-fab")) return;
-        const fab = el("button", { id: "igs-fab", type: "button", title: "Ajustes do Instagram", html: ICONS.gear });
-        const toTop = el("button", { id: "igs-totop", type: "button", title: "Voltar ao topo", html: TOTOP_SVG });
+        const fab = el("button", { id: "igs-fab", type: "button", title: "Ajustes do Instagram", icon: ICONS.gear });
+        const toTop = el("button", { id: "igs-totop", type: "button", title: "Voltar ao topo", icon: TOTOP_SVG });
         toTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
         const panel = el("div", { id: "igs-panel", role: "dialog", "aria-label": "Ajustes do Instagram" });
 
         // cabeçalho
-        const close = el("button", { class: "igs-x", type: "button", title: "Fechar", "aria-label": "Fechar", html: CLOSE_SVG, onClick: () => panel.classList.remove("open") });
+        const close = el("button", { class: "igs-x", type: "button", title: "Fechar", "aria-label": "Fechar", icon: CLOSE_SVG, onClick: () => panel.classList.remove("open") });
         panel.append(el("div", { class: "igs-head" },
-            el("span", { class: "igs-logo", html: ICONS.gear }),
+            el("span", { class: "igs-logo", icon: ICONS.gear }),
             el("div", { class: "igs-titles" }, el("b", {}, "Ajustes do Instagram"), el("small", {}, (typeof GM_info !== "undefined" && GM_info.script ? "v" + GM_info.script.version : "Userscript"))),
             close));
 
@@ -3404,7 +3450,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             onKeydown: (e) => e.stopPropagation(), onKeyup: (e) => e.stopPropagation(),
         });
         panel.append(el("div", { class: "igs-search" },
-            el("div", {}, el("span", { html: '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>' }), search)));
+            el("div", {}, el("span", { icon: { k: [["path", { d: "M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z" }]] } }), search)));
 
         const rail = el("div", { class: "igs-rail" });
         const content = el("div", { class: "igs-content" });
@@ -3455,7 +3501,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             sections.push(sec);
 
             const tab = el("button", { class: "igs-tab", type: "button", title: grp.title,
-                html: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${PANEL_ICONS[gi] || PANEL_ICONS[0]}"/></svg>` }, el("span", {}, grp.title));
+                icon: mIcon(PANEL_ICONS[gi] || PANEL_ICONS[0]) }, el("span", {}, grp.title));
             tab.addEventListener("click", () => { search.value = ""; showTab(gi); });
             rail.append(tab); tabs.push(tab);
         });
