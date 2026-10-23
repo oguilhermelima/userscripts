@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X (Twitter) — Control Panel, Wide Layout & Age Bypass
 // @namespace    x-declutter-wide
-// @version      3.12.1
+// @version      3.13.0
 // @author       oguilhermelima
 // @description  X/Twitter control panel for a wider layout, decluttered sidebars, live preferences, and sensitive-content handling.
 // @match        https://x.com/*
@@ -81,15 +81,16 @@
         ] },
         { title: "Sidebar esquerda", items: [
             { key: "hideLeftSidebar", label: "Sidebar esquerda compacta (só ícones)", type: "toggle", def: false },
-            { key: "sidebarMgr",      label: "Itens da sidebar",            type: "sidebar" },
             { key: "leftFont",        label: "Ampliar (esta sidebar)",      type: "toggle", def: false },
             { key: "leftScale",       label: "Tamanho (%)",                 type: "slider", min: 100, max: 160, def: 120, dep: "leftFont" },
+            { key: "sidebarMgr",      label: "Itens da sidebar",            type: "sidebar" },
         ] },
         { title: "Sidebar direita", items: [
             { key: "hideRightSidebar",  label: "Ocultar sidebar direita",      type: "toggle", def: false, hide: true },
             { key: "hidePremiumRight",  label: "Esconder card Premium",        type: "toggle", def: false, hide: true },
             { key: "hideTrending",      label: "Esconder Assuntos do momento", type: "toggle", def: false, hide: true },
             { key: "hideWhoToFollow",   label: "Esconder Quem seguir",         type: "toggle", def: false, hide: true },
+            { key: "hideSports",        label: "Esconder placares de esporte (NBA…)", type: "toggle", def: true, hide: true },
             { key: "rightFont",         label: "Ampliar (esta sidebar)",       type: "toggle", def: false },
             { key: "rightScale",        label: "Tamanho (%)",                  type: "slider", min: 100, max: 160, def: 120, dep: "rightFont" },
         ] },
@@ -97,6 +98,7 @@
             { key: "homeDefault",     label: "Timeline padrão (home)",       type: "select", def: "foryou",
               options: [{ value: "foryou", label: "Para você" }, { value: "following", label: "Seguindo" }] },
             { key: "hideForYou",      label: 'Esconder aba "Para você"',     type: "toggle", def: false, hide: true },
+            { key: "hideSportsTabs",  label: "Esconder abas de esporte (NBA…)", type: "toggle", def: true, hide: true },
             { key: "hideViews",       label: "Esconder contador de views",   type: "toggle", def: false, hide: true },
             { key: "hideCounts",      label: "Esconder contadores (resp/RT/like)", type: "toggle", def: false, hide: true },
             { key: "hideGrokActions", label: "Esconder botão Grok nos posts", type: "toggle", def: false, hide: true },
@@ -337,8 +339,14 @@
     // ===================================================================== //
     addStyle(`
         /* ---------- decluttering hides (apply at every width) ---------- */
+        /* o card inteiro (wrapper com borda), não só o <aside>: sozinho, sobrava a borda vazia = uma linha */
+        html.tw-hidePremiumRight [data-testid="sidebarColumn"] div:has(> div > aside a[href*="/i/premium_sign_up"]),
+        html.tw-hidePremiumRight [data-testid="sidebarColumn"] div:has(> aside a[href*="/i/premium_sign_up"]),
         html.tw-hidePremiumRight [role="complementary"]:has(a[href*="/i/premium_sign_up"]),
         html.tw-hidePremiumRight aside[aria-label="Assine o Premium"] { display: none !important; }
+        /* esportes: marcados por markSports() (o X não dá atributo estável, só texto/links) */
+        html.tw-hideSports [data-tw-sport="card"],
+        html.tw-hideSportsTabs [data-tw-sport="tab"] { display: none !important; }
         html.tw-hideTrending [aria-label="Assuntos do Momento"] { display: none !important; }
         /* Who-to-follow: hide the whole card (the bordered/bg wrapper), not just the
            inner <aside> — otherwise an empty card is left behind. */
@@ -874,6 +882,9 @@
                 max-width: 100% !important;
                 flex: 1 1 auto !important;
                 min-width: 320px !important;
+                /* as linhas divisórias são as bordas desta coluna: sem isto, enquanto a timeline carrega
+                   ela tem só a altura do conteúdo e as linhas paravam no meio da tela */
+                min-height: 100vh !important;
             }
             /* COLUNA DA DIREITA */
             html.tw-wide:not(.tw-hideRightSidebar):not(.tw-nosb) [data-testid="sidebarColumn"] {
@@ -1259,99 +1270,118 @@
         #tw-fab:hover { opacity: 1; color: #fff; background: #1d9bf0; border-color: #1d9bf0; transform: rotate(40deg); }
         #tw-fab svg { width: 21px; height: 21px; fill: currentColor; }
 
+        /* ===== settings panel — fixed size, side tabs with labels, grouped cards ===== */
         #tw-panel {
-            position: fixed; right: 16px; bottom: 68px;
-            z-index: 2147483647; width: min(384px, calc(100vw - 32px)); max-height: min(88vh, calc(100vh - 84px));
-            display: none; flex-direction: column; overflow: hidden;
-            background: var(--tw-ui-bg); color: var(--tw-ui-fg); border: 1px solid var(--tw-ui-border);
-            border-radius: 18px; box-shadow: 0 16px 50px var(--tw-ui-shadow);
-            font: 14px/1.3 -apple-system, "Segoe UI", system-ui, sans-serif;
+            --k-bg: var(--tw-ui-bg); --k-fg: var(--tw-ui-fg); --k-muted: var(--tw-ui-muted); --k-border: var(--tw-ui-border);
+            --k-line: var(--tw-ui-line); --k-hover: var(--tw-ui-hover); --k-input: var(--tw-ui-input); --k-track: var(--tw-ui-track);
+            --k-shadow: var(--tw-ui-shadow); --k-accent: #1d9bf0; --k-accent-soft: rgba(29, 155, 240, .14);
+            --k-card: color-mix(in srgb, var(--k-fg) 4%, var(--k-bg));
+            position: fixed; right: 16px; bottom: 72px; z-index: 2147483647;
+            /* tamanho FIXO: não muda conforme a aba, a busca ou a página */
+            width: min(600px, calc(100vw - 32px)); height: min(640px, calc(100vh - 96px));
+            flex-direction: column; overflow: hidden; box-sizing: border-box;
+            background: var(--k-bg); color: var(--k-fg); border: 1px solid var(--k-border);
+            border-radius: 20px; box-shadow: 0 24px 64px var(--k-shadow);
+            font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-transform: none; letter-spacing: normal; text-align: left;
             transform-origin: bottom right;
         }
-        #tw-panel.open { display: flex; animation: tw-pop .16s cubic-bezier(.2,.7,.3,1); }
-        @keyframes tw-pop { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
-
-        .tw-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 12px; border-bottom: 1px solid var(--tw-ui-line); }
-        .tw-logo { width: 28px; height: 28px; border-radius: 9px; background: #1d9bf0; display: flex; align-items: center; justify-content: center; flex: none; }
-        .tw-logo svg { width: 17px; height: 17px; fill: #fff; }
-        .tw-head b { font-size: 16px; font-weight: 800; flex: 1; }
-        .tw-x { all: unset; cursor: pointer; color: var(--tw-ui-muted); width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 50%; transition: .15s; }
-        .tw-x:hover { color: var(--tw-ui-fg); background: var(--tw-ui-border); }
-
-        .tw-search { padding: 10px 14px; border-bottom: 1px solid var(--tw-ui-line); }
-        .tw-search > div { display: flex; align-items: center; gap: 8px; background: var(--tw-ui-input); border: 1px solid var(--tw-ui-border); border-radius: 999px; padding: 7px 12px; transition: border-color .15s, background .15s; }
-        .tw-search > div:focus-within { border-color: #1d9bf0; background: var(--tw-ui-bg); }
-        .tw-search svg { width: 16px; height: 16px; fill: var(--tw-ui-muted); flex: none; }
-        .tw-search input { all: unset; flex: 1; color: var(--tw-ui-fg); font: inherit; }
-        .tw-search input::placeholder { color: var(--tw-ui-muted); }
-
-        .tw-body { display: flex; min-height: 0; flex: 1; }
-        .tw-rail { display: flex; flex-direction: column; gap: 4px; padding: 10px 8px; border-right: 1px solid var(--tw-ui-line); flex: none; }
-        .tw-tab { all: unset; box-sizing: border-box; width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: var(--tw-ui-muted); cursor: pointer; transition: background .15s, color .15s; }
-        .tw-tab svg { width: 21px; height: 21px; fill: currentColor; }
-        .tw-tab:hover { background: var(--tw-ui-hover); color: var(--tw-ui-fg); }
-        .tw-tab.active { background: rgba(29,155,240,.15); color: #1d9bf0; }
-        .tw-content { flex: 1; min-width: 0; overflow-y: auto; padding: 6px 0 12px; scrollbar-width: thin; scrollbar-color: var(--tw-ui-track) transparent; }
+        #tw-panel *, #tw-panel *::before, #tw-panel *::after { box-sizing: border-box; }
+        @keyframes tw-pop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+        .tw-head { display: flex; align-items: center; gap: 12px; padding: 16px 14px 12px 18px; }
+        .tw-logo { width: 36px; height: 36px; border-radius: 11px; background: var(--k-accent); display: flex; align-items: center; justify-content: center; flex: none; }
+        .tw-logo svg { width: 20px; height: 20px; fill: #fff; color: #fff; }
+        .tw-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .tw-titles b { font-size: 16px; font-weight: 700; line-height: 20px; color: var(--k-fg); }
+        .tw-titles small { font-size: 12px; line-height: 16px; color: var(--k-muted); }
+        .tw-x { all: unset; box-sizing: border-box; cursor: pointer; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--k-muted); transition: background .15s, color .15s; }
+        .tw-x svg { width: 20px; height: 20px; fill: currentColor; }
+        .tw-x:hover { background: var(--k-hover); color: var(--k-fg); }
+        .tw-search { padding: 0 16px 12px; border: 0; }
+        .tw-search > div { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; border-radius: 12px; background: var(--k-input); border: 1px solid transparent; transition: border-color .15s, background .15s; }
+        .tw-search > div:focus-within { border-color: var(--k-accent); background: var(--k-bg); }
+        .tw-search svg { width: 17px; height: 17px; fill: var(--k-muted); color: var(--k-muted); flex: none; }
+        .tw-search input { all: unset; flex: 1; min-width: 0; color: var(--k-fg); font: inherit; }
+        .tw-search input::placeholder { color: var(--k-muted); }
+        .tw-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 188px 1fr; border-top: 1px solid var(--k-line); }
+        .tw-rail { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; border-right: 1px solid var(--k-line); overflow-y: auto; scrollbar-width: none; }
+        .tw-tab { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 8px 10px; line-height: 1.25; border-radius: 10px; color: var(--k-muted); cursor: pointer; font-size: 13.5px; font-weight: 600; transition: background .15s, color .15s; }
+        .tw-tab svg { width: 19px; height: 19px; fill: currentColor; flex: none; }
+        .tw-tab span { min-width: 0; overflow-wrap: anywhere; }
+        .tw-tab:hover { background: var(--k-hover); color: var(--k-fg); }
+        .tw-tab.active { background: var(--k-accent-soft); color: var(--k-accent); }
+        .tw-tab:focus-visible, .tw-x:focus-visible { outline: 2px solid var(--k-accent); outline-offset: 1px; }
+        .tw-content { min-width: 0; overflow-y: auto; padding: 16px 16px 20px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--k-track) transparent; }
         .tw-content::-webkit-scrollbar { width: 8px; }
-        .tw-content::-webkit-scrollbar-thumb { background: var(--tw-ui-track); border-radius: 99px; border: 2px solid var(--tw-ui-bg); }
-
+        .tw-content::-webkit-scrollbar-thumb { background: var(--k-track); border-radius: 99px; border: 2px solid var(--k-bg); }
         .tw-sec { display: none; }
-        .tw-sec-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--tw-ui-muted); padding: 12px 16px 6px; }
+        .tw-sec { margin-bottom: 24px; }
+        .tw-sec-title { margin: 0 0 10px 2px; padding: 0; font-size: 17px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--k-fg); background: none; border: 0; }
+        .tw-card { background: var(--k-card); border: 1px solid var(--k-line); border-radius: 14px; overflow: hidden; }
+        .tw-card > * { margin: 0 !important; border-radius: 0 !important; }
+        .tw-card > * + * { border-top: 1px solid var(--k-line); }
+        .tw-empty { display: none; color: var(--k-muted); text-align: center; padding: 48px 16px; font-size: 14px; }
+        .tw-foot { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--k-line); }
+        .tw-reset { all: unset; cursor: pointer; color: var(--k-muted); font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 10px; transition: background .15s, color .15s; }
+        .tw-reset:hover { color: #f4212e; background: rgba(244, 33, 46, .1); }
+        @media (max-width: 560px) {
+            .tw-body { grid-template-columns: 56px 1fr; }
+            .tw-tab { justify-content: center; padding: 0; }
+            .tw-tab span { display: none; }
+        }
 
-        .tw-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; cursor: pointer; border-radius: 9px; margin: 1px 6px; transition: background .12s; }
-        .tw-row:hover { background: var(--tw-ui-hover); }
-        .tw-rowlbl { flex: 1; color: var(--tw-ui-fg); }
-        .tw-row select { background: var(--tw-ui-input); color: var(--tw-ui-fg); border: 1px solid var(--tw-ui-border); border-radius: 8px; padding: 5px 8px; font: inherit; cursor: pointer; }
+        #tw-panel { display: none; }
+        #tw-panel.open { display: flex; animation: tw-pop .16s cubic-bezier(.2, .7, .3, 1); }
+
+        .tw-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 10px 14px; cursor: pointer; transition: background .12s; }
+        .tw-row:hover { background: var(--k-hover); }
+        .tw-rowlbl { flex: 1; min-width: 0; color: var(--k-fg); }
+        .tw-row select { background: var(--k-input); color: var(--k-fg); border: 1px solid var(--k-border); border-radius: 9px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
         .tw-row.dim, .tw-slider.dim { opacity: .4; pointer-events: none; }
 
-        .tw-sw { position: relative; width: 38px; height: 22px; flex: none; }
+        .tw-sw { position: relative; width: 40px; height: 24px; flex: none; }
         .tw-sw input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
-        .tw-sw i { position: absolute; inset: 0; border-radius: 999px; background: var(--tw-ui-track); transition: .18s; pointer-events: none; }
-        .tw-sw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: .18s; box-shadow: 0 1px 2px rgba(0,0,0,.4); }
-        .tw-sw input:checked + i { background: #1d9bf0; }
+        .tw-sw i { position: absolute; inset: 0; border-radius: 999px; background: var(--k-track); transition: .18s; pointer-events: none; }
+        .tw-sw i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: .18s; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+        .tw-sw input:checked + i { background: var(--k-accent); }
         .tw-sw input:checked + i::after { transform: translateX(16px); }
+        .tw-sw input:focus-visible + i { outline: 2px solid var(--k-accent); outline-offset: 2px; }
 
-        .tw-slider { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; margin: 1px 6px; }
-        .tw-slider .lab { display: flex; justify-content: space-between; align-items: center; color: var(--tw-ui-fg2); }
-        .tw-slider .lab .val { color: #1d9bf0; font-weight: 700; background: rgba(29,155,240,.12); border-radius: 6px; padding: 1px 8px; font-size: 13px; min-width: 38px; text-align: center; }
-        .tw-slider input[type=range] { width: 100%; accent-color: #1d9bf0; cursor: pointer; }
+        .tw-slider { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; }
+        .tw-slider .lab { display: flex; justify-content: space-between; align-items: center; color: var(--k-fg); }
+        .tw-slider .lab .val { color: var(--k-accent); font-weight: 700; background: var(--k-accent-soft); border-radius: 7px; padding: 2px 8px; font-size: 12.5px; min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; }
+        .tw-slider input[type=range] { width: 100%; margin: 0; accent-color: var(--k-accent); cursor: pointer; }
+        .tw-foot small { flex: 1; text-align: right; color: var(--k-muted); font-size: 12px; }
 
-        .tw-empty { display: none; color: var(--tw-ui-muted); text-align: center; padding: 32px 16px; font-size: 14px; }
-
-        .tw-foot { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-top: 1px solid var(--tw-ui-line); }
-        .tw-ver { color: var(--tw-ui-muted2); font-size: 12px; }
-        .tw-reset { all: unset; cursor: pointer; color: var(--tw-ui-muted); font-size: 13px; font-weight: 600; padding: 4px 8px; border-radius: 7px; transition: .15s; }
-        .tw-reset:hover { color: #f4212e; background: rgba(244,33,46,.1); }
-        .tw-reload { all: unset; cursor: pointer; color: #fff; background: #1d9bf0; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px; transition: .15s; }
-        .tw-reload:hover { background: #1a8cd8; }
-
-        /* ---------- gerenciador da sidebar (widget do painel) ---------- */
-        .tw-sbmgr-wrap { padding: 2px 10px 8px; }
-        .tw-sbhint { color: var(--tw-ui-muted); font-size: 11px; line-height: 1.4; padding: 2px 6px 10px; }
-        .tw-sbrow { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 9px; }
-        .tw-sbrow:hover { background: var(--tw-ui-hover); }
-        .tw-sbic { width: 22px; height: 22px; flex: none; color: var(--tw-ui-fg); display: flex; align-items: center; justify-content: center; }
-        .tw-sbic svg { width: 20px; height: 20px; fill: currentColor; }
-        .tw-sblbl { flex: 1; min-width: 0; color: var(--tw-ui-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
-        .tw-sbmove { all: unset; cursor: pointer; width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--tw-ui-muted); border: 1px solid var(--tw-ui-border); font-size: 12px; }
-        .tw-sbmove:hover:not(:disabled) { color: #fff; background: #1d9bf0; border-color: #1d9bf0; }
-        .tw-sbmove:disabled { opacity: .3; cursor: default; }
-        .tw-sbseg { display: flex; flex: none; border: 1px solid var(--tw-ui-border); border-radius: 7px; overflow: hidden; }
-        .tw-sbopt { all: unset; cursor: pointer; font-size: 11px; padding: 4px 7px; color: var(--tw-ui-muted); transition: .12s; }
-        .tw-sbopt:hover { color: var(--tw-ui-fg); background: var(--tw-ui-hover); }
-        .tw-sbopt.on { background: #1d9bf0; color: #fff; }
-
-        /* ---------- nosso popup "Mais" ---------- */
-        .tw-more-pop { position: fixed; z-index: 2147483646; display: none; flex-direction: column; min-width: 230px; max-height: 70vh; overflow-y: auto;
-            background: var(--tw-ui-bg); color: var(--tw-ui-fg); border: 1px solid var(--tw-ui-border); border-radius: 16px; box-shadow: 0 16px 50px var(--tw-ui-shadow); padding: 6px;
-            font: 15px/1.2 -apple-system, "Segoe UI", system-ui, sans-serif; }
-        .tw-more-pop.open { display: flex; }
-        .tw-more-row { display: flex; align-items: center; gap: 16px; padding: 11px 14px; border-radius: 9px; color: var(--tw-ui-fg); text-decoration: none; cursor: pointer; }
-        .tw-more-row:hover { background: var(--tw-ui-hover); }
-        .tw-more-ic { width: 24px; height: 24px; flex: none; display: flex; align-items: center; justify-content: center; color: var(--tw-ui-fg); }
-        .tw-more-ic svg { width: 24px; height: 24px; fill: currentColor; }
-        .tw-more-lbl { font-size: 15px; font-weight: 500; }
-        .tw-more-empty { color: var(--tw-ui-muted); font-size: 13px; padding: 14px; text-align: center; }
+        /* ---------- itens da sidebar: três listas, arrastar pra reordenar/mover ---------- */
+        .tw-sbm { display: flex; flex-direction: column; gap: 16px; margin-top: 22px; }
+        .tw-sbm-hd { display: flex; align-items: baseline; gap: 8px; margin: 0 2px 8px; }
+        .tw-sbm-hd b { font-size: 14px; font-weight: 700; color: var(--k-fg); }
+        .tw-sbm-hd em { font-style: normal; font-size: 12px; font-weight: 700; color: var(--k-muted); background: var(--k-hover); border-radius: 99px; padding: 1px 7px; }
+        .tw-sbm-hd span { margin-left: auto; font-size: 12px; color: var(--k-muted); }
+        .tw-sbm-list { background: var(--k-card); border: 1px solid var(--k-line); border-radius: 14px; overflow: hidden; transition: border-color .15s, background .15s; }
+        .tw-sbm-list.over { border-color: var(--k-accent); background: var(--k-accent-soft); }
+        .tw-sbm-empty { padding: 14px; color: var(--k-muted); font-size: 13px; text-align: center; }
+        .tw-sbm-row { position: relative; display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 8px 0 4px; transition: background .12s; }
+        .tw-sbm-row + .tw-sbm-row { border-top: 1px solid var(--k-line); }
+        .tw-sbm-row:hover { background: var(--k-hover); }
+        .tw-sbm-row.dragging { opacity: .35; }
+        .tw-sbm-row.drop-before::before, .tw-sbm-row.drop-after::after { content: ""; position: absolute; left: 10px; right: 10px; height: 2px; border-radius: 2px; background: var(--k-accent); z-index: 1; }
+        .tw-sbm-row.drop-before::before { top: -1px; }
+        .tw-sbm-row.drop-after::after { bottom: -1px; }
+        .tw-sbm-grip { width: 22px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center; color: var(--k-muted); cursor: grab; opacity: .5; transition: opacity .12s; }
+        .tw-sbm-row:hover .tw-sbm-grip { opacity: 1; }
+        .tw-sbm-grip svg { width: 16px; height: 16px; fill: currentColor; }
+        .tw-sbm-ic { width: 26px; height: 26px; flex: none; display: flex; align-items: center; justify-content: center; color: var(--k-fg); }
+        .tw-sbm-ic svg { width: 22px !important; height: 22px !important; max-width: none !important; margin: 0 !important; position: static !important; flex: none; fill: currentColor; }
+        .tw-sbm-lbl { flex: 1; min-width: 0; color: var(--k-fg); font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tw-sbm-lbl small { margin-left: 6px; color: var(--k-muted); font-size: 12px; font-weight: 400; }
+        .tw-sbm-list[data-place="hidden"] .tw-sbm-ic, .tw-sbm-list[data-place="hidden"] .tw-sbm-lbl { opacity: .5; }
+        .tw-sbm-act { all: unset; box-sizing: border-box; width: 34px; height: 34px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--k-muted); cursor: pointer; opacity: .6; transition: opacity .12s, background .12s, color .12s; }
+        .tw-sbm-row:hover .tw-sbm-act { opacity: 1; }
+        .tw-sbm-act:hover { background: var(--k-accent-soft); color: var(--k-accent); }
+        .tw-sbm-act:focus-visible { opacity: 1; outline: 2px solid var(--k-accent); }
+        .tw-sbm-act svg { width: 19px; height: 19px; fill: currentColor; }
+        .tw-sbm-tip { color: var(--k-muted); font-size: 12px; line-height: 1.45; margin: -4px 2px 0; }
 
         /* toast de feedback (ex.: "Link copiado") */
         #tw-toast {
@@ -1368,12 +1398,15 @@
     //  Apply settings — flip the html classes + run the JS-driven features   //
     // ===================================================================== //
     const isHome = () => location.pathname === "/home" || location.pathname === "/";
+    // telas de dois painéis do X (configurações, mensagens, Grok) têm layout próprio: a largura ampla
+    // esticava a lista e o detalhe como se fossem timeline + sidebar e quebrava a página
+    const isTwoPane = () => /^\/(settings|messages|i\/chat|i\/grok)(\/|$)/.test(location.pathname);
     function applySettings() {
         const de = document.documentElement;
         if (settings.ageBypass) installAgeBypass();   // liga ao vivo (idempotente); efeito total só após reload
         de.classList.toggle("tw-home", isHome());     // scopes the "For You" hide to the home timeline
         HIDE_KEYS.forEach((k) => de.classList.toggle("tw-" + k, !!settings[k]));
-        de.classList.toggle("tw-wide", !!settings.wide);
+        de.classList.toggle("tw-wide", !!settings.wide && !isTwoPane());
         de.classList.toggle("tw-hideLeftSidebar", !!settings.hideLeftSidebar);
         de.classList.toggle("tw-centerFont", !!settings.centerFont);   // 3 regiões, MESMO modelo de % (calc(1em*scale) no texto-folha): central / esquerda / direita
         de.classList.toggle("tw-leftFont", !!settings.leftFont);
@@ -1751,14 +1784,35 @@
     //  pruneMore e o moveSettings.)                                            //
     //  --- SELETORES do X num lugar só (ajuste aqui se o X mudar o DOM) ---     //
     const NAV_SEL = 'header[role="banner"] nav[role="navigation"]';
-    const NAV_ITEM_SEL = 'a[role="link"], a[href]';
-    const MORE_NATIVE_SEL = '[data-testid="AppTabBar_More_Menu"], header[role="banner"] nav[role="navigation"] button[aria-label="Mais"], header[role="banner"] nav[role="navigation"] button[aria-label="More"]';
-    const TW_MORE_ID = "tw-our-more";
+    // botões também: "Chamadas" não é link, então ficava fora da lista
+    const NAV_ITEM_SEL = 'a[role="link"], a[href], [role="link"], button';
+    // o "Mais" nativo muda de testid/rótulo entre versões do X: isNativeMore() o acha e marca com
+    // data-tw-native-more, e as regras de CSS miram só a marca. Nunca pega o nosso (#tw-our-more).
+    // especificidade alta de propósito: o modo compacto força display:flex !important em "nav button"
+    const MORE_NATIVE_SEL = 'html header[role="banner"] [data-tw-native-more][data-tw-native-more]';
+    const isNativeMore = (n) => {
+        if (n.closest("[data-tw-inj]")) return false;
+        if (/More_Menu/.test(n.getAttribute("data-testid") || "")) return true;
+        return /^(mais|more)\b/i.test((n.getAttribute("aria-label") || "").trim()) || n.getAttribute("aria-haspopup") === "menu";
+    };
+    function markNativeMore() {
+        const banner = document.querySelector('header[role="banner"]');
+        if (!banner) return;
+        for (const n of banner.querySelectorAll('[data-testid*="More_Menu"], [aria-haspopup="menu"], nav a, nav button, nav [role="link"], nav [role="button"]')) {
+            if (isNativeMore(n) && !n.hasAttribute("data-tw-native-more")) n.setAttribute("data-tw-native-more", "");
+        }
+    }
     const MORE_KEY = "_more";
     const HIST_KEY = "p:/i/history";
+    // "Itens salvos" virou "História" (HIST_KEY): o antigo sai do registro e da sidebar
+    const DROP_KEYS = ["p:/i/bookmarks"];
+    // ações de POST que versões antigas capturavam do menu "…" de um tweet (não são itens de navegação)
+    const POST_ACTION_RE = /\/status\/\d|\/i\/lists\/add_member|\/i\/birdwatch|communitynotes|\/i\/report/;
+    const isDropKey = (k) => DROP_KEYS.includes(k) || POST_ACTION_RE.test(k);
+    const DROP_CSS = NAV_SEL + ' a[href$="/i/bookmarks"]{display:none !important;}';
     const DOTS_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><g><circle cx="5" cy="12" r="2.2"></circle><circle cx="12" cy="12" r="2.2"></circle><circle cx="19" cy="12" r="2.2"></circle></g></svg>';
     const HIST_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><g><path d="M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5z"></path></g></svg>';
-    let APPLIED = null;   // snapshot do config aplicado (estável na sessão; só muda em reload)
+    let APPLIED = null;   // snapshot do config aplicado (o painel troca ao editar)
 
     // registro + config moram em settings (persistem no localStorage junto)
     const navReg = () => settings.navRegistry || (settings.navRegistry = {});
@@ -1773,10 +1827,11 @@
         const a = (node.closest && node.closest('a,button,[role="link"],[role="menuitem"]')) || node;
         const href = (a.getAttribute && a.getAttribute("href")) || "";
         const testid = (a.getAttribute && a.getAttribute("data-testid")) || "";
-        let label = (a.getAttribute && a.getAttribute("aria-label")) || "";
+        let label = (a.getAttribute && (a.getAttribute("aria-label") || a.getAttribute("title"))) || "";
         if (!label && a.querySelectorAll) { const s = [...a.querySelectorAll("span")].find((x) => x.textContent.trim() && !x.querySelector("*")); label = s ? s.textContent.trim() : ""; }
-        const svg = a.querySelector && a.querySelector("svg");
-        const info = { href, testid, label: (label || "").trim(), icon: svg ? svg.outerHTML : "" };
+        let svg = a.querySelector && a.querySelector("svg");
+        if (svg) { svg = svg.cloneNode(true); svg.removeAttribute("class"); svg.removeAttribute("style"); }
+        const info = { href, testid, label: (label || "").replace(/\s*\(.*\)\s*$/, "").trim(), icon: svg ? svg.outerHTML : "" };
         info.key = navKeyOf(info); info.el = a;
         return info;
     }
@@ -1785,7 +1840,7 @@
         const reg = navReg(), cfg = navCfg();
         let touched = false;
         const add = (info, place) => {
-            if (!info.key || info.key === "l:" || !info.label) return;
+            if (!info.key || info.key === "l:" || !info.label || isDropKey(info.key) || POST_ACTION_RE.test(info.href)) return;
             const prev = reg[info.key] || {};
             const icon = info.icon || prev.icon || "";
             if (!prev.label || (!prev.icon && icon)) touched = true;                 // item novo, ou ganhou ícone
@@ -1793,6 +1848,16 @@
             if (!cfg.some((c) => c.key === info.key)) { cfg.push({ key: info.key, place }); if (APPLIED) APPLIED.push({ key: info.key, place }); touched = true; }
         };
 
+        for (const k of [...new Set([...DROP_KEYS, ...Object.keys(reg).filter((x) => isDropKey(x) || POST_ACTION_RE.test(reg[x].href || ""))])]) {
+            if (reg[k]) { delete reg[k]; touched = true; }
+            const drop = (list) => { for (let i = list.length - 1; i >= 0; i--) if (list[i].key === k) { list.splice(i, 1); touched = true; } };
+            drop(cfg); if (APPLIED) drop(APPLIED);
+        }
+        const nav = document.querySelector(NAV_SEL);
+        if (nav) for (const a of nav.querySelectorAll(NAV_ITEM_SEL)) {
+            if (skipNavEl(a)) continue;
+            add(readEl(a), "bar");
+        }
         if (!reg[HIST_KEY] || !reg[HIST_KEY].label || !reg[HIST_KEY].icon) {
             reg[HIST_KEY] = { label: "História", href: "/i/history", testid: "", icon: HIST_SVG };
             touched = true;
@@ -1809,24 +1874,41 @@
             touched = true;
         }
 
-        const nav = document.querySelector(NAV_SEL);
-        if (nav) for (const a of nav.querySelectorAll(NAV_ITEM_SEL)) {
-            if (a.id === TW_MORE_ID || a.closest("[data-tw-inj]")) continue;          // ignora os nossos injetados
-            add(readEl(a), "bar");
+        // o "Mais" (do X) entra DEPOIS de já existir algum item de barra (pra cair no fim, não no topo)
+        if (!reg[MORE_KEY]) { reg[MORE_KEY] = { label: "Mais", href: "", testid: "", icon: DOTS_SVG }; touched = true; }
+        // a entrada "Mais" é o botão do X: mesmo ícone e nome dele (antes era o nosso, de três pontos)
+        markNativeMore();
+        const native = document.querySelector(MORE_NATIVE_SEL);
+        if (native) {
+            const info = readEl(native), label = native.querySelector("span") ? native.querySelector("span").textContent.trim() : "";
+            const m = reg[MORE_KEY];
+            if (info.icon && m.icon !== info.icon) { m.icon = info.icon; touched = true; }
+            if (label && m.label !== label) { m.label = label; touched = true; }
         }
-        // nosso "Mais" entra DEPOIS de já existir algum item de barra (pra cair no fim, não no topo)
+        // "Ocultar" o Mais escondia o NOSSO botão; agora esconde o do X → quem tinha ocultado volta a ver
+        if (!settings.moreIsNative) {
+            settings.moreIsNative = true; touched = true;
+            for (const list of [cfg, APPLIED]) if (list) for (const c of list) if (c.key === MORE_KEY) c.place = "bar";
+        }
         if (!cfg.some((c) => c.key === MORE_KEY) && cfg.some((c) => c.place === "bar")) {
-            reg[MORE_KEY] = { label: "Mais", href: "", testid: "", icon: DOTS_SVG }; cfg.push({ key: MORE_KEY, place: "bar" }); if (APPLIED) APPLIED.push({ key: MORE_KEY, place: "bar" }); touched = true;
+            cfg.push({ key: MORE_KEY, place: "bar" }); if (APPLIED) APPLIED.push({ key: MORE_KEY, place: "bar" }); touched = true;
         }
-        for (const m of document.querySelectorAll('[role="menu"] a[href]')) add(readEl(m), "more");
+        if (nativeMoreOpen()) for (const m of document.querySelectorAll('[role="menu"] a[href]:not([data-tw-menu-inj])')) add(readEl(m), "more");
         if (touched) save();
         return touched;
     }
 
+    // fora da lista: nossos injetados, um aninhado em outro item, o "Mais" nativo e o "Postar"
+    function skipNavEl(a) {
+        if (a.closest("[data-tw-inj]")) return true;
+        if (a.parentElement && a.parentElement.closest('a,button,[role="link"]')) return true;
+        if (isNativeMore(a) || a.getAttribute("data-testid") === "SideNav_NewTweet_Button") return true;
+        return /\/compose\//.test(a.getAttribute("href") || "");
+    }
     // acha o elemento nativo (na nav) correspondente a uma key
     function findLive(nav, key) {
         for (const a of nav.querySelectorAll(NAV_ITEM_SEL)) {
-            if (a.id === TW_MORE_ID || a.closest("[data-tw-inj]")) continue;
+            if (skipNavEl(a)) continue;
             if (readEl(a).key === key) return a;
         }
         return null;
@@ -1836,6 +1918,9 @@
         const node = template.cloneNode(true);
         node.setAttribute("data-tw-inj", key);
         node.removeAttribute("aria-current");
+        // sem o testid do template: senão as regras de ordem/ocultar do item original pegam o clone também
+        node.removeAttribute("data-testid");
+        node.querySelectorAll("[data-testid]").forEach((n) => n.removeAttribute("data-testid"));
         if (item.href) { try { node.href = new URL(item.href, location.origin).href; } catch (e) { node.setAttribute("href", item.href); } }
         if (item.label) node.setAttribute("aria-label", item.label);
         // troca SÓ o conteúdo do <svg> do template (mantém classe/tamanho/cor do X), não o svg inteiro
@@ -1845,48 +1930,50 @@
         return node;
     }
 
-    // ---- nosso popup "Mais" ---- //
-    let ourMore = null, morePop = null, morePopBound = false, sbRender = null, reloadBtn = null;
-    function toggleMorePopup() {
+    // ---- "Mais" é o do X: os itens mandados pra "Mais" entram no menu DELE quando ele abre ---- //
+    let sbRender = null;
+    const nativeMoreOpen = () => !!document.querySelector('header[role="banner"] [data-tw-native-more][aria-expanded="true"]');
+    function fillMoreMenu() {
+        if (!nativeMoreOpen()) return;
+        const menu = document.querySelector('[role="menu"]'), nav = document.querySelector(NAV_SEL);
+        if (!menu || !nav || menu.querySelector("[data-tw-menu-inj]")) return;
+        const tpl = menu.querySelector('a[role="menuitem"]') || menu.querySelector("a[href]");
+        if (!tpl) return;
         const reg = navReg();
-        const items = appliedCfg().filter((c) => c.place === "more").map((c) => ({ key: c.key, item: reg[c.key] })).filter((x) => x.item);
-        if (!morePop) { morePop = el("div", { class: "tw-more-pop" }); document.body.append(morePop); }
-        morePop.replaceChildren();
-        if (!items.length) morePop.append(el("div", { class: "tw-more-empty" }, "Vazio — mova itens pra cá no painel."));
-        for (const { key, item } of items) {
-            const row = el("a", { class: "tw-more-row", href: item.href || "#" },
-                el("span", { class: "tw-more-ic", html: item.icon || DOTS_SVG }),
-                el("span", { class: "tw-more-lbl" }, item.label));
-            row.addEventListener("click", (e) => {
-                morePop.classList.remove("open");
-                const nav = document.querySelector(NAV_SEL), live = nav && findLive(nav, key);
-                if (live) { e.preventDefault(); live.click(); }          // SPA pelo link nativo (mesmo escondido)
+        // só itens da barra (os nativos do menu já estão lá); clona um item do próprio menu → estilo do X
+        for (const c of appliedCfg()) {
+            if (c.place !== "more" || !reg[c.key] || !findLive(nav, c.key)) continue;
+            const item = reg[c.key], node = tpl.cloneNode(true);
+            node.setAttribute("data-tw-menu-inj", c.key);
+            node.removeAttribute("data-testid");
+            node.querySelectorAll("[data-testid]").forEach((n) => n.removeAttribute("data-testid"));
+            if (item.href) node.setAttribute("href", item.href);
+            const svg = node.querySelector("svg");
+            if (svg && item.icon) {
+                const t = document.createElement("div"); t.innerHTML = item.icon;
+                const src = t.querySelector("svg");
+                if (src) { svg.innerHTML = src.innerHTML; svg.setAttribute("viewBox", src.getAttribute("viewBox") || "0 0 24 24"); }
+            }
+            for (const sp of node.querySelectorAll("span")) { if (sp.textContent.trim() && !sp.querySelector("*")) { sp.textContent = item.label; break; } }
+            node.addEventListener("click", (e) => {
+                // o clone não é do React: navega pelo link nativo (escondido na barra) e fecha o menu
+                e.preventDefault(); e.stopPropagation();
+                const live = findLive(nav, c.key);
+                document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+                if (live) live.click();
             });
-            morePop.append(row);
-        }
-        const open = !morePop.classList.contains("open");
-        morePop.classList.toggle("open", open);
-        if (open && ourMore) {
-            const r = ourMore.getBoundingClientRect();
-            morePop.style.left = (r.right + 10) + "px";
-            morePop.style.bottom = Math.max(12, window.innerHeight - r.bottom) + "px";
-        }
-        if (!morePopBound) {
-            morePopBound = true;
-            document.addEventListener("click", (e) => { if (morePop && !morePop.contains(e.target) && (!ourMore || !ourMore.contains(e.target))) morePop.classList.remove("open"); });
+            tpl.parentNode.insertBefore(node, tpl);
         }
     }
 
-    // snapshot do config APLICADO — o que está na sidebar AGORA. Estável na sessão; só re-snapshota em
-    // reload. Edições no painel mexem em settings.navConfig (persistido p/ o próximo load) SEM reaplicar
-    // ao vivo (você aplica clicando em "Recarregar"). Capturas de itens NOVOS entram no snapshot na hora.
+    // snapshot do config APLICADO — o que está na sidebar AGORA. O painel o troca a cada edição;
+    // capturas de itens NOVOS entram nele na hora.
     const appliedCfg = () => APPLIED || navCfg();
-    const cfgDirty = () => !!APPLIED && JSON.stringify(navCfg()) !== JSON.stringify(APPLIED);
-    const updateReloadBtn = () => { if (reloadBtn) reloadBtn.style.display = cfgDirty() ? "" : "none"; };
     // seletor CSS estável de um item NATIVO (testid > href) — base da ordem/visibilidade declarativa
     function navSelFor(item) {
-        if (item.testid) return NAV_SEL + ' a[data-testid="' + item.testid + '"]';
+        if (item.testid) return NAV_SEL + ' [data-testid="' + item.testid + '"]';
         if (item.href) { try { const p = new URL(item.href, location.origin).pathname.replace(/\/+$/, ""); if (p) return NAV_SEL + ' a[href$="' + p + '"]'; } catch (e) {} }
+        if (item.label) return NAV_SEL + ' [aria-label="' + item.label.replace(/["\\]/g, "\\$&") + '"]';
         return null;
     }
 
@@ -1901,9 +1988,7 @@
         const cfg = APPLIED, reg = navReg();
         const template = nav.querySelector('a[role="link"]') || nav.querySelector("a[href]");
         if (!template) return;
-        // só assumimos o "Mais" DEPOIS de capturar itens pra ele (você abre o nativo 1x → captura → o nosso assume)
-        const hasMore = cfg.some((c) => c.place === "more" && reg[c.key]);
-
+        markNativeMore();
         nav.querySelectorAll("[data-tw-inj]").forEach((n) => {            // limpa injetados que saíram de "bar"
             const c = cfg.find((x) => x.key === n.getAttribute("data-tw-inj"));
             if (!c || c.place !== "bar") n.remove();
@@ -1917,21 +2002,16 @@
         const place = (node) => { if (postBtn && postBtn.parentNode === nav) nav.insertBefore(node, postBtn); else nav.appendChild(node); };
         let css = "", order = 0;
         for (const c of cfg) {
-            if (c.key === MORE_KEY) {
-                const show = c.place === "bar" && hasMore;
-                if (!show) { if (ourMore) ourMore.style.display = "none"; if (c.place === "bar") order++; continue; }
-                if (!ourMore || !ourMore.isConnected) {
-                    ourMore = cloneNav(template, { label: "Mais", icon: DOTS_SVG, href: "" }, MORE_KEY);
-                    ourMore.id = TW_MORE_ID; ourMore.removeAttribute("href"); ourMore.removeAttribute("data-tw-inj");
-                    ourMore.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); toggleMorePopup(); });
-                    place(ourMore);
-                }
-                ourMore.style.display = ""; ourMore.style.order = reordered ? String(order) : "";
+            if (c.key === MORE_KEY) {          // o "Mais" do X: só posição ou oculto
+                if (c.place !== "bar") { css += MORE_NATIVE_SEL + "{display:none !important;}"; continue; }
+                if (reordered) css += MORE_NATIVE_SEL + "{order:" + order + " !important;}";
                 order++;
                 continue;
             }
             const item = reg[c.key]; if (!item) continue;
             const sel = navSelFor(item);
+            // item nativo do menu "Mais" que foi pra barra ou pros ocultos: sai do menu
+            if (c.place !== "more" && item.href) css += '[role="menu"] a[href$="' + item.href.replace(/["\\]/g, "") + '"]:not([data-tw-menu-inj]){display:none !important;}';
             if (c.place !== "bar") { if (sel) css += sel + "{display:none !important;}"; continue; }
             if (sel && reordered) css += sel + "{order:" + order + " !important;}";
             const cur = order++;
@@ -1942,47 +2022,114 @@
                 inj.style.display = ""; inj.style.order = reordered ? String(cur) : "";
             }
         }
-        if (hasMore) css += MORE_NATIVE_SEL + "{display:none !important;}";
+        // fora da config (ex.: "Postar") vai pro fim em vez de empatar com o 1º item em order 0
+        if (reordered) css = NAV_SEL + " > *{order:900;}" + css;
+        css += DROP_CSS;
         let st = document.getElementById("tw-sidebar-css");
         if (!st) { st = el("style", { id: "tw-sidebar-css" }); (document.head || document.documentElement).append(st); }
         if (st.textContent !== css) st.textContent = css;
     }
 
-    // ---- widget do painel (lista reordenável com Sidebar/Mais/Oculto por item) ---- //
-    const PLACES = [{ v: "bar", t: "Sidebar" }, { v: "more", t: "Mais" }, { v: "hidden", t: "Oculto" }];
+    // ---- widget do painel: três listas (Sidebar / Mais / Ocultos). Arrastar reordena e move entre
+    //      listas; os botões da linha mandam o item pras outras duas. Aplica AO VIVO. ---- //
+    const SBM_SVG = {
+        grip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM9 20a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm6-13a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>',
+        bar: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zm4 2v14h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-8zM6 5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h2V5H6z"/></svg>',
+        more: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm7 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm7 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg>',
+        hidden: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.3 2.3 2 3.6l3.2 3.2A12.4 12.4 0 0 0 1.5 12c1.8 4 5.8 7 10.5 7 1.8 0 3.5-.4 5-1.2l3.4 3.4 1.3-1.3L3.3 2.3zM12 17a5 5 0 0 1-4.7-6.7l1.6 1.6a3 3 0 0 0 3.2 3.2l1.6 1.6c-.5.2-1.1.3-1.7.3zm0-12c4.7 0 8.7 3 10.5 7-.7 1.6-1.8 3-3.1 4.1l-2.6-2.6A5 5 0 0 0 10.5 7.2L8.7 5.4C9.8 5.1 10.9 5 12 5z"/></svg>',
+    };
+    const PLACES = [
+        { v: "bar",    t: "Na sidebar",   tip: "Arraste pra reordenar",       act: "Mostrar na sidebar" },
+        { v: "more",   t: "No menu Mais", tip: "Abrem pelo “Mais”",           act: "Mover pro menu Mais" },
+        { v: "hidden", t: "Ocultos",      tip: "Não aparecem em lugar nenhum", act: "Ocultar" },
+    ];
     function buildSidebarWidget() {
         const reg = navReg(), cfg = navCfg();
-        const wrap = el("div", { class: "tw-sbmgr" });
-        // edições SÓ estagiam (save + marca "dirty"): NÃO reaplicam ao vivo — você aplica em "Recarregar".
-        // stopPropagation: o render() troca os nós e o clique vazaria pro listener "fora-do-painel" (fechava).
-        const stage = () => { save(); updateReloadBtn(); render(); };
-        const mv = (i, d) => { const j = i + d; if (j < 0 || j >= cfg.length) return; const t = cfg[i]; cfg[i] = cfg[j]; cfg[j] = t; settings.navReordered = true; stage(); };
+        const wrap = el("div", { class: "tw-sbm", "data-label": "itens da sidebar menu mais ocultar mover esconder reordenar arrastar" });
+        // aplica na hora: o snapshot vira a config editada e a sidebar é refeita
+        const stage = () => { save(); APPLIED = JSON.parse(JSON.stringify(cfg)); applySidebar(); render(); };
+        // tira `key` do lugar e põe antes/depois de `target` (ou no fim da lista `place`)
+        const move = (key, place, target, after) => {
+            if (key === MORE_KEY && place === "more") return;
+            const from = cfg.findIndex((x) => x.key === key);
+            if (from === -1) return;
+            const [it] = cfg.splice(from, 1);
+            it.place = place;
+            let to = target ? cfg.findIndex((x) => x.key === target) : -1;
+            if (to !== -1) to += after ? 1 : 0;
+            else { to = cfg.length; for (let k = cfg.length - 1; k >= 0; k--) if (cfg[k].place === place) { to = k + 1; break; } }
+            cfg.splice(to, 0, it);
+            settings.navReordered = true;
+            stage();
+        };
+        let dragKey = null;
+        const clearMarks = () => wrap.querySelectorAll(".drop-before,.drop-after,.over").forEach((n) => n.classList.remove("drop-before", "drop-after", "over"));
+
         function render() {
             wrap.replaceChildren();
-            cfg.forEach((c, i) => {
-                const item = reg[c.key]; if (!item) return;
-                const isMore = c.key === MORE_KEY;
-                const up = el("button", { class: "tw-sbmove", type: "button", title: "Subir", onclick: (e) => { e.stopPropagation(); mv(i, -1); } }, "↑");
-                const dn = el("button", { class: "tw-sbmove", type: "button", title: "Descer", onclick: (e) => { e.stopPropagation(); mv(i, 1); } }, "↓");
-                if (i === 0) up.disabled = true;
-                if (i === cfg.length - 1) dn.disabled = true;
-                const seg = el("div", { class: "tw-sbseg" });
-                for (const p of PLACES) {
-                    if (isMore && p.v === "more") continue;
-                    seg.append(el("button", { class: "tw-sbopt" + (c.place === p.v ? " on" : ""), type: "button",
-                        onclick: (e) => { e.stopPropagation(); c.place = p.v; stage(); } }, p.t));
+            for (const p of PLACES) {
+                const rows = cfg.filter((c) => c.place === p.v && reg[c.key] && !isDropKey(c.key));
+                const list = el("div", { class: "tw-sbm-list", "data-place": p.v });
+                list.addEventListener("dragover", (e) => { if (!dragKey) return; e.preventDefault(); list.classList.add("over"); });
+                list.addEventListener("dragleave", (e) => { if (!list.contains(e.relatedTarget)) list.classList.remove("over"); });
+                list.addEventListener("drop", (e) => { e.preventDefault(); const k = dragKey; dragKey = null; clearMarks(); if (k) move(k, p.v, null, true); });
+                if (!rows.length) list.append(el("div", { class: "tw-sbm-empty" }, "Nada aqui — arraste um item"));
+                for (const c of rows) {
+                    const item = reg[c.key], isMore = c.key === MORE_KEY;
+                    const row = el("div", { class: "tw-sbm-row", draggable: "true" },
+                        el("span", { class: "tw-sbm-grip", title: "Arrastar", html: SBM_SVG.grip }),
+                        el("span", { class: "tw-sbm-ic", html: item.icon || DOTS_SVG }),
+                        el("span", { class: "tw-sbm-lbl" }, item.label, isMore ? el("small", {}, "menu do X") : null));
+                    for (const q of PLACES) {
+                        if (q.v === p.v || (isMore && q.v === "more")) continue;
+                        row.append(el("button", { class: "tw-sbm-act", type: "button", title: q.act, "aria-label": q.act + ": " + item.label, html: SBM_SVG[q.v],
+                            // stopPropagation: o render() troca os nós e o clique vazaria pro "clicou fora" (fechava)
+                            onclick: (e) => { e.stopPropagation(); move(c.key, q.v, c.key, false); } }));
+                    }
+                    row.addEventListener("dragstart", (e) => { dragKey = c.key; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", c.key); row.classList.add("dragging"); });
+                    row.addEventListener("dragend", () => { dragKey = null; row.classList.remove("dragging"); clearMarks(); });
+                    row.addEventListener("dragover", (e) => {
+                        if (!dragKey || dragKey === c.key) return;
+                        e.preventDefault();
+                        const r = row.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2;
+                        row.classList.toggle("drop-after", after); row.classList.toggle("drop-before", !after);
+                    });
+                    row.addEventListener("dragleave", () => row.classList.remove("drop-before", "drop-after"));
+                    row.addEventListener("drop", (e) => {
+                        e.preventDefault(); e.stopPropagation();
+                        const k = dragKey, r = row.getBoundingClientRect();
+                        dragKey = null; clearMarks();
+                        if (k && k !== c.key) move(k, p.v, c.key, e.clientY > r.top + r.height / 2);
+                    });
+                    list.append(row);
                 }
-                wrap.append(el("div", { class: "tw-sbrow" },
-                    el("span", { class: "tw-sbic", html: item.icon || DOTS_SVG }),
-                    el("span", { class: "tw-sblbl" }, item.label + (isMore ? " (nosso menu)" : "")),
-                    up, dn, seg));
-            });
+                wrap.append(el("div", {},
+                    el("div", { class: "tw-sbm-hd" }, el("b", {}, p.t), el("em", {}, String(rows.length)), el("span", {}, p.tip)),
+                    list));
+            }
+            wrap.append(el("div", { class: "tw-sbm-tip" }, "Falta algum item? Abra o “Mais” do X uma vez e ele aparece aqui."));
         }
         render();
         sbRender = render;   // pra re-renderizar quando o painel reabrir (itens capturados depois)
-        return el("div", { class: "tw-sbmgr-wrap", "data-label": "itens da sidebar mais ocultar mover esconder" },
-            el("div", { class: "tw-sbhint" }, "Reordene com ↑↓ e escolha Sidebar / Mais / Oculto. As mudanças aplicam ao clicar em Recarregar (no rodapé). Abra o “Mais” do X uma vez pra capturar itens que ainda não apareceram."),
-            wrap);
+        return wrap;
+    }
+
+    // ---- esportes: card de placares na sidebar e abas de liga na home ---- //
+    const SPORT_TABS = ["NBA", "WNBA", "NFL", "MLB", "NHL", "MLS", "NCAAF", "NCAAB"];
+    function markSports() {
+        const side = document.querySelector('[data-testid="sidebarColumn"]');
+        if (side) for (const hit of side.querySelectorAll('a[href^="/i/"][href*="/game"], img[src*="/sports-product/"]')) {
+            // sobe até o maior bloco que ainda é SÓ esse card (para antes de um irmão: busca, outro card)
+            let n = hit;
+            while (n.parentElement && n.parentElement !== side &&
+                !n.parentElement.querySelector('form, input, aside, section, [aria-label="Assuntos do Momento"]')) n = n.parentElement;
+            if (n.getAttribute("data-tw-sport") !== "card") n.setAttribute("data-tw-sport", "card");
+        }
+        for (const tab of document.querySelectorAll('[data-testid="primaryColumn"] [role="tablist"] [role="tab"]')) {
+            if (!SPORT_TABS.includes(tab.textContent.trim()) || tab.getAttribute("aria-selected") === "true") continue;
+            const box = tab.closest('[role="presentation"]') || tab;
+            if (box.getAttribute("data-tw-sport") !== "tab") box.setAttribute("data-tw-sport", "tab");
+        }
     }
 
     // ---- force the Following timeline when "For You" is hidden ------------ //
@@ -2021,8 +2168,10 @@
         const t = article && article.querySelector("time");
         const a = t && t.closest('a[href*="/status/"]');
         const href = a && a.getAttribute("href");
-        if (!href || !/\/status\/\d+/.test(href)) return null;
-        return location.origin + href.replace(/\/(photo|video|analytics)\/\d+\/?$/, "");
+        if (href && /\/status\/\d+/.test(href)) return location.origin + href.replace(/\/(photo|video|analytics)\/\d+\/?$/, "");
+        // post aberto numa thread: o post em foco não tem link no horário, mas a URL da página é ele
+        const m = location.pathname.match(/^\/[^/]+\/status\/\d+/);
+        return m && article ? location.origin + m[0] : null;
     }
 
     let twToastEl, twToastTimer;
@@ -2355,17 +2504,20 @@
     //  The floating control panel                                           //
     // ===================================================================== //
     let panelClickBound = false;
+    const CLOSE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z"/></svg>';
     function buildPanel() {
         if (document.getElementById("tw-fab")) return;
 
         const fab = el("button", { id: "tw-fab", type: "button", title: "Ajustes do X", html: `<svg viewBox="0 0 24 24" aria-hidden="true">${GEAR}</svg>` });
         const panel = el("div", { id: "tw-panel", role: "dialog", "aria-label": "Ajustes do X" });
+        const version = typeof GM_info !== "undefined" && GM_info.script ? "v" + GM_info.script.version : "";
 
         // ---- cabeçalho ----
-        const close = el("button", { class: "tw-x", type: "button", title: "Fechar", onclick: () => panel.classList.remove("open") }, "✕");
+        const close = el("button", { class: "tw-x", type: "button", title: "Fechar", "aria-label": "Fechar", html: CLOSE_SVG, onclick: () => panel.classList.remove("open") });
         panel.append(el("div", { class: "tw-head" },
             el("span", { class: "tw-logo", html: `<svg viewBox="0 0 24 24" aria-hidden="true">${GEAR}</svg>` }),
-            el("b", {}, "Ajustes do X"), close));
+            el("div", { class: "tw-titles" }, el("b", {}, "Ajustes do X"), el("small", {}, ["X Control Panel", version].filter(Boolean).join(" · "))),
+            close));
 
         // ---- busca (filtra todas as categorias) ----
         const search = el("input", {
@@ -2375,7 +2527,7 @@
         panel.append(el("div", { class: "tw-search" },
             el("div", {}, el("span", { html: '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>' }), search)));
 
-        // ---- corpo: rail de categorias + conteúdo ----
+        // ---- corpo: abas com nome + conteúdo em cards (tamanho fixo, não pula entre abas) ----
         const rail = el("div", { class: "tw-rail" });
         const content = el("div", { class: "tw-content" });
         const empty = el("div", { class: "tw-empty" }, "Nenhum ajuste encontrado");
@@ -2389,6 +2541,8 @@
         GROUPS.forEach((grp, gi) => {
             const sec = el("div", { class: "tw-sec" });
             sec.append(el("div", { class: "tw-sec-title" }, grp.title));
+            let card = null;
+            const add = (row) => { if (!card) sec.append(card = el("div", { class: "tw-card" })); card.append(row); };
             for (const item of grp.items) {
                 const lbl = item.label.toLowerCase();
                 if (item.type === "slider") {
@@ -2402,20 +2556,21 @@
                         },
                     });
                     if (item.key === "centerW") { widthValEl = valEl; widthInputEl = input; widthHint(); }   // pode virar "900 → 740"
-                    sec.append(el("div", { class: "tw-slider", "data-dep": item.dep, "data-label": lbl },
+                    add(el("div", { class: "tw-slider", "data-dep": item.dep, "data-label": lbl },
                         el("div", { class: "lab" }, el("span", {}, item.label), valEl), input));
                 } else if (item.type === "select") {
                     const sel = el("select", { onchange: (e) => { settings[item.key] = e.target.value; save(); applySettings(); if (item.key === "homeDefault") applyHomeTab(); } },
                         ...item.options.map((o) => el("option", { value: o.value, ...(settings[item.key] === o.value ? { selected: "" } : {}) }, o.label)));
-                    sec.append(el("div", { class: "tw-row", "data-label": lbl }, el("span", { class: "tw-rowlbl" }, item.label), sel));
+                    add(el("div", { class: "tw-row", "data-label": lbl }, el("span", { class: "tw-rowlbl" }, item.label), sel));
                 } else if (item.type === "sidebar") {
+                    card = null;
                     sec.append(buildSidebarWidget());
                 } else {
                     const input = el("input", {
                         type: "checkbox", ...(settings[item.key] ? { checked: "" } : {}),
                         onchange: (e) => { settings[item.key] = e.target.checked; save(); applySettings(); refreshDimming(); if (item.key === "hideForYou") applyHomeTab(); if (item.key === "ageBypass") toast(e.target.checked ? "Bypass ligado — recarregue p/ efeito total" : "Bypass desligado — recarregue"); },
                     });
-                    sec.append(el("label", { class: "tw-row", "data-dep": item.dep, "data-label": lbl },
+                    add(el("label", { class: "tw-row", "data-dep": item.dep, "data-label": lbl },
                         el("span", { class: "tw-rowlbl" }, item.label),
                         el("span", { class: "tw-sw" }, input, el("i", {}))));
                 }
@@ -2424,7 +2579,7 @@
             sections.push(sec);
 
             const tab = el("button", { class: "tw-tab", type: "button", title: grp.title,
-                html: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[gi] || ICONS[0]}"/></svg>` });
+                html: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[gi] || ICONS[0]}"/></svg>` }, el("span", {}, grp.title));
             tab.addEventListener("click", () => { search.value = ""; showTab(gi); });
             rail.append(tab);
             tabs.push(tab);
@@ -2433,14 +2588,18 @@
         content.append(empty);
         panel.append(el("div", { class: "tw-body" }, rail, content));
 
+        // um card some quando a busca esconde todas as linhas dele
+        const syncCards = (sec) => sec.querySelectorAll(".tw-card").forEach((c) => {
+            c.style.display = [...c.children].some((r) => r.style.display !== "none") ? "" : "none";
+        });
+
         function showTab(i) {
             active = i;
-            panel.classList.remove("searching");
             empty.style.display = "none";
             sections.forEach((sec, idx) => {
                 sec.style.display = idx === i ? "block" : "none";
                 sec.querySelectorAll("[data-label]").forEach((r) => (r.style.display = ""));
-                const t = sec.querySelector(".tw-sec-title"); if (t) t.style.display = "";
+                syncCards(sec);
             });
             tabs.forEach((tb, idx) => tb.classList.toggle("active", idx === i));
             content.scrollTop = 0;
@@ -2449,7 +2608,6 @@
         search.addEventListener("input", () => {
             const q = search.value.trim().toLowerCase();
             if (!q) { showTab(active); return; }
-            panel.classList.add("searching");
             tabs.forEach((tb) => tb.classList.remove("active"));
             let any = false;
             sections.forEach((sec) => {
@@ -2460,21 +2618,19 @@
                     if (m) { vis = true; any = true; }
                 });
                 sec.style.display = vis ? "block" : "none";
-                const t = sec.querySelector(".tw-sec-title"); if (t) t.style.display = vis ? "" : "none";
+                syncCards(sec);
             });
             empty.style.display = any ? "none" : "block";
         });
 
         // ---- rodapé ----
-        reloadBtn = el("button", { class: "tw-reload", type: "button", style: { display: cfgDirty() ? "" : "none" }, onclick: () => location.reload() }, "↻ Recarregar p/ aplicar");
         panel.append(el("div", { class: "tw-foot" },
             el("button", { class: "tw-reset", type: "button", onclick: () => {
                 settings = { ...DEFAULTS }; save(); panel.remove(); fab.remove(); buildPanel(); applySettings();
             } }, "Restaurar padrões"),
-            reloadBtn,
-            el("span", { class: "tw-ver" }, (typeof GM_info !== "undefined" && GM_info.script ? "v" + GM_info.script.version : ""))));
+            el("small", {}, "Salvo automaticamente")));
 
-        fab.addEventListener("click", () => { panel.classList.toggle("open"); refreshDimming(); if (panel.classList.contains("open")) { captureSidebar(); if (sbRender) sbRender(); updateReloadBtn(); } });
+        fab.addEventListener("click", () => { panel.classList.toggle("open"); refreshDimming(); if (panel.classList.contains("open")) { captureSidebar(); if (sbRender) sbRender(); } });
         // "clicou fora → fecha" é registrado UMA vez no documento: "Restaurar padrões" reconstrói o
         // painel, e sem esta guarda cada reset deixava mais um listener preso ao painel já removido.
         if (!panelClickBound) {
@@ -2508,6 +2664,7 @@
         if (location.pathname !== lastPath) {                                // só em navegação SPA
             lastPath = location.pathname;
             document.documentElement.classList.toggle("tw-home", isHome());  // tw-home só muda com o path
+            document.documentElement.classList.toggle("tw-wide", !!settings.wide && !isTwoPane());
             scheduleHomeTab();
             syncBookmarksPageChange();
         }
@@ -2519,6 +2676,7 @@
         if (!document.getElementById("tw-fab")) buildPanel();
         applySidebar();
         hideDiscover();
+        if (settings.hideSports || settings.hideSportsTabs) markSports();
         if (isBookmarks()) syncBookmarks();
     }, 200);
 
@@ -2530,7 +2688,11 @@
         // captura SÍNCRONA dos itens do menu "Mais" quando ele abre (some do DOM ao fechar)
         for (const mu of muts) for (const n of mu.addedNodes) {
             if (n.nodeType !== 1) continue;
-            if ((n.matches && n.matches('[role="menu"]')) || (n.querySelector && n.querySelector('[role="menu"]'))) { captureSidebar(); break; }
+            if ((n.matches && n.matches('[role="menu"]')) || (n.querySelector && n.querySelector('[role="menu"]'))) {
+                captureSidebar(); fillMoreMenu();
+                requestAnimationFrame(() => { captureSidebar(); fillMoreMenu(); });   // aria-expanded pode virar um frame depois
+                break;
+            }
         }
         scheduleMedia();
         refresh();
@@ -2540,7 +2702,8 @@
     // Capture-phase + stopPropagation → roda antes do handler do X e impede o menu de abrir.
     document.addEventListener("click", (e) => {
         if (!settings.directShare || !e.target.closest) return;
-        const btn = e.target.closest('button[aria-label="Compartilhar post"]');
+        // na barra de ações do post; o rótulo varia por idioma e por tela ("Compartilhar post", "Share post"…)
+        const btn = e.target.closest('article [role="group"] button[aria-label^="Compartilhar"], article [role="group"] button[aria-label^="Share"]');
         if (!btn) return;
         const url = tweetUrl(btn.closest("article"));
         if (!url) return;                 // não resolveu o permalink → deixa o X abrir o menu nativo
