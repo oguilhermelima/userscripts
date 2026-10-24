@@ -39,7 +39,7 @@ The script checks that the page really is Immich before doing anything, so a bro
 | **reddit** | Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/reddit.user.js) |
 | **twitch** | Streamer top navigation plus a YouTube-style Clips and VOD theater with filtering, sorting, and native playback controls. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/twitch.user.js) |
 | **twitter** | X/Twitter control panel for a wider layout, decluttered sidebars, live preferences, and sensitive-content handling. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/twitter.user.js) |
-| **youtube** | Full-screen theater with chat and up-next sidebars, black-bar crop, loop, audio boost, speed and quality controls, plus settings for quality, filters and Shorts. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/youtube.user.js) |
+| **youtube** | YouTube Enhancer: full-screen theater with chat and up-next sidebars, black-bar crop, loop, audio boost and speed in the player, a live-now section for your subscriptions, plus op… | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/youtube.user.js) |
 
 ## Repository layout
 

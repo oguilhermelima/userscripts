@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         YouTube — Cinema Player, Sidebars & Advanced Settings
+// @name         YouTube Enhancer
 // @namespace    youtube-cinema
-// @version      1.0.1
+// @version      1.1.0
 // @author       oguilhermelima
 // @description  Full-screen theater by default with an auto-hiding masthead, live chat and up-next as switchable sidebars, black-bar crop, loop, audio boost, speed and quality controls in the player bar, and advanced settings for playback quality, video filters, info cards and Shorts.
 // @match        https://www.youtube.com/*
@@ -90,15 +90,15 @@
         autoChat: Boolean(getSetting('autoChat', true)),
         // Global settings (menu under the avatar).
         autoTheater: Boolean(getSetting('autoTheater', true)),
-        hideCards: Boolean(getSetting('hideCards', true)),
-        filtersOn: Boolean(getSetting('filtersOn', true)),
+        hideCards: Boolean(getSetting('hideCards', false)),
+        filtersOn: Boolean(getSetting('filtersOn', false)),
         filterBrightness: Number(getSetting('filterBrightness', 100)),
         filterContrast: Number(getSetting('filterContrast', 100)),
         filterSaturation: Number(getSetting('filterSaturation', 100)),
-        qualityAuto: Boolean(getSetting('qualityAuto', true)),
+        qualityAuto: Boolean(getSetting('qualityAuto', false)),
         qualityVideos: String(getSetting('qualityVideos', 'hd1440')),
         qualityPlaylists: String(getSetting('qualityPlaylists', 'hd1080')),
-        qualityFsDifferent: Boolean(getSetting('qualityFsDifferent', true)),
+        qualityFsDifferent: Boolean(getSetting('qualityFsDifferent', false)),
         qualityFsVideos: String(getSetting('qualityFsVideos', 'hd1440')),
         qualityFsPlaylists: String(getSetting('qualityFsPlaylists', 'hd1440')),
         qualityFsRestore: Boolean(getSetting('qualityFsRestore', false)),
@@ -108,6 +108,7 @@
         shortsSidebar: Boolean(getSetting('shortsSidebar', true)),
         shortsWatch: Boolean(getSetting('shortsWatch', true)),
         shortsSubs: Boolean(getSetting('shortsSubs', true)),
+        liveSection: Boolean(getSetting('liveSection', true)),
         cropBars: Boolean(getSetting('cropBars', true)),
         sideWidth: Number(getSetting('sideWidth', 0)) || 0,
         rate: Number(getSetting('rate', 1)) || 1,
@@ -815,6 +816,138 @@
             .ytc-modal-tab { flex: none; }
             .ytc-modal-body { padding: 16px; }
         }
+        /* First-run walkthrough, in the settings dialog's colours: a drawing
+           of the real control on top, the text below, dots and buttons. */
+        .ytc-modal.ytc-onboard {
+            display: flex;
+            flex-direction: column;
+            width: min(480px, 100%);
+            height: auto;
+        }
+        .ytc-ob-art {
+            position: relative;
+            display: grid;
+            place-items: center;
+            height: 220px;
+            overflow: hidden;
+            background:
+                radial-gradient(120% 90% at 50% 0%, rgba(255, 0, 51, 0.22), transparent 60%),
+                linear-gradient(180deg, #1a1a1a, #0f0f0f);
+            color: #f1f1f1;
+        }
+        .ytc-ob-art svg { fill: currentColor; }
+        .ytc-ob-enter { animation: ytc-ob-in 0.28s cubic-bezier(0.2, 0, 0, 1); }
+        @keyframes ytc-ob-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+        .ytc-ob-content { padding: 20px 24px 0; }
+        .ytc-ob-counter { color: var(--ytc-m-accent); font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+        .ytc-ob-title { margin-top: 2px; font-size: 20px; font-weight: 500; line-height: 28px; }
+        .ytc-ob-text { margin: 6px 0 0; color: var(--ytc-m-muted); line-height: 20px; min-height: 60px; }
+        .ytc-ob-foot { display: flex; align-items: center; gap: 8px; padding: 20px 24px 24px; }
+        .ytc-ob-dots { display: flex; gap: 6px; margin-right: auto; }
+        .ytc-ob-dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--ytc-m-line); transition: width 0.2s ease, background-color 0.2s ease; }
+        .ytc-ob-dots i.is-on { width: 18px; background: var(--ytc-m-accent); }
+        .ytc-ob-foot .ytc-text-button { margin-left: 0; height: 36px; padding: 0 16px; border-radius: 18px; font-size: 14px; }
+        .ytc-text-button.ytc-primary { background: var(--ytc-m-text); color: var(--ytc-m-bg); }
+
+        /* Step drawings. */
+        .ytc-ob-hero { display: grid; justify-items: center; gap: 18px; }
+        .ytc-ob-logo { display: flex; align-items: center; gap: 6px; font: 700 26px/1 Roboto, Arial, sans-serif; letter-spacing: -0.5px; }
+        .ytc-ob-logo svg { width: 48px; height: 48px; color: #ff0033; }
+        .ytc-ob-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 360px; }
+        .ytc-ob-chip { padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); font-size: 12px; line-height: 16px; }
+        .ytc-ob-player { position: relative; width: 400px; height: 170px; border-radius: 12px; overflow: hidden; background: #000; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
+        .ytc-ob-screen { position: absolute; inset: 0; background: linear-gradient(135deg, #2b2b2b, #111 60%); }
+        .ytc-ob-progress { position: absolute; left: 12px; right: 12px; bottom: 44px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.25); }
+        .ytc-ob-progress i { display: block; width: 34%; height: 100%; border-radius: 2px; background: #ff0033; }
+        .ytc-ob-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.7)); }
+        .ytc-ob-bar svg { width: 20px; height: 20px; flex: none; }
+        .ytc-ob-bar svg.is-dim { opacity: 0.55; }
+        .ytc-ob-time { font-size: 11px; opacity: 0.55; }
+        .ytc-ob-gap { flex: 1; }
+        .ytc-ob-ours { display: flex; gap: 10px; padding: 4px 8px; border-radius: 10px; box-shadow: 0 0 0 2px #ff0033, 0 0 18px rgba(255, 0, 51, 0.45); }
+        .ytc-ob-stage { display: grid; place-items: center; }
+        .ytc-ob-menu { width: 260px; padding: 8px 0; border-radius: 12px; font-size: 13px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
+        .ytc-ob-menu.is-player { background: rgba(28, 28, 28, 0.92); }
+        .ytc-ob-menu.is-account { background: #282828; }
+        .ytc-ob-row { display: flex; align-items: center; gap: 12px; height: 36px; margin: 0 6px; padding: 0 10px; border-radius: 8px; opacity: 0.5; }
+        .ytc-ob-row svg { width: 20px; height: 20px; flex: none; }
+        .ytc-ob-row > span:not(.ytc-ob-value) { flex: 1; }
+        .ytc-ob-value { opacity: 0.7; }
+        .ytc-ob-row.is-ours { opacity: 1; background: rgba(255, 0, 51, 0.16); box-shadow: inset 0 0 0 1.5px #ff0033; }
+        .ytc-ob-who { display: flex; align-items: center; gap: 12px; padding: 4px 16px 10px; margin-bottom: 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); font-weight: 500; }
+        .ytc-ob-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #3ea6ff, #a970ff); }
+        .ytc-ob-form { display: grid; gap: 8px; width: 340px; }
+        .ytc-ob-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 14px; border-radius: 10px; background: rgba(255, 255, 255, 0.08); font-size: 13px; cursor: pointer; }
+        .ytc-ob-field select { height: 30px; padding: 0 8px; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; background: #212121; color: #f1f1f1; font: inherit; }
+        .ytc-ob-field select:disabled { opacity: 0.4; }
+        .ytc-ob-art .ytc-toggle { background: rgba(255, 255, 255, 0.15); }
+        .ytc-ob-art .ytc-toggle:checked { background: #ff0033; }
+        /* "Ao vivo" section in the guide, drawn like YouTube's own sections. */
+        .ytc-live-section {
+            padding: 12px;
+            border-bottom: 1px solid var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.2));
+        }
+        .ytc-live-title {
+            padding: 6px 12px 4px;
+            font: 500 16px/22px Roboto, Arial, sans-serif;
+            color: var(--yt-spec-text-primary, #f1f1f1);
+        }
+        .ytc-live-entry {
+            display: flex;
+            align-items: center;
+            height: 40px;
+            padding: 0 12px;
+            border-radius: 10px;
+            color: var(--yt-spec-text-primary, #f1f1f1);
+            text-decoration: none;
+        }
+        .ytc-live-entry:hover { background: var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1)); }
+        .ytc-live-more {
+            width: 100%;
+            border: 0;
+            background: none;
+            cursor: pointer;
+            text-align: left;
+        }
+        .ytc-live-skeleton span {
+            height: 12px;
+            border-radius: 6px;
+            background: var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1));
+            animation: ytc-pulse 1.2s ease-in-out infinite alternate;
+        }
+        .ytc-live-skeleton span:first-child { width: 24px; height: 24px; flex: none; margin-right: 24px; border-radius: 50%; }
+        .ytc-live-skeleton span:last-child { width: 60%; }
+        .ytc-live-skeleton:hover { background: none; }
+        @keyframes ytc-pulse { from { opacity: 0.45; } to { opacity: 1; } }
+        .ytc-live-chevron {
+            width: 24px;
+            height: 24px;
+            flex: none;
+            margin-right: 24px;
+        }
+        .ytc-live-avatar {
+            width: 24px;
+            height: 24px;
+            flex: none;
+            margin-right: 24px;
+            border-radius: 50%;
+            background: var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1));
+        }
+        .ytc-live-name {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font: 400 14px/20px Roboto, Arial, sans-serif;
+        }
+        .ytc-live-badge {
+            width: 20px;
+            height: 20px;
+            flex: none;
+            margin-left: 8px;
+            color: var(--yt-spec-static-brand-red, #f03);
+        }
     `);
 
     // ---------------------------------------------------------------------
@@ -1404,7 +1537,12 @@
     }
     function fitBarIcon(button) {
         const svg = button?.querySelector('svg');
-        const ref = player()?.querySelector('.ytp-mute-button svg');
+        // The gear is the reference: its ink never changes. The mute icon's
+        // does (fewer waves at low volume), which shrank ours with it.
+        const host = player();
+        const ref = ['.ytp-settings-button svg', '.ytp-fullscreen-button svg', '.ytp-mute-button svg']
+            .map(selector => host?.querySelector(selector))
+            .find(svg => svg && inkSize(svg));
         const want = ref ? inkSize(ref) : 0;
         if (!svg || !want) return;
         // absolute, from the glyph's own geometry: calling it again never compounds
@@ -2017,6 +2155,209 @@
 
     // Advanced settings dialog: one pane per topic, options grouped in
     // cards; a row that depends on another is greyed out while it is off.
+    // ---------------------------------------------------------------------
+    //  "Ao vivo" in the guide: subscribed channels streaming right now, in a
+    //  section above Inscrições. The guide itself does not say who is live,
+    //  but the subscriptions feed lists live streams first, so it is fetched
+    //  in the background (with the user's own session) every few minutes
+    //  while the tab is visible. The last result is kept, so the section is
+    //  there on the next page load before the first fetch returns.
+    // ---------------------------------------------------------------------
+    // ytInitialData from a YouTube page's HTML: the streams live right now,
+    // one per channel. Covers both card formats, videoRenderer and the newer
+    // lockupViewModel.
+    function parseLiveStreams(html) {
+        const start = html.indexOf('var ytInitialData = ');
+        if (start < 0) return null;
+        const from = start + 'var ytInitialData = '.length;
+        const end = html.indexOf(';</script>', from);
+        let data;
+        try {
+            data = JSON.parse(html.slice(from, end));
+        } catch {
+            return null;
+        }
+        const text = value => value?.simpleText ?? value?.runs?.map(run => run.text).join('') ?? value?.content ?? '';
+        const lives = [];
+        const seen = new Set();
+        const add = live => {
+            const key = live.channelUrl || live.channel;
+            if (!live.videoId || !live.channel || seen.has(key)) return;
+            seen.add(key);
+            lives.push(live);
+        };
+        const walk = (node, depth) => {
+            if (!node || typeof node !== 'object' || depth > 40) return;
+            if (Array.isArray(node)) {
+                for (const item of node) walk(item, depth + 1);
+                return;
+            }
+            const video = node.videoRenderer || node.gridVideoRenderer;
+            if (video) {
+                const live = video.badges?.some(badge => badge.metadataBadgeRenderer?.style === 'BADGE_STYLE_TYPE_LIVE_NOW') ||
+                    video.thumbnailOverlays?.some(overlay => overlay.thumbnailOverlayTimeStatusRenderer?.style === 'LIVE');
+                if (live) {
+                    const owner = (video.ownerText || video.shortBylineText || video.longBylineText)?.runs?.[0];
+                    const thumbs = video.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.thumbnail?.thumbnails || video.channelThumbnail?.thumbnails;
+                    add({
+                        videoId: video.videoId,
+                        title: text(video.title),
+                        channel: owner?.text || '',
+                        channelUrl: owner?.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl || owner?.navigationEndpoint?.commandMetadata?.webCommandMetadata?.url || '',
+                        avatar: thumbs?.[0]?.url || '',
+                    });
+                }
+                return;
+            }
+            const lockup = node.lockupViewModel;
+            if (lockup) {
+                const badges = lockup.contentImage?.thumbnailViewModel?.overlays?.flatMap(overlay =>
+                    overlay.thumbnailOverlayBadgeViewModel?.thumbnailBadges || overlay.thumbnailBottomOverlayViewModel?.badges || []) || [];
+                const live = badges.some(badge => badge.thumbnailBadgeViewModel?.badgeStyle === 'THUMBNAIL_OVERLAY_BADGE_STYLE_LIVE');
+                if (live) {
+                    const meta = lockup.metadata?.lockupMetadataViewModel;
+                    const avatar = meta?.image?.decoratedAvatarViewModel;
+                    const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
+                    add({
+                        videoId: lockup.contentId,
+                        title: text(meta?.title),
+                        channelUrl: avatar?.rendererContext?.commandContext?.onTap?.innertubeCommand?.browseEndpoint?.canonicalBaseUrl || '',
+                        // sem link de canal (ex.: aba do próprio canal) a 1ª linha é "x assistindo", não o nome
+                        channel: avatar ? text(rows[0]?.metadataParts?.[0]?.text) : '',
+                        avatar: avatar?.avatar?.avatarViewModel?.image?.sources?.[0]?.url || '',
+                    });
+                }
+                return;
+            }
+            for (const key in node) walk(node[key], depth + 1);
+        };
+        walk(data, 0);
+        return lives;
+    }
+
+    const LIVE_REFRESH_MS = 3 * 60 * 1000;
+    const LIVE_CACHE_MS = 15 * 60 * 1000;
+    const LIVE_ICON = 'M4.93,4.93C3.12,6.74 2,9.24 2,12C2,14.76 3.12,17.26 4.93,19.07L6.34,17.66C4.89,16.22 4,14.22 4,12C4,9.79 4.89,7.78 6.34,6.34L4.93,4.93M19.07,4.93L17.66,6.34C19.11,7.78 20,9.79 20,12C20,14.22 19.11,16.22 17.66,17.66L19.07,19.07C20.88,17.26 22,14.76 22,12C22,9.24 20.88,6.74 19.07,4.93M7.76,7.76C6.67,8.85 6,10.35 6,12C6,13.65 6.67,15.15 7.76,16.24L9.17,14.83C8.45,14.11 8,13.11 8,12C8,10.89 8.45,9.89 9.17,9.17L7.76,7.76M16.24,7.76L14.83,9.17C15.55,9.89 16,10.89 16,12C16,13.11 15.55,14.11 14.83,14.83L16.24,16.24C17.33,15.15 18,13.65 18,12C18,10.35 17.33,8.85 16.24,7.76M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z';
+    // Like Inscrições, only the first few show until "Mostrar mais".
+    const LIVE_VISIBLE = 7;
+    // Until the first answer (or a recent cached one) the section holds its
+    // place with placeholder rows, so it does not pop in under the guide.
+    // An empty answer is cached too: no placeholder on every page then.
+    const liveGuide = { list: [], loaded: false, fetchedAt: 0, loading: false, section: null, renderedKey: '', expanded: false };
+    {
+        const cached = getSetting('liveCache', null);
+        if (cached && Date.now() - cached.at < LIVE_CACHE_MS && Array.isArray(cached.list)) {
+            liveGuide.list = cached.list;
+            liveGuide.loaded = true;
+        }
+    }
+
+    async function fetchLiveStreams() {
+        if (liveGuide.loading || document.hidden) return;
+        liveGuide.loading = true;
+        liveGuide.fetchedAt = Date.now();
+        try {
+            const response = await fetch('/feed/subscriptions', { credentials: 'include' });
+            const lives = response.ok ? parseLiveStreams(await response.text()) : null;
+            if (lives) {
+                liveGuide.list = lives;
+                setSetting('liveCache', { at: Date.now(), list: lives });
+            }
+        } catch {} finally {
+            liveGuide.loading = false;
+            liveGuide.loaded = true;
+        }
+    }
+
+    // The subscriptions section is the one headed by a link to the channel
+    // list; failing that, the one with several channel entries.
+    function subscriptionsSection() {
+        const sections = document.querySelectorAll('ytd-guide-renderer #sections > ytd-guide-section-renderer');
+        for (const section of sections) {
+            if (section.querySelector('a[href="/feed/channels"]')) return section;
+        }
+        for (const section of sections) {
+            if (section.querySelectorAll('ytd-guide-entry-renderer a[href^="/@"]').length >= 2) return section;
+        }
+        return null;
+    }
+
+    function liveEntry(live) {
+        const entry = document.createElement('a');
+        entry.className = 'ytc-live-entry';
+        entry.href = `/watch?v=${encodeURIComponent(live.videoId)}`;
+        entry.title = live.title ? `${live.channel} · ${live.title}` : live.channel;
+        const avatar = document.createElement('img');
+        avatar.className = 'ytc-live-avatar';
+        avatar.alt = '';
+        avatar.loading = 'lazy';
+        if (live.avatar) avatar.src = live.avatar;
+        const name = document.createElement('span');
+        name.className = 'ytc-live-name';
+        name.textContent = live.channel;
+        const badge = icon(LIVE_ICON);
+        badge.classList.add('ytc-live-badge');
+        entry.append(avatar, name, badge);
+        return entry;
+    }
+
+    function syncLiveSection() {
+        const subs = state.liveSection ? subscriptionsSection() : null;
+        if (!subs) {
+            liveGuide.section?.remove();
+            return;
+        }
+        if (Date.now() - liveGuide.fetchedAt > LIVE_REFRESH_MS) fetchLiveStreams();
+        if (liveGuide.loaded && !liveGuide.list.length) {
+            liveGuide.section?.remove();
+            return;
+        }
+        let section = liveGuide.section;
+        if (!section) {
+            section = liveGuide.section = document.createElement('div');
+            section.className = 'ytc-live-section';
+            const title = document.createElement('div');
+            title.className = 'ytc-live-title';
+            title.textContent = 'Ao vivo';
+            section.append(title, document.createElement('div'));
+        }
+        if (section.nextElementSibling !== subs) subs.before(section);
+        const key = liveGuide.loaded ? liveGuide.list.map(live => live.videoId).join(',') : 'loading';
+        if (key === liveGuide.renderedKey) return;
+        liveGuide.renderedKey = key;
+        if (liveGuide.loaded) renderLiveEntries();
+        else liveGuide.section.lastElementChild.replaceChildren(...Array.from({ length: 3 }, () => {
+            const row = document.createElement('div');
+            row.className = 'ytc-live-entry ytc-live-skeleton';
+            row.append(document.createElement('span'), document.createElement('span'));
+            return row;
+        }));
+    }
+
+    function renderLiveEntries() {
+        const list = liveGuide.list;
+        const shown = liveGuide.expanded ? list : list.slice(0, LIVE_VISIBLE);
+        const entries = shown.map(liveEntry);
+        if (list.length > LIVE_VISIBLE) {
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.className = 'ytc-live-entry ytc-live-more';
+            const chevron = icon(liveGuide.expanded ? 'M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z' : 'M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z');
+            chevron.classList.add('ytc-live-chevron');
+            const label = document.createElement('span');
+            label.className = 'ytc-live-name';
+            label.textContent = liveGuide.expanded ? 'Mostrar menos' : `Mostrar mais (${list.length - LIVE_VISIBLE})`;
+            more.append(chevron, label);
+            more.addEventListener('click', () => {
+                liveGuide.expanded = !liveGuide.expanded;
+                renderLiveEntries();
+            });
+            entries.push(more);
+        }
+        liveGuide.section.lastElementChild.replaceChildren(...entries);
+    }
+
+
     let settingsTab = 'player';
     const SETTINGS_ICON = 'M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z';
 
@@ -2040,7 +2381,7 @@
         const titles = make('div', 'ytc-modal-titles');
         const title = make('div', 'ytc-modal-title', 'Configurações avançadas');
         title.id = 'ytc-modal-title';
-        titles.append(title, make('div', 'ytc-modal-subtitle', 'YouTube Cinema · salvas automaticamente'));
+        titles.append(title, make('div', 'ytc-modal-subtitle', 'YouTube Enhancer · salvas automaticamente'));
         const close = make('button', 'ytc-modal-close');
         close.type = 'button';
         close.setAttribute('aria-label', 'Fechar');
@@ -2196,6 +2537,11 @@
         toggle(where, 'shortsChannel', 'Páginas de canal', { hint: 'Prateleiras e a aba Shorts.' });
         toggle(where, 'shortsSidebar', 'Menu lateral', { hint: 'O atalho Shorts no menu da esquerda.' });
 
+        // Sidebar
+        const sidebarPane = pane('sidebar', 'Menu lateral', LIVE_ICON, 'O que aparece no menu da esquerda.');
+        const subsGroup = group(sidebarPane, 'Inscrições');
+        toggle(subsGroup, 'liveSection', 'Seção Ao vivo', { hint: 'Canais inscritos transmitindo agora, acima de Inscrições.' });
+
         select(tabs.some(entry => entry.id === settingsTab) ? settingsTab : 'player');
         refreshDependents();
 
@@ -2226,6 +2572,196 @@
         dialog.addEventListener('keydown', event => event.stopPropagation());
         document.body.append(backdrop);
         tabs.find(entry => entry.id === settingsTab)?.tab.focus();
+    }
+
+    // ---------------------------------------------------------------------
+    //  First run: a short walkthrough of where everything lives, each step
+    //  with a small drawing of the real control highlighted. The last step
+    //  sets the default quality on the spot, since it starts off. Shown once.
+    // ---------------------------------------------------------------------
+    let onboardingShown = Boolean(getSetting('onboarded', false));
+    function showOnboarding() {
+        if (onboardingShown || window.top !== window || !document.body || !document.querySelector('ytd-app')) return;
+        onboardingShown = true;
+        setSetting('onboarded', true);
+        const make = (tag, className, text) => {
+            const element = document.createElement(tag);
+            if (className) element.className = className;
+            if (text) element.textContent = text;
+            return element;
+        };
+        const glyph = (path, options, className = '') => {
+            const svg = icon(path, options);
+            if (className) svg.classList.add(className);
+            return svg;
+        };
+        const LOGO = 'M10,15L15.19,12L10,9V15M21.56,7.17C21.69,7.64 21.78,8.27 21.84,9.07C21.91,9.87 21.94,10.56 21.94,11.16L22,12C22,14.19 21.84,15.8 21.56,16.83C21.31,17.73 20.73,18.31 19.83,18.56C19.36,18.69 18.5,18.78 17.18,18.84C15.88,18.91 14.69,18.94 13.59,18.94L12,19C7.81,19 5.2,18.84 4.17,18.56C3.27,18.31 2.69,17.73 2.44,16.83C2.31,16.36 2.22,15.73 2.16,14.93C2.09,14.13 2.06,13.44 2.06,12.84L2,12C2,9.81 2.16,8.2 2.44,7.17C2.69,6.27 3.27,5.69 4.17,5.44C4.64,5.31 5.5,5.22 6.82,5.16C8.12,5.09 9.31,5.06 10.41,5.06L12,5C16.19,5 18.8,5.16 19.83,5.44C20.73,5.69 21.31,6.27 21.56,7.17Z';
+        const PLAY = 'M8,5.14V19.14L19,12.14L8,5.14Z';
+        const VOLUME = 'M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.84 14,18.7V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.76 16.5,12M3,9V15H7L12,20V4L7,9H3Z';
+        const FULLSCREEN = 'M5,5H10V7H7V10H5V5M14,5H19V10H17V7H14V5M17,14H19V19H14V17H17V14M10,17V19H5V14H7V17H10Z';
+        const CHEVRON = 'M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z';
+
+        // Drawings, one per step.
+        const art = {
+            welcome() {
+                const box = make('div', 'ytc-ob-hero');
+                const logo = make('div', 'ytc-ob-logo');
+                logo.append(glyph(LOGO), make('span', '', 'Enhancer'));
+                const chips = make('div', 'ytc-ob-chips');
+                for (const label of ['Modo teatro', 'Loop', 'Amplificador', 'Velocidade', 'Ao vivo', 'Sem Shorts']) chips.append(make('span', 'ytc-ob-chip', label));
+                box.append(logo, chips);
+                return box;
+            },
+            bar() {
+                const box = make('div', 'ytc-ob-player');
+                const progress = make('div', 'ytc-ob-progress');
+                progress.append(make('i'));
+                const bar = make('div', 'ytc-ob-bar');
+                bar.append(glyph(PLAY, undefined, 'is-dim'), glyph(VOLUME, undefined, 'is-dim'), make('span', 'ytc-ob-time', '4:12 / 12:30'), make('span', 'ytc-ob-gap'));
+                const ours = make('span', 'ytc-ob-ours');
+                ours.append(glyph(ICONS.loop), glyph(ICONS.boost, BOOST_ICON), glyph(ICONS.speed), glyph(ICONS.chat), glyph(ICONS.related));
+                bar.append(ours, glyph(SETTINGS_ICON, undefined, 'is-dim'), glyph(FULLSCREEN, undefined, 'is-dim'));
+                box.append(make('div', 'ytc-ob-screen'), progress, bar);
+                return box;
+            },
+            gear() {
+                const box = make('div', 'ytc-ob-stage');
+                const menu = make('div', 'ytc-ob-menu is-player');
+                for (const [path, label, value, ours] of [
+                    [ICONS.cinema, 'Player', '', true],
+                    [ICONS.boost, 'Áudio', '', true],
+                    [ICONS.speed, 'Velocidade', 'Normal', false],
+                    [ICONS.quality, 'Qualidade', 'Auto 1080p', false],
+                ]) {
+                    const row = make('div', `ytc-ob-row${ours ? ' is-ours' : ''}`);
+                    row.append(path === ICONS.boost ? glyph(path, BOOST_ICON) : glyph(path), make('span', '', label), make('span', 'ytc-ob-value', value), glyph(CHEVRON));
+                    menu.append(row);
+                }
+                box.append(menu);
+                return box;
+            },
+            account() {
+                const box = make('div', 'ytc-ob-stage');
+                const menu = make('div', 'ytc-ob-menu is-account');
+                const who = make('div', 'ytc-ob-who');
+                who.append(make('span', 'ytc-ob-avatar'), make('span', '', 'Seu canal'));
+                menu.append(who);
+                for (const [path, label, ours] of [
+                    ['M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z', 'Configurações', false],
+                    [SETTINGS_ICON, 'Configurações avançadas', true],
+                ]) {
+                    const row = make('div', `ytc-ob-row${ours ? ' is-ours' : ''}`);
+                    row.append(glyph(path), make('span', '', label));
+                    menu.append(row);
+                }
+                box.append(menu);
+                return box;
+            },
+            quality() {
+                const box = make('div', 'ytc-ob-form');
+                const field = (label, key) => {
+                    const row = make('label', 'ytc-ob-field');
+                    const select = make('select');
+                    for (const [value, name] of QUALITIES) {
+                        const option = make('option', '', name);
+                        option.value = value;
+                        select.append(option);
+                    }
+                    select.value = state[key];
+                    select.disabled = !state.qualityAuto;
+                    select.addEventListener('change', () => {
+                        state[key] = select.value;
+                        setSetting(key, select.value);
+                        qualityFor = '';
+                    });
+                    row.append(make('span', '', label), select);
+                    return row;
+                };
+                const toggleRow = make('label', 'ytc-ob-field is-switch');
+                const input = make('input', 'ytc-toggle');
+                input.type = 'checkbox';
+                input.setAttribute('role', 'switch');
+                input.checked = state.qualityAuto;
+                toggleRow.append(make('span', '', 'Escolher a qualidade automaticamente'), input);
+                const videos = field('Vídeos', 'qualityVideos');
+                const playlists = field('Playlists', 'qualityPlaylists');
+                input.addEventListener('change', () => {
+                    state.qualityAuto = input.checked;
+                    setSetting('qualityAuto', input.checked);
+                    qualityFor = '';
+                    for (const select of box.querySelectorAll('select')) select.disabled = !input.checked;
+                    syncQuality();
+                });
+                box.append(toggleRow, videos, playlists);
+                return box;
+            },
+        };
+        const steps = [
+            { art: 'welcome', title: 'Bem-vindo ao YouTube Enhancer', text: 'Modo teatro com chat e próximos vídeos nas laterais, controles extras no player e ajustes que o YouTube não tem. Em quatro passos, onde fica cada coisa.' },
+            { art: 'bar', title: 'Na barra do player', text: 'Loop, amplificador de áudio, velocidade (role a roda do mouse sobre ela) e os botões do chat e dos próximos vídeos ficam junto dos controles do YouTube.' },
+            { art: 'gear', title: 'Na engrenagem do player', text: 'Player e Áudio abrem as opções do player: largura das laterais, cortar faixas pretas, volume padrão e o nível do amplificador.' },
+            { art: 'account', title: 'No menu da sua foto', text: 'Configurações avançadas reúne o resto: qualidade, filtros de vídeo, cards, onde esconder Shorts e a seção Ao vivo do menu lateral.' },
+            { art: 'quality', title: 'Qualidade padrão', text: 'Vem desligada: o YouTube escolhe sozinho. Ligue para abrir todo vídeo na qualidade que você quer — dá pra mudar depois em Configurações avançadas.' },
+        ];
+
+        const backdrop = make('div', 'ytc-modal-backdrop');
+        const card = make('div', 'ytc-modal ytc-onboard');
+        card.setAttribute('role', 'dialog');
+        card.setAttribute('aria-modal', 'true');
+        card.setAttribute('aria-labelledby', 'ytc-ob-title');
+        const stage = make('div', 'ytc-ob-art');
+        const content = make('div', 'ytc-ob-content');
+        const counter = make('div', 'ytc-ob-counter');
+        const title = make('div', 'ytc-ob-title');
+        title.id = 'ytc-ob-title';
+        const text = make('p', 'ytc-ob-text');
+        content.append(counter, title, text);
+        const foot = make('div', 'ytc-ob-foot');
+        const dots = make('div', 'ytc-ob-dots');
+        for (let i = 0; i < steps.length; i++) dots.append(make('i'));
+        const back = make('button', 'ytc-text-button', 'Voltar');
+        const next = make('button', 'ytc-text-button ytc-primary');
+        for (const button of [back, next]) button.type = 'button';
+        foot.append(dots, back, next);
+        card.append(stage, content, foot);
+        backdrop.append(card);
+
+        let index = 0;
+        const show = step => {
+            index = Math.max(0, Math.min(steps.length - 1, step));
+            const spec = steps[index];
+            const drawing = art[spec.art]();
+            drawing.classList.add('ytc-ob-enter');
+            stage.replaceChildren(drawing);
+            counter.textContent = `${index + 1} de ${steps.length}`;
+            title.textContent = spec.title;
+            text.textContent = spec.text;
+            [...dots.children].forEach((dot, i) => dot.classList.toggle('is-on', i === index));
+            back.textContent = index === 0 ? 'Pular' : 'Voltar';
+            next.textContent = index === steps.length - 1 ? 'Concluir' : index === 0 ? 'Começar' : 'Próximo';
+            next.focus();
+        };
+        const dismiss = () => {
+            backdrop.remove();
+            document.removeEventListener('keydown', onKey, true);
+        };
+        const onKey = event => {
+            if (event.key === 'Escape') dismiss();
+            else if (event.key === 'ArrowRight' && index < steps.length - 1) show(index + 1);
+            else if (event.key === 'ArrowLeft') show(index - 1);
+            else return;
+            event.stopImmediatePropagation();
+            event.preventDefault();
+        };
+        back.addEventListener('click', () => (index === 0 ? dismiss() : show(index - 1)));
+        next.addEventListener('click', () => (index === steps.length - 1 ? dismiss() : show(index + 1)));
+        document.addEventListener('keydown', onKey, true);
+        backdrop.addEventListener('mousedown', event => {
+            if (event.target === backdrop) dismiss();
+        });
+        card.addEventListener('keydown', event => event.stopPropagation());
+        document.body.append(backdrop);
+        show(0);
     }
 
     // The entry sits right after YouTube's own "Settings" link (/account) in
@@ -2286,6 +2822,8 @@
         flushPendingStep();
         syncLayout();
         cropBlackBars();
+        syncLiveSection();
+        showOnboarding();
     }
 
     // YouTube is a single-page app with a very busy DOM: react to its own
