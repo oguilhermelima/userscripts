@@ -612,6 +612,13 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 .igf-who{ display:flex; align-items:center; gap:8px; min-width:0; text-decoration:none; }
 .igf-head img{ width:30px; height:30px; border-radius:50%; object-fit:cover; flex:0 0 auto; background:var(--igf-avatar-bg); }
 .igf-head b{ font-size:13px; font-weight:600; color:var(--igf-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.igf-copyuser{ flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; margin-left:-4px;
+  padding:0; border:0; border-radius:7px; background:transparent; color:var(--igf-muted); cursor:pointer; opacity:.7;
+  transition:opacity .15s ease, background .15s ease, color .15s ease; }
+.igf-copyuser svg{ width:15px; height:15px; display:block; }
+.igf-copyuser:hover{ opacity:1; background:var(--igf-hover-bg); color:var(--igf-text); }
+.igf-copyuser.igf-copied{ color:var(--igf-accent); opacity:1; }
+.igf-who:has(b:empty) + .igf-copyuser{ display:none; }
 .igf-follow{ margin-left:auto; flex:0 0 auto; background:none; border:0; cursor:pointer; padding:6px 10px; border-radius:8px;
   color:var(--igf-accent); font-size:13px; font-weight:700; }
 .igf-follow:hover{ background:var(--igf-hover-bg); }
@@ -1664,16 +1671,22 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             document.execCommand("copy"); ta.remove(); if (done) done();
         } catch (_) { /**/ }
     }
-    function copyLink(p, btn) {            // share = COPIAR o link limpo pro clipboard (+ feedback de check)
-        const url = cleanPostUrl(p);
-        const done = () => {
-            btn.classList.add("igf-copied"); setIcon(btn, ICO.check); btn.title = "Link copiado";
-            setTimeout(() => { btn.classList.remove("igf-copied"); setIcon(btn, ICO.link); btn.title = "Copiar link"; }, 1500);
-        };
+    function copyText(text, done) {        // clipboard com fallback (um caminho só pra link, @ do perfil e @ do card)
         try {
-            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, done));
-            else fallbackCopy(url, done);
-        } catch (_) { fallbackCopy(url, done); }
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+            else fallbackCopy(text, done);
+        } catch (_) { fallbackCopy(text, done); }
+    }
+    // feedback de copiado num botão de ícone: vira ✓ por um instante (+ toast opcional)
+    function copyWithFeedback(btn, text, icon, msg) {
+        copyText(text, () => {
+            btn.classList.add("igf-copied"); setIcon(btn, ICO.check);
+            setTimeout(() => { btn.classList.remove("igf-copied"); setIcon(btn, icon); }, 1400);
+            if (msg) toast(msg);
+        });
+    }
+    function copyLink(p, btn) {            // share = COPIAR o link limpo pro clipboard (+ feedback de check)
+        copyWithFeedback(btn, cleanPostUrl(p), ICO.link, "Link copiado");
     }
     // ABRIR A MODAL (overlay sobre o feed), não navegar. O <a> de permalink (`/p/CODE/`) só NAVEGA →
     // página do post ("outra página"). A modal in-feed é aberta por `openPostModalForId` (bundle), que
@@ -2539,6 +2552,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (p.avatar) who.appendChild(el("img", { src: p.avatar, loading: "lazy", alt: "" }));
         who.appendChild(el("b", {}, p.author || ""));
         head.appendChild(who);
+        // copiar o @ (sem a arroba) — fora do <a> do perfil; some enquanto o autor não chegou (CSS :empty)
+        head.appendChild(el("button", { class: "igf-copyuser", type: "button", "data-act": "copyuser", title: "Copiar @", "aria-label": "Copiar nome de usuário", icon: ICO_COPY }));
         // "Seguir" não aparece no PERFIL: lá todo card é do mesmo autor, então o botão viraria ruído
         // repetido em cada item (e o header do próprio perfil já tem o dele).
         if (p.follow && surface !== "profile") {              // só quando ainda não sigo — home + explore + salvos
@@ -2606,6 +2621,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                     case "like": likeItem(p, card, actEl); break;
                     case "comment": case "open": openItem(p, card); break;
                     case "share": copyLink(p, actEl); break;
+                    case "copyuser": if (p.author) copyWithFeedback(actEl, p.author, ICO_COPY, "@" + p.author + " copiado"); break;
                     case "save": saveItem(p, card, actEl); break;
                     case "follow": followUser(p, actEl); break;
                     case "select": toggleSelect(p, card); break;
@@ -3164,18 +3180,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         }
         if (!nameEl || !nameEl.parentElement) return;
         const btn = el("button", { class: "igp-copy", type: "button", title: "Copiar @" + user, icon: ICO_COPY });
-        btn.addEventListener("click", (e) => {
-            e.preventDefault(); e.stopPropagation();
-            const done = () => {
-                setIcon(btn, ICO.check); btn.classList.add("igf-copied");
-                setTimeout(() => { setIcon(btn, ICO_COPY); btn.classList.remove("igf-copied"); }, 1400);
-                toast("@" + user + " copiado");
-            };
-            try {
-                if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(user).then(done).catch(() => fallbackCopy(user, done));
-                else fallbackCopy(user, done);
-            } catch (_) { fallbackCopy(user, done); }
-        });
+        btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); copyWithFeedback(btn, user, ICO_COPY, "@" + user + " copiado"); });
         // colocar o botão NA MESMA LINHA do nome: sobe até a caixa flex-row que abriga o username (a
         // mesma do "···") e insere logo depois do bloco do nome. Só INSERE — mover nó do React é pedir
         // erro de reconciliação; se não achar a caixa, cai no irmão imediato.
