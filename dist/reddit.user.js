@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit — Control Panel, Ad-Free
 // @namespace    reddit-tweaks
-// @version      2.79.0
+// @version      2.80.0
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/reddit.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/reddit.user.js
 // @author       oguilhermelima
@@ -42,6 +42,8 @@
         (document.head || document.documentElement).appendChild(s);
         return s;
     }
+
+    const isPtLang = () => /^pt\b/i.test(document.documentElement.lang || navigator.language || "");
 
     function debounce(fn, ms) {
         let t;
@@ -223,9 +225,8 @@
         {
             title: "Post actions",
             items: [
-                { key: "postBarActions", label: "Save/Hide buttons", hint: "Adds Save & Hide to the action bar and pulls the ⋯ menu into it (drops the duplicates from the menu).", def: true },
+                { key: "postBarActions", label: "Organized action bar", hint: "Votes and comments on the left; Save (orange when saved), Share and ⋯ on the right. Hide and Crosspost move into ⋯.", def: true },
                 { key: "hideAward", label: "Hide award button", hint: "Removes the Give Award button from every post.", def: true },
-                { key: "moveShareLast", label: "Share last", hint: "Moves the Share button to the end of the action bar.", def: true },
                 { key: "directShare", label: "Direct share", hint: "Clicking Share copies the link instantly instead of opening the dropdown.", def: true },
                 { key: "shareNoTrackers", label: "Remove tracking from link", hint: "Removes ?utm…/share-id params from links you copy.", def: true },
             ],
@@ -532,23 +533,53 @@
            SÓ no desktop: no mobile o rail é hidden, então as reservas de 316px espremiam o conteúdo. O
            media query é o INVERSO exato do mobile chrome (max-width:768px OR pointer:coarse) → nunca coexistem. */
         @media (min-width: 769px) and (pointer: fine) {
-            html.rx-fixedRightSidebar:not(.rx-hideRightSidebar):not(.rx-nopin) #right-sidebar-container {
+            /* Posição fixa vale aberta OU recolhida: recolher desliza o rail pra fora (translateX) em vez de
+               display:none, igual à animação da left. visibility só some no FIM da transição (delay). */
+            html.rx-fixedRightSidebar:not(.rx-nopin) #right-sidebar-container {
                 position: fixed !important; right: 0; top: calc(var(--shreddit-header-height, 56px) + 1px); /* +1px: não cobre a borda inferior do header */
                 width: 316px; height: calc(100vh - var(--shreddit-header-height, 56px) - 1px); max-height: none !important;
                 box-sizing: border-box; z-index: 3; overflow-y: auto; overscroll-behavior: contain; /* z<4 (header): fica abaixo do dropdown de usuário, acima do feed */
                 background: var(--color-neutral-background, #0b1416);
                 border-left: 1px solid var(--color-neutral-border, rgba(255, 255, 255, .16));
-                padding: 0 16px calc(12px + env(safe-area-inset-bottom)) 16px; /* px-md (16px) horizontal simétrico = mesmo respiro da left sidebar (NAV_A_CLS usa px-md); antes era 12px só à esquerda + 0 à direita → conteúdo colava na borda direita */
+                padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); /* mesmo respiro da left sidebar: os itens dela ficam a 8px do header e 12px da borda */
+                transition: transform .22s cubic-bezier(.2, 0, 0, 1), visibility 0s;
             }
+            /* Recolhida = faixa estreita com a borda (igual à left recolhida, largura medida dela em
+               syncNativeToggleLook); o conteúdo some só no fim do deslize. */
+            html.rx-fixedRightSidebar.rx-hideRightSidebar:not(.rx-nopin) #right-sidebar-container {
+                display: block !important; overflow: hidden; transform: translateX(calc(100% - var(--rx-rail-strip, 32px)));
+            }
+            html.rx-fixedRightSidebar:not(.rx-nopin) #right-sidebar-container > * { transition: visibility 0s; }
+            html.rx-fixedRightSidebar.rx-hideRightSidebar:not(.rx-nopin) #right-sidebar-container > * { visibility: hidden; transition: visibility 0s linear .22s; }
+            /* recolhida reserva só a faixa: com faixas iguais dos dois lados o conteúdo fica centrado na tela */
+            html.rx-fixedRightSidebar.rx-hideRightSidebar:not(.rx-nopin) { --rx-rail-reserve: var(--rx-rail-strip, 32px); }
+            html.rx-fixedRightSidebar:not(.rx-nopin) .subgrid-container:has(#right-sidebar-container) { transition: margin-right .22s cubic-bezier(.2, 0, 0, 1); }
             /* As regras de RESHAPE do conteúdo (reservar 316px + coluna única) SÓ valem quando há mesmo um
                right-sidebar na página (:has) — senão páginas sem rail (ex.: /notifications) reservavam o
                espaço/encolhiam o conteúdo à toa e ficavam em branco. */
-            html.rx-fixedRightSidebar:not(.rx-hideRightSidebar):not(.rx-nopin) .subgrid-container:has(#right-sidebar-container) { width: auto !important; max-width: none !important; margin-left: 0 !important; margin-right: 316px !important; }
+            /* Vale aberta E recolhida (só a reserva muda): margem fixa à direita + width 92% com mx-auto deixava a
+               esquerda absorver toda a sobra e empurrava o conteúdo pra direita. */
+            html.rx-fixedRightSidebar:not(.rx-nopin) .subgrid-container:has(#right-sidebar-container) { width: auto !important; max-width: none !important; margin-left: 0 !important; margin-right: var(--rx-rail-reserve, 316px) !important; }
             /* post = --rx-cw (slider de largura) do espaço disponível, CENTRALIZADO → tamanho ajustável + padding simétrico */
-            html.rx-fixedRightSidebar:not(.rx-hideRightSidebar):not(.rx-nopin) .main-container:has(#right-sidebar-container) { grid-template-columns: minmax(0, 1fr) !important; width: var(--rx-cw, 92%) !important; max-width: var(--rx-cw, 92%) !important; margin-inline: auto !important; }
-            /* sem o header acima, o py-md (16px) do topo do conteúdo da sidebar fica grande demais → reduz */
-            html.rx-fixedRightSidebar:not(.rx-hideRightSidebar):not(.rx-nopin) #right-sidebar-contents > aside { padding-top: 2px !important; }
+            html.rx-fixedRightSidebar:not(.rx-nopin) .main-container:has(#right-sidebar-container) { grid-template-columns: minmax(0, 1fr) !important; width: var(--rx-cw, 92%) !important; max-width: var(--rx-cw, 92%) !important; margin-inline: auto !important; }
+
+            /* Recolher a right sidebar: botão na borda dela, espelho do ☰ nativo da left (tamanho, topo,
+               borda e fundo copiados do nativo em syncNativeToggleLook; os fallbacks valem até lá). */
+            html.rx-fixedRightSidebar:not(.rx-nopin):has(#right-sidebar-container) .rx-rtoggle { display: flex; }
+            html.rx-hideRightSidebar .rx-rtoggle { right: calc(var(--rx-rail-strip, 32px) - var(--rx-rt-size, 32px) / 2); }
         }
+        .rx-rtoggle {
+            position: fixed; z-index: 3; box-sizing: border-box; padding: 0; cursor: pointer;
+            top: var(--rx-rt-top, calc(var(--shreddit-header-height, 56px) + 12px));
+            right: calc(316px - var(--rx-rt-size, 32px) / 2);
+            width: var(--rx-rt-size, 32px); height: var(--rx-rt-size, 32px); border-radius: 50%;
+            display: none; align-items: center; justify-content: center;
+            background: var(--rx-rt-bg, var(--color-neutral-background, #0b1416)); color: var(--rx-rt-color, var(--color-neutral-content-weak, #a8aaab));
+            border: var(--rx-rt-border, 1px solid color-mix(in srgb, currentColor 70%, transparent));
+            transition: right .22s cubic-bezier(.2, 0, 0, 1);
+        }
+        .rx-rtoggle:hover { background: var(--color-neutral-background-hover, #1a2a2e); }
+        .rx-rtoggle svg { width: 20px; height: 20px; }
 
         /* ===== Layout: topbar antiga ===== */
         html.rx-oldTopbar faceplate-tracker[noun="chat"],
@@ -611,21 +642,24 @@
            injectUserSection(), então não precisa de CSS próprio. */
 
         /* ===== Abas de ordenação ===== */
+        /* Mesmo vocabulário das abas nativas (perfil / busca): pílula neutra, 14px semibold, ícone 16px,
+           selecionada em cinza claro com texto forte — sem laranja, que fica reservado pra ação. */
         .rx-sort-tabs {
-            display: inline-flex; gap: 8px; align-items: center; flex-wrap: nowrap;
+            display: inline-flex; gap: 4px; align-items: center; flex-wrap: nowrap;
             max-width: 100%; overflow-x: auto; scrollbar-width: none;
         }
         .rx-sort-tabs::-webkit-scrollbar { display: none; }
         .rx-sort-tab {
-            display: inline-flex; align-items: center; gap: 5px;
-            flex: none; min-height: 42px; box-sizing: border-box;
-            padding: 9px 17px; border-radius: 999px;
-            font-size: 16px; font-weight: 700; line-height: 1.25;
-            color: var(--color-secondary-weak, #818384); text-decoration: none;
+            display: inline-flex; align-items: center; gap: 6px;
+            flex: none; height: 36px; box-sizing: border-box;
+            padding: 0 14px; border-radius: 999px;
+            font-size: 14px; font-weight: 600; line-height: 20px;
+            color: var(--color-neutral-content-weak, #b7cad4); text-decoration: none;
+            transition: background-color .12s ease, color .12s ease;
         }
-        .rx-sort-tab svg { width: 20px; height: 20px; flex: none; }
-        .rx-sort-tab:hover { background: var(--color-neutral-background-hover, rgba(127, 127, 127, .12)); text-decoration: none; }
-        .rx-sort-tab.rx-active { background: #ff4500; color: #fff; }
+        .rx-sort-tab svg { width: 16px; height: 16px; flex: none; }
+        .rx-sort-tab:hover { background: var(--color-neutral-background-hover, rgba(127, 127, 127, .12)); color: var(--color-neutral-content-strong, #f2f4f5); text-decoration: none; }
+        .rx-sort-tab.rx-active { background: var(--color-secondary-background-selected, rgba(255, 255, 255, .14)); color: var(--color-neutral-content-strong, #f2f4f5); }
         .rx-sorted-hidden { display: none !important; }
 
         /* ===== Topbar: filtro à esquerda, View à direita (mesma linha, full width) ===== */
@@ -646,8 +680,6 @@
         }
         .rx-topbar-profile > faceplate-tabgroup { flex: 0 1 auto; min-width: 0; }
         .rx-viewrow-empty { display: none !important; }
-        /* tab ativa do profile (Overview/Posts/Saved/...) laranja — sobrepõe bg-secondary-background-selected + !text */
-        a[id^="profile-tab-"].tab-selected { background-color: #ff4500 !important; color: #fff !important; }
 
         /* select do painel (feed/ordenação padrão) */
         .rx-select {
@@ -1138,9 +1170,8 @@
             document.querySelector('reddit-sidebar-nav nav') ||
             document.querySelector('#left-sidebar nav') ||
             document.querySelector('nav[aria-label="Primary"]') ||
-            document.querySelector('nav[aria-label="Principal"]') ||
-            document.querySelector('nav[aria-label]')
-        );
+            document.querySelector('nav[aria-label="Principal"]')
+        ); // sem fallback genérico (nav[aria-label]): antes da sidebar montar ele pegava a nav do header e a "Você" ia parar lá
     }
 
     // A single shortcut row, structured byte-for-byte like Reddit's native nav links:
@@ -1179,13 +1210,10 @@
 
     // A "Você" é um CLONE de uma seção nativa — herda o chrome inteiro (cabeçalho, caret,
     // animação de recolher, espaçamento). Só trocamos o rótulo e os itens.
-    function injectUserSection() {
-        const nav = getSidebarNav();
-        if (!nav || nav.querySelector(".rx-user-section")) return;
-        const user = getUsername() || "me";
-        const tmpl = nativeSectionTemplate();
-        if (!tmpl) return; // seções nativas ainda não montaram — o MutationObserver tenta de novo
-
+    // O molde (Custom Feeds/Communities) carrega tarde; pra "Você" sair na primeira pintura, a última
+    // seção montada fica em cache (HTML) e é usada enquanto o molde nativo não existe.
+    const YOU_CACHE = "rx-you-section-v1";
+    function buildUserSection(tmpl, user) {
         const sec = tmpl.cloneNode(true);
         sec.classList.add("rx-user-section");
 
@@ -1194,7 +1222,7 @@
         sec.querySelectorAll("[noun]").forEach((n) => n.removeAttribute("noun"));
 
         // Rótulo do cabeçalho.
-        const isPt = /^pt\b/i.test(document.documentElement.lang || navigator.language || "");
+        const isPt = isPtLang();
         const title = sec.querySelector("summary .tracking-widest");
         if (title) title.textContent = isPt ? "VOCÊ" : "YOU";
 
@@ -1207,12 +1235,47 @@
             { label: isPt ? "Postagens" : "Posts", path: "/submitted/", icon: PATH.posts },
             { label: isPt ? "Comentários" : "Comments", path: "/comments/", icon: PATH.comments },
         ];
-        const items = userLinks.map((l) => nativeLinkRow(base + l.path, l.icon, l.label));
         const body = sec.querySelector("[faceplate-auto-height-animator-content]");
-        if (!body) return; // estrutura inesperada — não injeta um clone com conteúdo nativo
-        body.replaceChildren(...items);
+        if (!body) return null; // estrutura inesperada — não injeta um clone com conteúdo nativo
+        body.replaceChildren(...userLinks.map((l) => nativeLinkRow(base + l.path, l.icon, l.label)));
         body.removeAttribute("id"); // não duplicar #multireddits_section
         sec.querySelector("summary")?.removeAttribute("aria-controls");
+        return sec;
+    }
+
+    function cachedUserSection() {
+        try {
+            const html = localStorage.getItem(YOU_CACHE);
+            if (!html) return null;
+            const t = document.createElement("template");
+            t.innerHTML = html;
+            const sec = t.content.firstElementChild;
+            return sec && sec.classList.contains("rx-user-section") ? sec : null;
+        } catch (e) { return null; }
+    }
+
+    let rxUserSec = null; // seção montada (o caminho eager checa isConnected em vez de varrer o DOM)
+    function injectUserSection() {
+        const live = rxUserSec && rxUserSec.isConnected;
+        if (live && !rxUserSec.dataset.rxCached) return;
+        const tmpl = nativeSectionTemplate();
+        if (live && !tmpl) return; // do cache: troca pelo nativo quando o molde montar (usuário pode ter mudado)
+        const nav = getSidebarNav();
+        if (!nav) return;
+        const anchor = nav.querySelector("left-nav-top-section"); // Home/Popular/…: a "Você" vem logo depois
+        if (!anchor) return; // nav ainda montando — o MutationObserver tenta de novo
+        const old = nav.querySelector(".rx-user-section");
+        const user = getUsername();
+        let sec = null;
+        if (tmpl) {
+            sec = buildUserSection(tmpl, user || "me");
+            if (sec && user) try { localStorage.setItem(YOU_CACHE, sec.outerHTML); } catch (e) {}
+        }
+        if (!sec) {
+            sec = cachedUserSection();
+            if (!sec) return;
+            sec.dataset.rxCached = "1";
+        }
 
         // Sempre recolhível: persiste o estado aberto/fechado.
         const details = sec.querySelector("details");
@@ -1223,14 +1286,101 @@
                 save();
             });
         }
+        if (old) old.replaceWith(sec);
+        else anchor.after(sec);
+        rxUserSec = sec;
+    }
 
-        const firstSection = nav.querySelector("left-nav-top-section");
-        if (firstSection) firstSection.after(sec);
-        else nav.prepend(sec);
+    // Botão de recolher a right sidebar (visibilidade toda no CSS: só desktop, pin ligado e página com rail).
+    let rxRToggle = null;
+    function syncRightToggle(b) {
+        const label = settings.hideRightSidebar ? (isPtLang() ? "Abrir barra lateral" : "Expand sidebar") : (isPtLang() ? "Recolher barra lateral" : "Collapse sidebar");
+        b.setAttribute("aria-label", label);
+        b.setAttribute("title", label);
+        b.setAttribute("aria-expanded", String(!settings.hideRightSidebar));
+    }
+    // Copia o visual do ☰ nativo da left (tamanho, topo, borda, fundo) pro nosso: achamos o botão pela
+    // GEOMETRIA (redondo, centrado na borda direita da left sidebar) — não há id/aria estável. Uma vez só.
+    let rxRtLook = false;
+    let rxRailStrip = 0, rxRtTries = 0;
+    function syncNativeToggleLook() {
+        const left = document.querySelector("#left-sidebar-container");
+        if (!left || document.documentElement.classList.contains("rx-hideLeftSidebar")) return;
+        const edge = Math.round(left.getBoundingClientRect().right);
+        if (edge < 100) { // left recolhida: a largura dela é a faixa que a right recolhida espelha
+            if (edge > 8 && edge !== rxRailStrip) {
+                rxRailStrip = edge;
+                document.documentElement.style.setProperty("--rx-rail-strip", edge + "px");
+            }
+            return; // o botão nativo está em outra posição; o visual é copiado quando ela abrir
+        }
+        if (rxRtLook || ++rxRtTries > 20) return; // não achou em 20 refreshes: fica no fallback (sem varrer pra sempre)
+        // o ☰ pode morar no shadow root de algum componente da nav: varre light DOM + shadows (1 nível)
+        const btns = [...left.querySelectorAll("button")];
+        left.querySelectorAll("*").forEach((n) => { if (n.shadowRoot) btns.push(...n.shadowRoot.querySelectorAll("button")); });
+        for (const b of btns) {
+            const r = b.getBoundingClientRect();
+            if (r.width < 24 || r.width > 48 || Math.abs(r.width - r.height) > 2 || Math.abs(r.left + r.width / 2 - edge) > 6) continue;
+            const cs = getComputedStyle(b);
+            const h = document.documentElement.style;
+            h.setProperty("--rx-rt-top", r.top + "px");
+            h.setProperty("--rx-rt-size", r.width + "px");
+            h.setProperty("--rx-rt-border", cs.borderTopWidth + " " + cs.borderTopStyle + " " + cs.borderTopColor);
+            h.setProperty("--rx-rt-bg", cs.backgroundColor);
+            h.setProperty("--rx-rt-color", cs.color);
+            rxRtLook = true;
+            return;
+        }
+    }
+
+    // O primeiro bloco do rail (ex.: Recent posts) traz padding/margin de topo próprios, então o conteúdo
+    // começava bem abaixo do Home da left. Zera o topo na cadeia de primeiros filhos até achar um card
+    // (fundo ou borda próprios: esse mantém o respiro interno, só perde a margem).
+    function trimRailTop() {
+        const root = document.querySelector("#right-sidebar-contents");
+        if (!root) return;
+        // primeiro filho que ocupa espaço; display:contents (ex.: aside#right-rail-experience-root) é atravessado
+        const firstBox = (parent) => {
+            for (const c of parent.children) {
+                if (getComputedStyle(c).display === "contents") { const d = firstBox(c); if (d) return d; }
+                else if (c.offsetHeight > 0) return c;
+            }
+            return null;
+        };
+        let n = firstBox(root);
+        for (let depth = 0; n && depth < 6; depth++) {
+            if (n.dataset.rxTrim) return; // essa cadeia já foi aparada
+            const cs = getComputedStyle(n);
+            const card = cs.backgroundColor !== "rgba(0, 0, 0, 0)" || parseFloat(cs.borderTopWidth) > 0;
+            n.style.setProperty("margin-top", "0", "important");
+            if (!card) n.style.setProperty("padding-top", "0", "important");
+            n.dataset.rxTrim = "1";
+            if (card) return;
+            n = firstBox(n);
+        }
+    }
+
+    function ensureRightToggle() {
+        if (settings.fixedRightSidebar) { syncNativeToggleLook(); trimRailTop(); }
+        if (rxRToggle) { syncRightToggle(rxRToggle); return; } // mudança pelo painel também reflete aqui
+        if (!document.body) return;
+        const b = el("button", { className: "rx-rtoggle", type: "button" }, icon(PATH.menu));
+        b.addEventListener("click", () => {
+            settings.hideRightSidebar = !settings.hideRightSidebar;
+            save();
+            applyClasses();
+            syncRightToggle(b);
+            const cb = document.querySelector('.rx-panel input[data-key="hideRightSidebar"]');
+            if (cb) cb.checked = settings.hideRightSidebar;
+        });
+        syncRightToggle(b);
+        document.body.appendChild(b);
+        rxRToggle = b;
     }
 
     function renderUserSection() {
         document.querySelectorAll(".rx-user-section").forEach((n) => n.remove());
+        rxUserSec = null;
         if (settings.userShortcuts) injectUserSection();
     }
 
@@ -1249,12 +1399,16 @@
         const dd = document.querySelector('shreddit-sort-dropdown[telemetry-source="sort_switch"]');
         if (!dd || !dd.parentElement) return;
 
+        // A assinatura são os hrefs do dropdown: na nav SPA o Reddit pode reaproveitar o mesmo pai e só
+        // trocar os links (outro subreddit) — sem comparar, as abas ficavam apontando pro sub anterior.
+        const seen = new Set();
+        const items = [...dd.querySelectorAll("a[href]")]
+            .map((a) => ({ href: a.getAttribute("href"), label: (a.textContent || "").trim() }))
+            .filter((o) => o.href && o.label && sortOf(o.href) && !seen.has(o.label) && seen.add(o.label));
+        const sig = items.map((o) => o.href).join("|");
         let bar = dd.parentElement.querySelector(":scope > .rx-sort-tabs");
+        if (bar && items.length && bar.dataset.sig !== sig) { bar.remove(); bar = null; }
         if (!bar) {
-            const seen = new Set();
-            const items = [...dd.querySelectorAll("a[href]")]
-                .map((a) => ({ href: a.getAttribute("href"), label: (a.textContent || "").trim() }))
-                .filter((o) => o.href && o.label && sortOf(o.href) && !seen.has(o.label) && seen.add(o.label));
             if (!items.length) return;
 
             bar = el(
@@ -1265,6 +1419,7 @@
                     return el("a", { className: "rx-sort-tab", "data-sort": s, href: o.href }, PATH[s] ? icon(PATH[s]) : null, el("span", null, o.label));
                 }),
             );
+            bar.dataset.sig = sig;
             dd.parentElement.insertBefore(bar, dd);
             dd.classList.add("rx-sorted-hidden");
         }
@@ -1286,8 +1441,8 @@
         const st = document.createElement("style");
         st.id = "rx-view-css";
         st.textContent =
-            'faceplate-tracker[source="layout_switch"] > button{padding:7px 10px!important;height:auto!important;max-height:none!important;width:auto!important}' +
-            'faceplate-tracker[source="layout_switch"] > button svg{width:20px!important;height:20px!important}';
+            'faceplate-tracker[source="layout_switch"] > button{padding:0 12px!important;height:36px!important;max-height:none!important;width:auto!important;border-radius:999px!important}' +
+            'faceplate-tracker[source="layout_switch"] > button svg{width:16px!important;height:16px!important}';
         sr.appendChild(st);
     }
 
@@ -1345,8 +1500,15 @@
     // The interactive search lives inside reddit-search-large's shadow root, so
     // document CSS can't touch it — we inject a <style> into the shadow + prune.
     function applyOldTopbar() {
-        if (!settings.oldTopbar) return;
         const search = document.querySelector("reddit-search-large");
+        if (!settings.oldTopbar) {
+            // desligou: tira o CSS do shadow (os flags nativos removidos só voltam no reload)
+            if (search && search.dataset.rxOldbar) {
+                search.shadowRoot?.getElementById("rx-old-search")?.remove();
+                delete search.dataset.rxOldbar;
+            }
+            return;
+        }
         if (!search || search.dataset.rxOldbar === "1") return; // já totalmente aplicado → bail (não re-varre o shadow a cada refresh)
 
         // 1. Native flags off — drops the AI/Ask/snoo treatment where the component honors it (idempotente).
@@ -1486,19 +1648,33 @@
     }
 
     /* ------------------------------------------------------------------ *
-     * Save/Hide na barra de ações do post.
-     * A AÇÃO é a nativa: clicamos o item real do menu "..." (no shadow root do
-     * <shreddit-post-overflow-menu>), igual o botão antigo. O ESTADO do nosso botão é
-     * ESPELHADO do próprio item via MutationObserver (sem chute otimista) — ícone, cor e
-     * rótulo (Save↔Unsave). O "..." é movido pra barra e os itens duplicados ficam ocultos.
+     * Barra de ações do post, em dois grupos:
+     *   [votos] [comentários]  ······  [salvar] [share] [⋯]
+     * Salvar é nosso (clone da pílula de comentários, herda o estilo do shadow root); a AÇÃO é a
+     * nativa: clicamos o item real do menu "⋯" (shadow root do <shreddit-post-overflow-menu>).
+     * O ESTADO vem do próprio menu: o item continua com id "post-overflow-save" mesmo salvo (só o
+     * texto vira "Remove from saved") e o host ganha o atributo is-post-saved. Espelhado por
+     * MutationObserver, sem chute otimista. Salvo = ícone cheio + "Saved" (hover: "Remove").
+     * Ocultar fica no "⋯" (item nativo) e o crosspost sai da barra pra um item nosso no "⋯".
      * ------------------------------------------------------------------ */
     const SVG_NS = "http://www.w3.org/2000/svg";
-    const SAVE_ICON = { off: PATH.postSave, on: PATH.postSaveFill };
-    const HIDE_ICON = { off: PATH.postHide, on: PATH.postHide }; // Hide não tem glyph "ativo" distinto: mesmo path nos 2 estados (a troca em syncBtn vira no-op); formato espelha SAVE_ICON
 
     function overflowItem(overflow, kind) {
         const sr = overflow && overflow.shadowRoot;
         return (sr && sr.querySelector('[id="post-overflow-' + kind + '"], [id="post-overflow-un' + kind + '"]')) || null;
+    }
+
+    // Estado atual (saved/hidden). O texto do item é o sinal mais vivo (muda na hora do clique);
+    // sem item, cai no atributo do host. null = não dá pra ler (ex.: deslogado).
+    function readOnState(overflow, kind) {
+        if (!overflow) return null;
+        const it = overflowItem(overflow, kind);
+        if (kind === "save") {
+            if (!it) return overflow.hasAttribute("is-post-saved") ? true : null;
+            return it.id === "post-overflow-unsave" || /remov|unsave/i.test(it.textContent || "");
+        }
+        if (!it) return null;
+        return it.id === "post-overflow-unhide" || /unhide|mostrar|reexibir/i.test(it.textContent || "");
     }
 
     // Dispara a ação clicando DIRETO no item real (sem abrir o dropdown). Se ainda não
@@ -1517,201 +1693,191 @@
         }, 75);
     }
 
-    // Espelha o estado do item REAL no botão da barra: ícone, cor e rótulo (Save↔Unsave).
-    function syncBtn(btn, overflow, kind, icons) {
-        const it = overflowItem(overflow, kind);
-        if (!it) return;
-        const itId = it.id || "";
-        const tracker = it.querySelector("faceplate-tracker");
-        const noun = (tracker && tracker.getAttribute("noun")) || it.getAttribute("noun") || "";
-        const on = itId.includes("un" + kind) || noun === "un" + kind || itId.startsWith("post-overflow-un");
-
-        const lblEl = it.querySelector(".text-body-2");
-        const raw = ((lblEl ? lblEl.textContent : it.textContent) || "").replace(/\s+/g, " ").trim();
-        const isPt = /^pt\b/i.test(document.documentElement.lang || navigator.language || "");
-        const fallback = kind === "save"
-            ? (on ? (isPt ? "Salvo" : "Saved") : (isPt ? "Salvar" : "Save"))
-            : (on ? (isPt ? "Desocultar" : "Unhide") : (isPt ? "Ocultar" : "Hide"));
-        const label = raw || fallback;
-
-        const path = btn.querySelector("svg path");
-        if (path) path.setAttribute("d", on ? icons.on : icons.off);
-        if (on) btn.style.setProperty("color", "#ff4500", "important"); // vence o button-secondary do Reddit
-        else btn.style.removeProperty("color");
+    function syncSaveBtn(btn, overflow) {
+        const on = readOnState(overflow, "save") === true;
+        if (btn.dataset.rxOn === String(on)) return; // sem escrita à toa
+        btn.dataset.rxOn = String(on);
+        const pt = isPtLang();
+        const label = on ? (pt ? "Salvo" : "Saved") : (pt ? "Salvar" : "Save");
+        btn.classList.toggle("rx-on", on);
+        btn.querySelector("svg path")?.setAttribute("d", on ? PATH.postSaveFill : PATH.postSave);
         const lbl = btn.querySelector(".rx-act-label");
-        if (lbl) lbl.textContent = label;
+        if (lbl) lbl.replaceChildren(el("span", { className: "rx-l-idle" }, label), on ? el("span", { className: "rx-l-hover" }, pt ? "Remover" : "Remove") : null);
         const srEl = btn.querySelector("faceplate-screen-reader-content");
         if (srEl) srEl.textContent = label;
+        btn.setAttribute("aria-pressed", String(on));
         btn.setAttribute("aria-label", label);
-        btn.setAttribute("title", label);
+        btn.setAttribute("title", on ? (pt ? "Remover dos salvos" : "Remove from saved") : label);
     }
 
-    // Botão da barra: clona o link de comentários da MESMA barra (herda o estilo de pílula e
-    // as stylesheets do shadow root), troca ícone/rótulo e dispara a ação nativa.
-    function makeActionButton(ref, kind, label, overflow) {
-        const icons = kind === "save" ? SAVE_ICON : HIDE_ICON;
-        const isPt = /^pt\b/i.test(document.documentElement.lang || navigator.language || "");
-        const initialLabel = label || (kind === "save" ? (isPt ? "Salvar" : "Save") : (isPt ? "Ocultar" : "Hide"));
+    // Clona a pílula de comentários da MESMA barra (herda o estilo e as stylesheets do shadow root).
+    function makeSaveButton(ref, overflow) {
         const btn = ref.cloneNode(true);
-        btn.classList.add("rx-post-act");
-        btn.dataset.rxKind = kind;
+        btn.classList.add("rx-post-act", "rx-save");
         ["href", "data-action-bar-action", "data-post-click-location", "name", "id"].forEach((a) => btn.removeAttribute(a));
         btn.setAttribute("role", "button");
         btn.setAttribute("tabindex", "0");
-        btn.setAttribute("aria-label", initialLabel);
-        btn.setAttribute("title", initialLabel);
         const svg = btn.querySelector("svg");
         if (svg) {
             svg.removeAttribute("icon-name");
-            svg.replaceChildren();
-            const p = document.createElementNS(SVG_NS, "path");
-            p.setAttribute("d", icons.off);
-            svg.appendChild(p);
+            svg.replaceChildren(document.createElementNS(SVG_NS, "path"));
         }
         const num = btn.querySelector("faceplate-number");
-        if (num && num.parentElement) { num.parentElement.classList.add("rx-act-label"); num.parentElement.textContent = initialLabel; }
-        const srEl = btn.querySelector("faceplate-screen-reader-content");
-        if (srEl) srEl.textContent = initialLabel;
-        syncBtn(btn, overflow, kind, icons); // estado real, se o menu já montou
+        if (num && num.parentElement) num.parentElement.classList.add("rx-act-label");
+        syncSaveBtn(btn, overflow);
         btn.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            triggerAction(overflow, kind); // o observer abaixo atualiza o visual quando o item muda
+            triggerAction(overflow, "save"); // o observer atualiza o visual quando o item muda
         });
         return btn;
     }
 
-    // Observa o menu real e re-espelha o estado nos botões (montagem dos itens + save/unsave).
-    function observeOverflow(overflow, bar) {
-        if (!overflow.shadowRoot) return;
-        const resync = () => {
-            toggleDropdownDupes(overflow, true);
-            const s = bar.querySelector('.rx-post-act[data-rx-kind="save"]');
-            const h = bar.querySelector('.rx-post-act[data-rx-kind="hide"]');
-            if (s) syncBtn(s, overflow, "save", SAVE_ICON);
-            if (h) syncBtn(h, overflow, "hide", HIDE_ICON);
-        };
-        if (!overflow.__rxObs) {
-            overflow.__rxObs = new MutationObserver(resync);
-            overflow.__rxObs.observe(overflow.shadowRoot, { childList: true, subtree: true, characterData: true });
+    // Crosspost no "⋯": clone do item nativo de Ocultar (mesmo chrome), com o glyph do botão de
+    // repost. Abre o fluxo nativo de crosspost (/submit?source_id=).
+    function ensureCrosspostItem(overflow, post) {
+        const sr = overflow.shadowRoot;
+        if (!sr || !overflow.hasAttribute("is-crosspostable") || sr.getElementById("rx-overflow-crosspost")) return;
+        const ref = sr.querySelector('[id="post-overflow-hide"], [id="post-overflow-unhide"]');
+        if (!ref) return;
+        const li = ref.cloneNode(true);
+        li.id = "rx-overflow-crosspost";
+        li.querySelectorAll("[noun]").forEach((n) => n.removeAttribute("noun"));
+        const repost = post.querySelector('[slot="repost-button"]');
+        const count = ((repost && repost.textContent) || "").replace(/\D+/g, "");
+        const lbl = li.querySelector(".text-body-2");
+        if (lbl) lbl.textContent = "Crosspost" + (+count ? " (" + count + ")" : "");
+        const glyph = repost && repost.querySelector("svg");
+        const svg = li.querySelector("svg");
+        if (glyph && svg) {
+            const g = glyph.cloneNode(true);
+            ["width", "height", "class"].forEach((a) => (svg.hasAttribute(a) ? g.setAttribute(a, svg.getAttribute(a)) : g.removeAttribute(a)));
+            svg.replaceWith(g);
         }
-        resync();
+        li.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            location.assign("/submit?source_id=" + encodeURIComponent(post.id));
+        }, true);
+        ref.after(li);
     }
 
-    // Mostra/esconde os itens Save/Hide do dropdown (continuam clicáveis por código).
-    function toggleDropdownDupes(overflow, hidden) {
-        const sr = overflow && overflow.shadowRoot;
-        if (!sr) return;
-        ["save", "hide"].forEach((k) => {
-            const li = sr.querySelector('[id="post-overflow-' + k + '"], [id="post-overflow-un' + k + '"]');
-            if (li) li.style.display = hidden ? "none" : "";
-        });
+    // O Save do dropdown duplica o botão da barra: some do menu (continua clicável por código).
+    function toggleSaveDupe(overflow, hidden) {
+        const it = overflowItem(overflow, "save");
+        if (it && it.style.display !== (hidden ? "none" : "")) it.style.display = hidden ? "none" : "";
     }
+
+    // Ordem do grupo da direita, antes do bloco nativo .ms-auto (mod/promote): salvar, share, ⋯.
+    // Idempotente: só move o que está fora do lugar. Roda no apply e quando o menu muda (o item
+    // de Save pode montar depois da barra).
+    function placeBar(post, bar, overflow) {
+        const anchor = bar.querySelector(":scope > .ms-auto");
+        let save = bar.querySelector(".rx-save");
+        if (!save && overflowItem(overflow, "save")) {
+            const ref = bar.querySelector('[data-action-bar-action="comments"]'); // <a> no feed, <button> na página do post
+            if (ref) save = makeSaveButton(ref, overflow);
+        }
+        const ofWrap = overflow.closest("shreddit-async-loader") || overflow;
+        const share = bar.querySelector(':scope > slot[name="share-button"]') || bar.querySelector(":scope > shreddit-post-share-button");
+        [save, share, ofWrap].filter(Boolean).reduceRight((next, n) => {
+            if (n.parentNode !== bar || n.nextElementSibling !== next) bar.insertBefore(n, next);
+            return n;
+        }, anchor);
+        bar.classList.toggle("rx-bar-lead", !save); // sem Salvar (deslogado): o share abre o grupo da direita
+        if (save) syncSaveBtn(save, overflow);
+        toggleSaveDupe(overflow, true);
+        ensureCrosspostItem(overflow, post);
+    }
+
+    // Observa o menu real (itens + texto) e o atributo is-post-saved do host.
+    function observeOverflow(overflow, bar, post) {
+        if (!overflow.shadowRoot || overflow.__rxObs) return;
+        overflow.__rxObs = new MutationObserver(() => {
+            if (settings.postBarActions && bar.isConnected) placeBar(post, bar, overflow);
+        });
+        overflow.__rxObs.observe(overflow.shadowRoot, { childList: true, subtree: true, characterData: true });
+        overflow.__rxObs.observe(overflow, { attributes: true, attributeFilter: ["is-post-saved"] });
+    }
+
+    const rxBarOverflows = new Set(); // menus "⋯" que puxamos pra barra (fechar ao clicar fora)
+    function closeOverflowMenu(overflow) {
+        const dd = overflow.shadowRoot?.querySelector("faceplate-dropdown-menu") || overflow.querySelector("faceplate-dropdown-menu");
+        if (dd && (dd.hasAttribute("open") || dd.open)) {
+            if (typeof dd.close === "function") dd.close();
+            else dd.removeAttribute("open");
+        }
+    }
+
+    const BAR_CSS = `
+        :host { overflow: visible !important; }
+        .rx-bar { overflow: visible !important; }
+        .rx-bar > .ms-auto { margin-inline-start: 0 !important; }
+        .rx-bar > slot[name="repost-button"] { display: none !important; }
+        .rx-bar .rx-save, .rx-bar.rx-bar-lead > slot[name="share-button"], .rx-bar.rx-bar-lead > shreddit-post-share-button { margin-inline-start: auto !important; }
+        .rx-save:not(.rx-on) {
+            width: 32px !important; min-width: 32px !important; padding: 0 !important;
+            justify-content: center !important; flex-shrink: 0 !important;
+        }
+        .rx-save:not(.rx-on) .rx-act-label { display: none !important; }
+        .rx-save .rx-l-hover, .rx-save.rx-on:hover .rx-l-idle { display: none; }
+        .rx-save.rx-on:hover .rx-l-hover { display: inline; }
+        shreddit-async-loader, shreddit-post-overflow-menu {
+            overflow: visible !important; position: relative !important;
+            display: inline-flex !important; align-items: center !important;
+        }
+    `;
 
     // A barra de ações (vote/comentar/Share) vive no SHADOW ROOT do <shreddit-post>; o menu
-    // "..." vive no credit-bar (light DOM). Pareamos os dois pelo mesmo <shreddit-post>.
+    // "⋯" pode estar lá ou no credit-bar (light DOM). Pareamos os dois pelo mesmo <shreddit-post>.
     let postBarApplied = false; // já mexemos em algum post? evita varrer shreddit-post no caso padrão (tudo off)
     function applyPostBarActions() {
         const wantBtns = settings.postBarActions;
-        const wantMove = settings.moveShareLast;
         const wantNoAward = settings.hideAward;
-        if (!wantBtns && !wantMove && !wantNoAward) {
-            if (!postBarApplied) return; // nunca aplicamos nada → nada a limpar (default: zero varredura por refresh)
-            document.querySelectorAll("shreddit-post").forEach((post) => {
-                const sr = post.shadowRoot;
-                if (!sr) return;
-                sr.querySelectorAll(".rx-post-act").forEach((n) => n.remove());
-                sr.querySelectorAll("award-button[data-rx-hidden]").forEach((n) => { n.style.display = ""; n.removeAttribute("data-rx-hidden"); });
-                toggleDropdownDupes(sr.querySelector("shreddit-post-overflow-menu") || post.querySelector("shreddit-post-overflow-menu"), false);
-                delete post.dataset.rxBar;
-            });
-            postBarApplied = false;
-            return;
-        }
-        postBarApplied = true;
-        const sig = (wantBtns ? "b" : "") + (wantMove ? "m" : "") + (wantNoAward ? "a" : ""); // muda → reprocessa
+        if (!wantBtns && !wantNoAward && !postBarApplied) return; // nunca aplicamos nada → nada a limpar
+        postBarApplied = wantBtns || wantNoAward;
+        const sig = (wantBtns ? "b" : "") + (wantNoAward ? "a" : ""); // muda → reprocessa
         document.querySelectorAll("shreddit-post").forEach((post) => {
             const sr = post.shadowRoot;
-            // já processado pra essa config? re-checa os botões (self-heal se a barra re-renderizar)
-            if (post.dataset.rxBar === sig && (!wantBtns || (sr && sr.querySelector(".rx-post-act")))) return;
             const bar = sr && sr.querySelector('[data-testid="action-row"]');
             if (!bar) return;
-            // icon-only na barra: o CSS do documento não fura o shadow root, então injetamos um <style>
-            // dentro dele escondendo os rótulos (Save/Hide) e garantindo overflow visível para o menu "..."
-            if (sr && !sr.getElementById("rx-bar-action-css")) {
-                const st = document.createElement("style");
-                st.id = "rx-bar-action-css";
-                st.textContent = `
-                    :host { overflow: visible !important; }
-                    [data-testid="action-row"] { overflow: visible !important; gap: 4px !important; }
-                    .rx-act-label { display: none !important; }
-                    .rx-post-act {
-                        display: inline-flex !important;
-                        align-items: center !important;
-                        justify-content: center !important;
-                        width: 32px !important;
-                        min-width: 32px !important;
-                        max-width: 32px !important;
-                        height: 32px !important;
-                        padding: 0 !important;
-                        border-radius: 9999px !important;
-                        box-sizing: border-box !important;
-                        flex-shrink: 0 !important;
-                    }
-                    shreddit-async-loader, shreddit-post-overflow-menu {
-                        overflow: visible !important;
-                        position: relative !important;
-                        display: inline-flex !important;
-                        align-items: center !important;
-                    }
-                `;
-                sr.appendChild(st);
-            }
-            const anchor = bar.querySelector(".ms-auto"); // bloco alinhado à direita (mod/promote)
+            // já processado pra essa config? (o observer do menu cuida do self-heal da barra)
+            if (post.dataset.rxBar === sig) return;
             const overflow = bar.querySelector("shreddit-post-overflow-menu") || post.querySelector("shreddit-post-overflow-menu");
 
-            // Save/Hide na barra + tira os duplicados do dropdown + traz o "..." pra barra
             if (wantBtns && overflow) {
-                const ref = bar.querySelector('[data-action-bar-action="comments"]'); // pílula de comentários (é <a> no feed, <button> na página do post)
-                if (ref && !bar.querySelector(".rx-post-act")) {
-                    const isPt = /^pt\b/i.test(document.documentElement.lang || navigator.language || "");
-                    bar.insertBefore(makeActionButton(ref, "save", isPt ? "Salvar" : "Save", overflow), anchor);
-                    bar.insertBefore(makeActionButton(ref, "hide", isPt ? "Ocultar" : "Hide", overflow), anchor);
+                if (!sr.getElementById("rx-bar-action-css")) {
+                    sr.appendChild(el("style", { id: "rx-bar-action-css" }, BAR_CSS));
                 }
-                toggleDropdownDupes(overflow, true);
-                const ofWrap = overflow.closest("shreddit-async-loader") || overflow;
-                if (ofWrap.parentElement !== bar || ofWrap.nextElementSibling !== anchor) bar.insertBefore(ofWrap, anchor);
-                observeOverflow(overflow, bar); // espelha o estado do menu nos botões
+                bar.classList.add("rx-bar");
+                placeBar(post, bar, overflow);
+                observeOverflow(overflow, bar, post);
+                rxBarOverflows.add(overflow);
 
+                const ofWrap = overflow.closest("shreddit-async-loader") || overflow;
                 if (!ofWrap.__rxBound) {
                     ofWrap.__rxBound = true;
                     ofWrap.addEventListener("click", (e) => {
                         const path = e.composedPath ? e.composedPath() : [];
                         const isMenuItem = path.some((n) => n && n.getAttribute && (n.getAttribute("role") === "menuitem" || (n.closest && n.closest('[role="menuitem"], button[data-testid]'))));
-                        if (!isMenuItem) {
-                            e.stopPropagation();
-                        } else {
-                            setTimeout(() => {
-                                const dd = overflow.shadowRoot?.querySelector("faceplate-dropdown-menu") || overflow.querySelector("faceplate-dropdown-menu");
-                                if (dd) {
-                                    if (typeof dd.close === "function") dd.close();
-                                    else dd.removeAttribute("open");
-                                }
-                            }, 120);
-                        }
+                        if (!isMenuItem) e.stopPropagation(); // não abre o post ao clicar no "⋯"
+                        else setTimeout(() => closeOverflowMenu(overflow), 120);
                     });
                 }
             } else if (!wantBtns) {
+                bar.classList.remove("rx-bar", "rx-bar-lead");
                 bar.querySelectorAll(".rx-post-act").forEach((n) => n.remove());
-                toggleDropdownDupes(overflow, false);
+                if (overflow) {
+                    toggleSaveDupe(overflow, false);
+                    overflow.shadowRoot?.getElementById("rx-overflow-crosspost")?.remove();
+                    rxBarOverflows.delete(overflow);
+                }
             }
 
             // Share icon-only no shadowRoot do componente
-            const shareBtn = post.querySelector("shreddit-post-share-button") || (sr && sr.querySelector("shreddit-post-share-button"));
-            if (shareBtn && shareBtn.shadowRoot && !shareBtn.shadowRoot.getElementById("rx-share-icon-only")) {
-                const s = document.createElement("style");
-                s.id = "rx-share-icon-only";
-                s.textContent = `
+            const shareBtn = post.querySelector("shreddit-post-share-button") || sr.querySelector("shreddit-post-share-button");
+            if (wantBtns && shareBtn && shareBtn.shadowRoot && !shareBtn.shadowRoot.getElementById("rx-share-icon-only")) {
+                shareBtn.shadowRoot.appendChild(el("style", { id: "rx-share-icon-only" }, `
                     button, a {
                         width: 32px !important; min-width: 32px !important; max-width: 32px !important;
                         height: 32px !important; padding: 0 !important; border-radius: 9999px !important;
@@ -1721,8 +1887,7 @@
                     span:not([slot="icon"]):not(:has(svg)), .text-body-2, [data-testid="share-text"] {
                         display: none !important;
                     }
-                `;
-                shareBtn.shadowRoot.appendChild(s);
+                `));
             }
 
             // Esconder award
@@ -1731,32 +1896,18 @@
                 else if (n.hasAttribute("data-rx-hidden")) { n.style.display = ""; n.removeAttribute("data-rx-hidden"); }
             });
 
-            // Share por último — logo antes do "..." (se movido) ou do bloco à direita
-            if (wantMove) {
-                const share = bar.querySelector('slot[name="share-button"]') || bar.querySelector("shreddit-post-share-button");
-                const ofWrap = overflow ? (overflow.closest("shreddit-async-loader") || overflow) : null;
-                const target = ofWrap && ofWrap.parentElement === bar ? ofWrap : anchor;
-                if (share && share.nextElementSibling !== target) bar.insertBefore(share, target);
-            }
-
-            // marca como processado só quando o resultado está completo (botões presentes, se pedidos)
-            if (!wantBtns || bar.querySelector(".rx-post-act")) post.dataset.rxBar = sig;
+            if (!wantBtns || (overflow && overflow.__rxObs)) post.dataset.rxBar = sig; // menu lazy sem shadowRoot: tenta no próximo refresh
         });
     }
 
-    // Fecha dropdown de overflow ao clicar fora de qualquer shreddit-post-overflow-menu
+    // Fecha os "⋯" puxados pra barra ao clicar fora deles (o stopPropagation acima quebra o fechamento nativo).
     document.addEventListener("click", (e) => {
+        if (!rxBarOverflows.size) return;
         const path = e.composedPath ? e.composedPath() : [];
-        if (!path.some((n) => n && n.tagName && n.tagName.toLowerCase() === "shreddit-post-overflow-menu")) {
-            document.querySelectorAll("shreddit-post").forEach((p) => {
-                const ov = p.shadowRoot?.querySelector("shreddit-post-overflow-menu") || p.querySelector("shreddit-post-overflow-menu");
-                const dd = ov?.shadowRoot?.querySelector("faceplate-dropdown-menu") || ov?.querySelector("faceplate-dropdown-menu");
-                if (dd && (dd.hasAttribute("open") || dd.open)) {
-                    if (typeof dd.close === "function") dd.close();
-                    else dd.removeAttribute("open");
-                }
-            });
-        }
+        rxBarOverflows.forEach((ov) => {
+            if (!ov.isConnected) rxBarOverflows.delete(ov);
+            else if (!path.includes(ov)) closeOverflowMenu(ov);
+        });
     }, true);
 
     /* ------------------------------------------------------------------ *
@@ -1779,16 +1930,6 @@
     function findPostById(id) {
         return document.querySelector('article[data-post-id="' + id + '"] shreddit-post') || document.querySelector('shreddit-post[id="' + id + '"]');
     }
-    // estado atual (saved/hidden) lido pelo item do menu; null se não der pra ler
-    function readOnState(overflow, kind) {
-        const it = overflowItem(overflow, kind);
-        if (!it) return null;
-        const itId = it.id || "";
-        const tracker = it.querySelector("faceplate-tracker");
-        const noun = (tracker && tracker.getAttribute("noun")) || it.getAttribute("noun") || "";
-        return itId.includes("un" + kind) || noun === "un" + kind || itId.startsWith("post-overflow-un");
-    }
-
     function fabAct(label, iconEl, onClick) {
         return el("button", { className: "rx-lfab-act", type: "button", title: label, "aria-label": label, onClick }, iconEl, el("span", null, label));
     }
@@ -3365,6 +3506,7 @@
         applyGalleryInline();
         injectMobileTop();
         buildMobileNav();
+        ensureRightToggle();
     }
 
     function applySettings() {
@@ -3495,6 +3637,7 @@
 
         const input = el("input", {
             type: "checkbox",
+            "data-key": item.key,
             onChange: (e) => {
                 settings[item.key] = e.target.checked;
                 save();
@@ -3672,8 +3815,8 @@
         // applyClasses NÃO entra aqui: as classes do <html> persistem (SPA não as reseta);
         // são aplicadas no boot e em cada mudança de setting. Tirar daqui alivia o hot path.
         buildPanel();
-        if (settings.userShortcuts && !document.querySelector(".rx-user-section")) injectUserSection();
-        else if (!settings.userShortcuts) document.querySelectorAll(".rx-user-section").forEach((n) => n.remove());
+        if (settings.userShortcuts) injectUserSection();
+        else if (rxUserSec) { rxUserSec.remove(); rxUserSec = null; }
         runFeaturePipeline(); // mesmo tail do applySettings (o applyTopbar dele é rede de segurança; o eager no observer é o caminho rápido)
     }
     // debounce (coalesce a rajada de mutações) + requestIdleCallback (roda ocioso, sem travar o render)
@@ -3694,11 +3837,16 @@
 
     // Caminho EAGER (sem debounce) só pro topbar: barato e idempotente, move o view pra linha das
     // abas no instante em que tabs+view existem (sem esperar os 250ms+ocioso) → mata o "pulo" de 1-2s.
+    let rxRoutePath = location.pathname;
     new MutationObserver(() => {
-        applyProfileClass(); // navegação SPA: atualiza o marcador /user/*
-        applyRecScope();     // navegação SPA: re-checa r/all|popular
-        applyPinScope();     // navegação SPA: re-checa páginas sem layout-feed
+        if (rxRoutePath !== location.pathname) { // marcadores de rota só mudam na navegação SPA
+            rxRoutePath = location.pathname;
+            applyProfileClass(); // /user/*
+            applyRecScope();     // r/all|popular
+            applyPinScope();     // páginas sem layout-feed
+        }
         applyTopbar();       // move o view já; resto vai no refresh debounced
+        if (settings.userShortcuts && !(rxUserSec && rxUserSec.isConnected && !rxUserSec.dataset.rxCached)) injectUserSection(); // "Você" assim que a nav existir
         refresh();
     }).observe(document.documentElement, { childList: true, subtree: true });
     document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); }); // catch-up ao voltar pra aba
