@@ -650,14 +650,6 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 .igf-video.igf-loading .igf-play::after{ content:""; width:38px; height:38px; border-radius:50%; box-sizing:border-box;
   border:3px solid rgba(255,255,255,.35); border-top-color:#fff; animation:igf-rot .8s linear infinite;
   filter:drop-shadow(0 1px 4px rgba(0,0,0,.5)); }
-/* ↗ ABRIR O POST — no vídeo o clique toca/pausa, então abrir ganhou um alvo próprio no canto
-   (aparece no hover do card e com o vídeo parado) */
-.igf-open{ position:absolute; top:10px; left:10px; z-index:5; width:34px; height:34px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.55); color:#fff;
-  opacity:0; transition:opacity .15s ease, background .15s ease; }
-.igf-card:hover .igf-open, .igf-video:not(.on) .igf-open, .igf-video.igf-paused .igf-open, .igf-open:focus-visible{ opacity:.9; }
-.igf-open:hover{ opacity:1; background:rgba(0,0,0,.78); }
-.igf-open svg{ width:18px; height:18px; display:block; }
 /* vídeo ATIVO pausado: o player fica à mostra (sem depender do hover) pra retomar/arrastar */
 .igf-video.igf-active.igf-paused .igvc-bar::before{ opacity:1; }
 .igf-video.igf-active.igf-paused .igvc-row{ opacity:1; transform:none; pointer-events:auto; }
@@ -690,6 +682,7 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
   color:var(--igf-text); font-size:13px; font-weight:600; line-height:1; }
 .igf-act:hover{ background:var(--igf-hover-bg); }
 .igf-act svg{ width:22px; height:22px; display:block; }
+.igf-openpost{ text-decoration:none; }
 .igf-act.igf-like.on svg{ fill:var(--igf-like); stroke:var(--igf-like); }
 .igf-act.igf-save.on svg{ fill:currentColor; }
 .igf-act.igf-copied svg{ stroke:var(--igf-accent); }   /* share = COPIAR link: check de feedback */
@@ -981,7 +974,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             speedBtn, volGroup, pipBtn, fsBtn, speedPop);
 
         // story: SÓ a barra de progresso (track). feed/reels: track + fileira + botão de som. (el ignora kid null)
-        const bar = el("div", { class: "igvc-bar" + (story ? " igvc-story" : "") }, track, story ? null : row, story ? null : soundBtn);
+        // nos CARDS nossos o som fica só no volume da fileira (o mudo lembrado — feedMuted — segue por ele)
+        const cardHost = host.classList.contains("igf-video");
+        const bar = el("div", { class: "igvc-bar" + (story ? " igvc-story" : "") }, track, story ? null : row, (story || cardHost) ? null : soundBtn);
 
         // Onde montar a barra:
         //  • feed: dentro do host (acompanha o vídeo).
@@ -2558,11 +2553,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (isCarousel) {
             media = buildCarousel(p, card, slides);            // galeria: setas + dots + contador (cada slide se enquadra sozinho)
         } else if (p.isVideo) {
-            // vídeo: clique TOCA/PAUSA; abrir o post é o ↗ no canto (um <a>: ctrl/cmd/meio = nova aba)
+            // vídeo: clique TOCA/PAUSA; abrir o post é o ↗ da barra de ações (ou o comentar)
             media = el("div", { class: "igf-media igf-video" });
             if (p.media) media.appendChild(mediaImg(p, media));
             media.appendChild(el("div", { class: "igf-play", icon: PLAY_SVG }));
-            media.appendChild(el("a", { class: "igf-open", href: cleanPostUrl(p), "data-act": "open", title: "Abrir post", "aria-label": "Abrir post", icon: ICO.open }));
         } else {
             // imagem = link pro post (ctrl/cmd/meio abre em nova aba; clique normal → modal do IG)
             media = el("a", { class: "igf-media", href: cleanPostUrl(p), "data-open": "1" });
@@ -2579,6 +2573,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         actions.appendChild(act(ICO.like, p.likes, "like", "igf-like"));
         actions.appendChild(act(ICO.comment, p.comments, "comment"));                        // → modal (comentários)
         actions.appendChild(act(ICO.link, "", "share", "igf-share", "Copiar link"));         // share → COPIAR link limpo (sem tracking)
+        // ↗ ABRIR O POST — sempre à mostra na barra, em todo card. É um <a> de verdade: ctrl/cmd/meio
+        // abre em nova aba; o clique normal vira a modal do IG (handler delegado)
+        actions.appendChild(el("a", { class: "igf-act igf-openpost", href: cleanPostUrl(p), "data-act": "open", title: "Abrir post", "aria-label": "Abrir post", icon: ICO.open }));
         actions.appendChild(el("div", { class: "igf-act-sp" }));
         const sv = act(ICO.save, "", "save", "igf-save", surface === "saved" ? "Remover dos salvos" : "Salvar");
         if (surface === "saved") sv.classList.add("on");      // já está salvo → bookmark preenchido (clicar des-salva)
