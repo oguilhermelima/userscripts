@@ -229,6 +229,7 @@
             author: (m.user && m.user.username) || prev.author || "",
             avatar: (m.user && m.user.profile_pic_url) || prev.avatar || "",
             caption: (m.caption && (m.caption.text || (typeof m.caption === "string" ? m.caption : ""))) || prev.caption || "",
+            reel: m.product_type === "clips" || !!prev.reel,
             likes: fmtCountNum(m.like_count) || prev.likes || "",
             comments: fmtCountNum(m.comment_count) || prev.comments || "",
             t: Date.now(),                      // hora da ingestão (o despejo nunca toca no que é recente)
@@ -250,20 +251,34 @@
         }
     }
     const igCollections = new Map();        // collection_id -> collection_name (capturadas do tráfego do IG)
-    function walkForMedia(node, depth) {    // varre o JSON inteiro atrás de itens de mídia (schema aninhado/variável)
+    /* ORDEM DO FEED vinda da API: os itens que moram sob uma chave de TIMELINE (xdt_api__v1__feed__
+     * timeline__connection no graphql/SSR, feed_items na resposta REST de feed/timeline) são posts da
+     * home, na ordem do feed. Com isso a home monta cards ANTES de o IG renderizar qualquer <article>
+     * (o payload inline do HTML chega primeiro). Stories/sugestões ficam de fora (outra chave). */
+    const apiFeedCodes = [];
+    const apiFeedSet = new Set();
+    const FEED_KEY = /timeline|feed_items/i;
+    function walkForMedia(node, depth, inFeed) {    // varre o JSON inteiro atrás de itens de mídia (schema aninhado/variável)
         // o HTML server-rendered embrulha os dados em camadas de require/__bbox: os posts iniciais ficam
         // além de 12 níveis, e com o limite antigo eles nunca entravam no igMedia (card sem legenda/vídeo)
         if (!node || typeof node !== "object" || depth > 64) return;
-        if (Array.isArray(node)) { for (const x of node) walkForMedia(x, depth + 1); return; }
-        if (node.code && (node.video_versions || node.image_versions2 || node.carousel_media)) ingestNode(node);
+        if (Array.isArray(node)) { for (const x of node) walkForMedia(x, depth + 1, inFeed); return; }
+        if (node.code && (node.video_versions || node.image_versions2 || node.carousel_media)) {
+            ingestNode(node);
+            if (inFeed && !apiFeedSet.has(node.code) && igMedia.has(node.code)) { apiFeedSet.add(node.code); apiFeedCodes.push(node.code); }
+            inFeed = false;                     // slides de carrossel / filhos não são posts do feed
+        }
         if (node.collection_id && node.collection_name) igCollections.set(String(node.collection_id), String(node.collection_name));   // coleções de salvos
-        for (const k in node) { const v = node[k]; if (v && typeof v === "object") walkForMedia(v, depth + 1); }
+        for (const k in node) { const v = node[k]; if (v && typeof v === "object") walkForMedia(v, depth + 1, inFeed || FEED_KEY.test(k)); }
     }
     function ingestText(text) {
         if (!text || text.length < 40 || (text.indexOf("video_versions") < 0 && text.indexOf("image_versions2") < 0 && text.indexOf("collection_id") < 0)) return;
-        let j; try { j = JSON.parse(text); } catch (_) { return; }
-        try { walkForMedia(j, 0); } catch (_) { /**/ }
+        let j; try { j = JSON.parse(text); } catch (_) { return false; }
+        const feedBefore = apiFeedCodes.length;
+        try { walkForMedia(j, 0, false); } catch (_) { /**/ }
         try { queueMetaUpdate(); } catch (_) { /**/ }   // igMedia atualizou → preenche header/legenda dos cards já renderizados
+        if (apiFeedCodes.length > feedBefore) { try { onApiFeed(); } catch (_) { /**/ } }   // posts novos do feed → cards já
+        return true;
     }
     // PERF: respostas interceptadas chegam no MEIO do scroll (paginação) — o 2º JSON.parse (centenas de KB)
     // + walk recursivo na main thread viravam spike de jank empilhado no parse do próprio IG. igMedia só é
@@ -308,8 +323,17 @@
             }
         } catch (_) { /**/ }
     }
-    function ingestInlineJSON() {           // posts iniciais vêm server-rendered no HTML (não via fetch)
-        try { for (const s of document.querySelectorAll('script[type="application/json"]')) ingestText(s.textContent || ""); } catch (_) { /**/ }
+    // posts iniciais vêm server-rendered no HTML (não via fetch). Cada <script> é lido UMA vez: no boot da
+    // home eles são lidos conforme o parser os insere (ver onMutations), e aqui só sobra o que faltou.
+    const inlineSeen = new WeakSet();
+    function ingestInlineScript(s) {
+        if (inlineSeen.has(s)) return;
+        const t = s.textContent || "";
+        // texto curto/sem mídia = nada a ler (marca); JSON que não parseia ainda pode estar chegando do parser → tenta de novo
+        if (t.length < 40 || (t.indexOf("image_versions2") < 0 && t.indexOf("video_versions") < 0 && t.indexOf("collection_id") < 0) || ingestText(t) !== false) inlineSeen.add(s);
+    }
+    function ingestInlineJSON() {
+        try { for (const s of document.querySelectorAll('script[type="application/json"]')) ingestInlineScript(s); } catch (_) { /**/ }
     }
     installInterceptors();                  // JÁ no document-start (antes do bundle do IG pegar o fetch)
     const codeOf = (key) => { const m = (key || "").match(/\/(?:p|reel)\/([^/?#]+)/); return m ? m[1] : ""; };
@@ -725,6 +749,18 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
   background:linear-gradient(100deg, rgba(128,128,128,.10) 30%, rgba(128,128,128,.22) 50%, rgba(128,128,128,.10) 70%) 0 0 / 200% 100%, var(--igf-card-bg);
   animation:igf-shim 1.2s linear infinite; }
 @keyframes igf-shim{ to{ background-position:-200% 0, 0 0; } }
+/* BOOT da home (mosaico): até o nosso feed montar, o <main> do IG (skeletons, lista, coluna direita)
+   fica invisível desde o 1º paint; tray de stories e o nosso feed voltam a aparecer (visibility herda). */
+html.igf-boot main{ visibility:hidden !important; }
+html.igf-boot main [data-pagelet="story_tray"], html.igf-boot .igm-stories, html.igf-boot .igf-feed, html.igf-boot .igf-loader{ visibility:visible !important; }
+html.igf-boot .igm-content > :not(.igf-feed):not(.igf-loader):not(.igf-keep){ position:fixed !important; top:0 !important; left:0 !important;
+  width:480px !important; height:90vh !important; overflow:hidden !important; opacity:0 !important; pointer-events:none !important; z-index:-1 !important; }
+.igf-bootshell{ position:fixed; top:0; right:0; bottom:0; left:var(--igm-navw); overflow:hidden; z-index:0; }
+.igf-bootwrap{ max-width:var(--igm-maxw); margin:0 auto; padding-top:22px; box-sizing:border-box; }
+.igf-boottray{ height:108px; margin:0 var(--igf-pad) 10px; border:1px solid var(--igf-line); border-radius:14px; box-sizing:border-box;
+  background:linear-gradient(100deg, rgba(128,128,128,.10) 30%, rgba(128,128,128,.22) 50%, rgba(128,128,128,.10) 70%) 0 0 / 200% 100%, var(--igf-card-bg);
+  animation:igf-shim 1.2s linear infinite; }
+.igf-bootshell .igf-loader{ display:none; }
 /* clique registrado, esperando o IG renderizar o post pra abrir a overlay (some sozinho ao abrir) */
 .igf-card.igf-opening{ cursor:progress; }
 .igf-card.igf-opening .igf-media::after{ content:""; position:absolute; inset:0; z-index:4; background:rgba(0,0,0,.35); }
@@ -1526,10 +1562,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function postKey(a) {
         const link = a.querySelector('a[href*="/p/"], a[href*="/reel/"]');
         if (!link) return null;
-        const m = (link.pathname || link.getAttribute("href") || "").match(/\/(?:p|reel)\/[^/?#]+/);
+        const m = (link.pathname || link.getAttribute("href") || "").match(/\/(?:p|reel)\/([^/?#]+)/);
         if (!m) return null;
-        if (a.dataset.igfKey !== m[0]) a.dataset.igfKey = m[0];   // hint p/ nativeArticle (lá é VERIFICADO — React pode reciclar o nó com outro post)
-        return m[0];
+        const key = "/p/" + m[1];   // chave CANÔNICA por código (/reel/X e /p/X são o mesmo post — e o card da API usa a mesma)
+        if (a.dataset.igfKey !== key) a.dataset.igfKey = key;   // hint p/ nativeArticle (lá é VERIFICADO — React pode reciclar o nó com outro post)
+        return key;
     }
     // MOLDURA DA MÍDIA de um <article>: a maior <img>/<video> do post (o avatar é minúsculo) e, a partir
     // dela, o ancestral mais alto que ainda tem o MESMO tamanho (a caixa só da mídia — o header e a barra de
@@ -1614,10 +1651,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     // chave de um TILE (o próprio <a> é o item; href tem /p/CODE ou /{user}/p/CODE)
     function tileKey(a) {
         const href = a.getAttribute("href") || a.href || "";
-        const m = href.match(/\/(?:p|reel)\/[^/?#]+/);
+        const m = href.match(/\/(?:p|reel)\/([^/?#]+)/);
         if (!m) return null;
-        if (a.dataset.igfKey !== m[0]) a.dataset.igfKey = m[0];
-        return m[0];
+        const key = "/p/" + m[1];
+        if (a.dataset.igfKey !== key) a.dataset.igfKey = key;
+        return key;
     }
     // lê um TILE (explore/perfil/salvos) → post. Mídia = thumb da API (ou o <img>/poster do tile);
     // autor/avatar/legenda vêm da API (igMedia) e preenchem o card depois, se chegarem atrasados.
@@ -2763,6 +2801,35 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function queueSyncFeed() { if (syncFeedQ) return; syncFeedQ = true; raf(() => { syncFeedQ = false; syncOwnFeed(); }); }
     // harvest da lista do IG → renderiza os cards novos (append-only, sem re-layout)
     let lastHarvestSig = "";
+    /* CARD DIRETO DA API (home): os posts da timeline lidos do payload (inline do HTML ou graphql)
+     * viram card sem esperar o <article> do IG — no boot isso é o que tira o skeleton. Mesma chave
+     * canônica do harvest (/p/CODE): quando o <article> chega, o harvest só reconhece o post. */
+    let apiFeedUsed = 0;            // ponteiro em apiFeedCodes até onde já virou card
+    function postFromApi(code) {
+        const r = igMedia.get(code);
+        if (!r) return null;
+        const media = r.imageUrl || r.thumbUrl;
+        if (!media && !r.videoUrl) return null;
+        return {
+            key: "/p/" + code, code, href: (r.reel ? "/reel/" : "/p/") + code + "/", author: r.author || "",
+            avatar: r.avatar || "", media: media || "", srcset: "", sizes: "", isVideo: !!r.isVideo,
+            caption: (r.caption || "").slice(0, 1500), likes: r.likes || "", comments: r.comments || "",
+            authorPk: r.authorPk || "", following: r.following, follow: r.following === false,
+        };
+    }
+    function onApiFeed() {
+        if (surface !== "home" || mountedSurface !== "home" || !feedEl || !prefs.masonry) return;
+        let added = false;
+        for (; apiFeedUsed < apiFeedCodes.length; apiFeedUsed++) {
+            const code = apiFeedCodes[apiFeedUsed], key = "/p/" + code;
+            if (posts.has(key)) continue;
+            const p = postFromApi(code);
+            if (!p) continue;
+            liveCodes.add(code);
+            posts.set(key, p); order.push(key); added = true;
+        }
+        if (added) renderNew();
+    }
     function syncOwnFeed() {
         if (!feedEl || !igSrc) return;
         // BAILOUT: assinatura da janela montada (contagem + 1º/último permalink). O srcMO + o scan
@@ -2776,8 +2843,13 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (rendered.size > 0 && sig === lastHarvestSig && rendered.size === order.length) { if (!loading) queuePick(); return; }
         lastHarvestSig = sig;
         for (const a of arts) harvestOne(a);
-        // append dos INÉDITOS a partir de um ÍNDICE (era um varrer `order` inteiro por sync, O(N) com N
-        // crescendo a sessão toda) e num DocumentFragment (uma inserção só = um layout, não N).
+        renderNew();
+    }
+    // append dos INÉDITOS a partir de um ÍNDICE (era um varrer `order` inteiro por sync, O(N) com N
+    // crescendo a sessão toda) e num DocumentFragment (uma inserção só = um layout, não N).
+    // Fonte: o harvest da lista nativa OU o payload da API (onApiFeed) — o que chegar primeiro.
+    function renderNew() {
+        if (!feedEl) return;
         if (renderedUpTo < order.length) {
             const frag = document.createDocumentFragment();
             const fresh = [];
@@ -2956,6 +3028,29 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         lastDark = dark;
         document.documentElement.classList.toggle("igf-dark", dark);
     }
+    // cria o NOSSO feed (+ loader) dentro de `parent`: o cwrap da superfície, ou o shell do boot da home
+    function createFeed(parent) {
+        feedEl = el("div", { class: "igf-feed" });
+        bindFeedEvents(feedEl);
+        applyFeedClasses();                      // sombra/densidade/legenda/contadores desde o 1º paint
+        parent.appendChild(feedEl);              // meu feed depois das stories
+        apiFeedUsed = boot ? 0 : apiFeedCodes.length;   // boot: o payload inline já lido vira card; depois, só o que chegar
+        if (surface === "saved") { savedToolbar = buildSavedToolbar(); parent.insertBefore(savedToolbar, feedEl); }   // toolbar de multisseleção ACIMA do mosaico
+        loaderEl = el("div", { class: "igf-loader" + (feedExhausted ? " igf-done" : "") }, el("div", { class: "igf-spin" }), el("span", {}, "Carregando mais…"));
+        parent.appendChild(loaderEl);             // spinner no fim (escondido se o grid já esgotou) — feedback + sentinela do carregar-mais
+        rendered.clear(); renderedUpTo = 0; metaPending.clear(); feedNcols = 0; feedColw = 0;   // feed novo (React pode ter removido) → re-renderiza tudo
+        scheduleInlineJSON();                    // parse server-rendered fora do caminho crítico do primeiro paint
+        // (o header/legenda que chegam DEPOIS vêm pelo queueMetaUpdate do ingestText — sem poll aqui)
+        layoutFeed();                            // colunas + altura do card ANTES do skeleton (ele usa --igf-cardh)
+        mountSkeleton();                         // cards fantasmas no lugar dos posts enquanto o 1º lote não chega
+        if (typeof IntersectionObserver !== "undefined") {
+            if (loaderIO) loaderIO.disconnect();
+            // lookahead: era 4500px na home — com content-visibility os cards fora da tela custam quase nada,
+            // mas CARREGAR mais páginas continua caro (o IG re-renderiza a lista nativa). ~2 telas basta.
+            loaderIO = new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) loadMore(); }, { rootMargin: surface === "home" ? "1800px" : "1200px" });
+            loaderIO.observe(loaderEl);          // perto do fim (ou feed curto no início) → puxa páginas
+        }
+    }
     function mountOwnFeed(list, cwrap) {
         // Never hide an ancestor of the own feed: a bad column match must leave the native fallback visible.
         if (!list || !cwrap || list === cwrap || cwrap === document.body || cwrap === document.documentElement || !cwrap.contains(list)) return;
@@ -2972,40 +3067,21 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             // O skeleton cobre a janela imediatamente, mas uma falha de harvest não pode deixar a
             // home preta para sempre. Se nenhum card entrou, devolve a lista nativa como fallback;
             // quando os dados chegarem, syncOwnFeed esconde-a novamente no mesmo frame.
-            if (firstMount) {
-                if (nativeHideTimer) clearTimeout(nativeHideTimer);
+            if ((firstMount || !rendered.size) && !nativeHideTimer) {
                 nativeHideTimer = setTimeout(() => {
                     nativeHideTimer = null;
                     if (feedEl && !rendered.size && igSrc) { igSrc.classList.remove("igf-src"); unmountSkeleton(); }
                 }, 2500);
             }
         }
-        if (firstMount) {
-            feedEl = el("div", { class: "igf-feed" });
-            bindFeedEvents(feedEl);
-            applyFeedClasses();                      // sombra/densidade/legenda/contadores desde o 1º paint
-            cwrap.appendChild(feedEl);               // meu feed depois das stories
-            if (surface === "saved") { savedToolbar = buildSavedToolbar(); cwrap.insertBefore(savedToolbar, feedEl); }   // toolbar de multisseleção ACIMA do mosaico
-            loaderEl = el("div", { class: "igf-loader" + (feedExhausted ? " igf-done" : "") }, el("div", { class: "igf-spin" }), el("span", {}, "Carregando mais…"));
-            cwrap.appendChild(loaderEl);             // spinner no fim (escondido se o grid já esgotou) — feedback + sentinela do carregar-mais
-            rendered.clear(); renderedUpTo = 0; metaPending.clear(); feedNcols = 0; feedColw = 0;   // feed novo (React pode ter removido) → re-renderiza tudo
-            scheduleInlineJSON();                    // parse server-rendered fora do caminho crítico do primeiro paint
-            // (o header/legenda que chegam DEPOIS vêm pelo queueMetaUpdate do ingestText — sem poll aqui)
-            layoutFeed();                            // colunas + altura do card ANTES do skeleton (ele usa --igf-cardh)
-            mountSkeleton();                         // cards fantasmas no lugar dos posts enquanto o 1º lote não chega
-            if (typeof IntersectionObserver !== "undefined") {
-                if (loaderIO) loaderIO.disconnect();
-                // lookahead: era 4500px na home — com content-visibility os cards fora da tela custam quase nada,
-                // mas CARREGAR mais páginas continua caro (o IG re-renderiza a lista nativa). ~2 telas basta.
-                loaderIO = new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) loadMore(); }, { rootMargin: surface === "home" ? "1800px" : "1200px" });
-                loaderIO.observe(loaderEl);          // perto do fim (ou feed curto no início) → puxa páginas
-            }
-        } else if (feedEl.parentElement !== cwrap) {
-            // o React re-renderizou o cwrap (grade nova) e ÓRFÃO o nosso feed → MOVE p/ o cwrap atual (mantém os
-            // cards, sem recriar). Sem isto, o feed velho ficava num lugar e a grade nova aparecia visível ao lado.
+        if (firstMount) createFeed(cwrap);
+        else if (feedEl.parentElement !== cwrap) {
+            // o React re-renderizou o cwrap (grade nova) e ÓRFÃO o nosso feed — ou o feed nasceu no SHELL do
+            // boot — → MOVE p/ o cwrap atual (mantém os cards, sem recriar)
             cwrap.appendChild(feedEl);
             if (loaderEl) cwrap.appendChild(loaderEl);
         }
+        if (boot) endBoot();                         // a lista nativa já está fora de vista → o <main> pode aparecer
         if (typeof MutationObserver !== "undefined" && srcMOTarget !== igSrc) {   // re-aponta o observer quando a grade muda (React re-render)
             if (!srcMO) srcMO = new MutationObserver(queueSyncFeed); else srcMO.disconnect();
             srcMO.observe(igSrc, { childList: true, subtree: true });
@@ -3112,7 +3188,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     function applyFeed() {
         const list = feedArticleList();
-        if (!list) return;
+        if (!list) { if (boot) bootTray(); return; }
         const split = feedColumnSplit(list);
         if (!split) return;   // sem a estrutura conhecida → não monto o feed próprio (evita bagunça)
         // scaffolding: da lista até o col tudo full-width (.igm-wide, tira o cap de 630), MENOS o
@@ -3246,6 +3322,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         else unmasonry();
     }
     function unmasonry() {
+        if (boot) endBoot();
         unmountSkeleton();
         // sem nada aplicado, não há o que limpar — sem este flag os 5 querySelectorAll full-doc rodavam
         // a CADA burst de mutação em reels/stories (as superfícies mais churnentas do IG), sempre vazios
@@ -3259,6 +3336,100 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (const e of document.querySelectorAll(".igm-col")) e.classList.remove("igm-col");
         for (const e of document.querySelectorAll(".igm-stories")) e.classList.remove("igm-stories");
         for (const e of document.querySelectorAll(".igm-norail")) e.classList.remove("igm-norail");
+        for (const e of document.querySelectorAll(".igf-keep")) e.classList.remove("igf-keep");
+    }
+
+    /* BOOT DA HOME (mosaico ligado): do document-start até o nosso feed montar.
+     *   • html.igf-boot: o CSS esconde o <main> inteiro (skeletons/lista nativos, coluna direita) desde o
+     *     1º paint — só a tray de stories e o NOSSO feed ficam visíveis (visibility volta nos descendentes).
+     *   • SHELL: tray fantasma + cards skeleton num host fixo, na mesma grade/largura do feed final.
+     *   • a tray real entra no topo assim que o IG a põe no DOM (bootTray): marca a coluna e leva o feed
+     *     pro wrapper dela — independente de o IG já ter renderizado algum <article>.
+     *   • os cards vêm do payload (onApiFeed) antes dos <article>; o harvest segue como fallback.
+     *   • nada montou em BOOT_MAX_MS → desiste e devolve o feed nativo do IG. */
+    const BOOT_MAX_MS = 8000;
+    let boot = false, bootHost = null, bootMO = null, bootTimer = null;
+    const TRAY_SEL = '[data-pagelet="story_tray"]';
+    function startBoot() {
+        if (!isHome() || !prefs.masonry) return;
+        boot = true; surface = "home"; mountedSurface = "home"; chromeApplied = true;
+        document.documentElement.classList.add("igf-boot");
+        bootTimer = setTimeout(() => {
+            if (!boot) return;
+            unmasonry();                 // sem feed montado: tira o shell/marcas → o IG nativo aparece
+            mountedSurface = null;       // a rota ainda pode montar o mosaico se os posts chegarem depois
+        }, BOOT_MAX_MS);
+        // o parser ainda está escrevendo o documento: o MO no <html> vê o <body> nascer, cada <script>
+        // de JSON inline (e cada pedaço de texto dele) e a tray de stories — sem esperar o DOMContentLoaded
+        bootMO = new MutationObserver(onBootMutations);
+        bootMO.observe(document.documentElement, { childList: true, subtree: true });
+        ingestInlineJSON();
+        mountShell();
+    }
+    function mountShell() {
+        if (!boot || bootHost || feedEl || !document.body) return;
+        bootHost = el("div", { class: "igf-bootshell" });
+        const wrap = el("div", { class: "igf-bootwrap" }, el("div", { class: "igf-boottray" }));
+        bootHost.appendChild(wrap);
+        document.body.appendChild(bootHost);
+        createFeed(wrap);
+        onApiFeed();                     // payload lido antes do <body> existir → cards já no 1º paint do shell
+    }
+    const isJsonScript = (n) => n.tagName === "SCRIPT" && n.type === "application/json";
+    const LOGIN_SEL = 'input[type="password"]';   // home deslogada = tela de login → nada de shell por cima dela
+    function onBootMutations(recs) {
+        let tray = false, login = false;
+        for (const r of recs) {
+            if (r.target.nodeType === 1 && isJsonScript(r.target)) { ingestInlineScript(r.target); continue; }   // texto do script chegando
+            const add = r.addedNodes;
+            for (let i = 0; i < add.length; i++) {
+                const n = add[i];
+                if (n.nodeType !== 1) continue;
+                if (isJsonScript(n)) ingestInlineScript(n);
+                else if (n.firstElementChild || n.tagName === "INPUT" || n.tagName === "DIV") {
+                    if (!tray && (n.matches(TRAY_SEL) || n.querySelector(TRAY_SEL))) tray = true;
+                    if (!login && (n.matches(LOGIN_SEL) || n.querySelector(LOGIN_SEL))) login = true;
+                }
+            }
+        }
+        if (login) { unmasonry(); mountedSurface = null; return; }
+        if (!bootHost && !feedEl) mountShell();
+        if (tray) bootTray();
+    }
+    function bootTray() {
+        if (!boot || !feedEl || (trayEl && trayEl.isConnected && feedEl.parentElement === mountedChrome)) return;
+        const main = document.querySelector("main");
+        const tray = main && storiesTray(main);
+        if (!tray) return;
+        const split = feedColumnSplit(tray);
+        if (!split) return;
+        const cwrap = contentWrapper(split.col, tray);
+        if (!cwrap || cwrap === split.col || !split.col.contains(cwrap)) return;
+        for (let n = tray.parentElement, i = 0; n && n.tagName !== "MAIN" && i < 16; n = n.parentElement, i++) {
+            n.classList.add(n === cwrap ? "igm-content" : "igm-wide");
+            if (n === split.col) break;
+        }
+        const navBox = (pinnedNav && pinnedNav.isConnected) ? pinnedNav : leftNavWidthBox();
+        const navW = navBox ? (navBox.getBoundingClientRect().width || 72) : 0;
+        syncNavWidth(navBox, navW);
+        split.col.classList.toggle("igm-col", navW > 0 && split.col.getBoundingClientRect().left < navW - 4);
+        for (const r of split.rails) r.classList.toggle("igm-norail", !!prefs.hideRail);
+        tray.classList.add("igm-stories"); trayEl = tray;
+        let branch = tray;               // o ramo da tray dentro do wrapper fica visível; o resto é do IG (skeleton/lista)
+        while (branch.parentElement && branch.parentElement !== cwrap) branch = branch.parentElement;
+        branch.classList.add("igf-keep");
+        mountedChrome = cwrap;
+        cwrap.appendChild(feedEl);
+        if (loaderEl) cwrap.appendChild(loaderEl);
+        if (bootHost) { bootHost.remove(); bootHost = null; }
+        relayoutFeed();
+    }
+    function endBoot() {
+        boot = false;
+        document.documentElement.classList.remove("igf-boot");
+        if (bootMO) { bootMO.disconnect(); bootMO = null; }
+        if (bootTimer) { clearTimeout(bootTimer); bootTimer = null; }
+        if (bootHost) { bootHost.remove(); bootHost = null; }
     }
 
     /* ------------------------------------------------------------------ *
@@ -3407,6 +3578,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (location.pathname !== lastPath) {
             lastPath = location.pathname;
             navBoxCache = null; routeTries = 0; extrasTries = 0; routeMounted = false;   // caches e limites são POR ROTA
+            if (boot && !isHome()) unmasonry();      // saiu da home antes do feed montar → sem shell
             scheduleDockTag();
         }
         routeSoon();
@@ -3651,6 +3823,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     document.documentElement.classList.toggle("igf-no-msg", !!prefs.hideMessages);   // flags de interface desde o 1º paint
     document.documentElement.classList.toggle("igf-totop-on", !!prefs.backToTop);
     applyTheme();   // html.igf-dark já no 1º paint (paleta correta dos cards)
+    startBoot();    // home + mosaico: shell + skeleton desde o 1º paint
     scheduleInitialWork();
     scheduleDockTag();
     window.addEventListener("DOMContentLoaded", () => { applyTheme(); scheduleInitialWork(); });
