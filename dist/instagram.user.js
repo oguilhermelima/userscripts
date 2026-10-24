@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         Instagram — Native Video Controls & Mosaic Feed
 // @namespace    instagram-native-player
-// @version      3.24.0
+// @version      3.25.0
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/instagram.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/instagram.user.js
-// @description  Camada aditiva sobre a interface do Instagram. (1) Player de vídeo integrado (feed, reels, explore, stories): progresso scrubável, play/pause, mudo+volume, velocidade, PiP, fullscreen e atalhos — SEMPRE ligado. (2) Feed da home em MASONRY com DOM próprio (OPCIONAL, off por padrão): lê os posts da lista nativa (harvest) e renderiza cards nossos em multicolunas estáveis (altura reservada por aspect-ratio), stories alinhadas, right rail escondida e nav esquerdo fixo. v3.0: TODAS as funcionalidades (menos o player) viram FLAGS num painel de ajustes flutuante (mesmo modelo do reddit/twitter: FAB de engrenagem no canto inferior-direito → painel com toggles/sliders agrupados). v3.1+: polish visual do mosaico — paleta própria (PRETO premium no escuro com texto mais legível; claro no light, detectado por luminância do fundo), cards com hover (eleva + zoom da mídia), tray de stories emoldurada, skeleton neutro. Colunas (Auto/2/3/4), densidade, sombra/legenda/contadores são FLAGS no painel. Galeria navega por scroll horizontal do mouse/trackpad. Em STORIES o player vira só a barra de progresso (scrub) — o post original fica intacto (nada de subir o reply). v3.5: o MESMO mosaico (proporção real) também no /explore/ e nos perfis (/usuario/) — tiles só-mídia, reels com preview no hover, clique abre em modal; flags Grid no Explore / Grid no perfil / Grid nos salvos (off por padrão; EXPLORE e SALVOS usam o MESMO card da home (header + barra de ação like/comentar/compartilhar/salvar + legenda), clicar abre modal; perfil segue como tile só-mídia. Salvos: o "salvar" vira REMOVER, + MULTISSELEÇÃO no header pra remover/mover vários pra coleção de uma vez. Ações do grid via API (like/save). v3.6: largura/colunas/densidade viram ajustes de CONTEÚDO que valem pra home, explore E perfil (a coluna toda do perfil acompanha a largura); thumbnails dos tiles usam a versão pequena da API (carregam bem mais rápido). v3.12: o mosaico vira GRADE UNIFORME — todos os itens com a MESMA altura (mídia em 4:5, faixas de altura fixa), em CSS Grid. O motor de masonry em JS (posicionamento absoluto, medição por card, congelamento de coluna, re-empacotamento a cada imagem que carregava) foi REMOVIDO: o layout não tem mais custo proporcional ao tamanho da sessão. Carregamento reescrito junto: content-visibility pula layout/paint/decode do que está fora da tela, srcset+sizes baixam a variante do tamanho da coluna em vez da imagem cheia, render em lote por DocumentFragment, e o carregar-mais ficou menos agressivo (3 páginas por disparo, lookahead de ~2 telas). v3.13: proporção 4:6 (mais vertical) e o MESMO card completo — header com avatar/nome, barra de ação (curtir, comentar, repostar, copiar link, salvar) e legenda — em TODAS as superfícies; o perfil deixou de ser tile só-mídia. Legenda maior e mais legível: UMA linha, com "mais" no fim dela que abre a descrição INTEIRA por cima da mídia (sem mudar a altura do card, então a grade não se mexe); na home ela agora vem também da API quando o <h1> do post não renderiza. v3.14: hover-to-play reescrito — debounce na entrada (atravessar a grade não dispara nada), o vídeo SOBREVIVE ao fim do hover (volta instantâneo, sem re-download) sob um LRU curto, só aparece quando tem frame (fim do piscar preto) e o hover vale o card inteiro; clicar em comentar SEMPRE abre a overlay (espera o post renderizar em vez de desistir e redirecionar); e o skeleton de carregamento saiu do overlay em tela cheia para dentro da própria grade. v3.15: @menções e #hashtags da legenda viram links (cor de link do IG); COMPORTAMENTO ÚNICO em todas as páginas — clicar no item abre a modal, seja foto, vídeo ou galeria, na home, no explore, no perfil e nos salvos (o clique no vídeo não muta mais); e o player ganhou botão de SOM fixo no canto (34px, sempre visível, em vez do mute escondido na fileira do hover) com a barra de progresso nas cores do Instagram no lugar do azul. v3.16: SEGUIR, CURTIR e SALVAR passam a ir pela API (o pk do autor sai do post, da API ou do perfil) em vez de depender do botão nativo dentro do <article> virtualizado — na home o seguir não fazia nada e o curtir chegava a NAVEGAR pro post; agora há fallback no botão nativo e aviso quando nada funciona, nunca silêncio. Header do perfil ocupa a largura toda do conteúdo (era um bloco estreito com um vazio ao lado) e ganhou botão de COPIAR o @ ao lado do nome. v3.17: o alargamento do header de perfil da v3.16 foi REVERTIDO (mexer em flex/min-width dos filhos colapsava o texto para uma letra por linha) — ele volta a crescer só por zoom, e o botão de copiar o @ continua. TRÁFEGO: cada foto era baixada DUAS vezes — o <img> nativo off-screen pedia uma variante do srcset e o nosso card pedia outra; agora copiamos srcset+sizes do nativo (mesma escolha = cache hit) e o avatar deixou de cair na própria mídia do post quando o alt não é reconhecível. Medido em bancada: 24 requisições de imagem para 12 posts caíram para 12. Vídeo da lista nativa é pausado no evento `play` (não mais até 1s depois, já bufferizando), a janela off-screen caiu de 150vh para 90vh, o carregar-mais puxa 2 páginas por disparo em vez de 3, e o scroll só sincroniza a lista nativa quando algum vídeo visível depende dela. v3.18 (SALVOS): a barra de seleção GRUDA no topo enquanto está ligada (numa limpeza longa não é mais preciso voltar ao topo pra clicar em Remover), ganhou botão 'Todos', barra de PROGRESSO com contador durante a remoção em lote e um 'Parar' pra abortar no meio. O item removido dos salvos NÃO some mais da página: escurece e ganha o selo 'removido', saindo de vez só no próximo carregamento — assim a grade não reflui embaixo do cursor e não se perde a posição no meio da limpeza; o que falhar fica marcado em vermelho. v3.20: proporção passa a 9:16 (a mais alta que o IG produz, de reels/stories) — um reel cabe inteiro, sem corte. Conteúdo mais LARGO que a caixa não é ampliado pra preencher: entra inteiro (contain) com o fundo preenchido por uma cópia borrada da própria mídia, em vez de mostrar só uma faixa ampliada do meio. E o conteúdo ganhou respiro lateral em qualquer largura de janela (antes, com a janela estreita, os cards encostavam no nav de um lado e na borda do outro). O teto de altura por viewport da v3.19 foi revertido. Prefs em localStorage.
+// @description  Additive layer over Instagram: an integrated video player on every surface, plus an optional uniform card grid for the home feed, explore, profiles and saved posts, all configured from a floating settings panel.
 // @author       oguilhermelima
 // @match        https://www.instagram.com/*
 // @run-at       document-start
@@ -25,9 +25,10 @@
      *     continua clicável e visível. Diferente do script de referência,
      *     que faz opacity:0 + reposiciona os botões nativos.
      *
-     * GUARDS (perf) — observer DEBOUNCED + WeakSet por nó + poda por
-     *   isConnected; sem polling permanente. AbortController por vídeo limpa
-     *   todos os listeners de uma vez no destroy.
+     * GUARDS (perf) — a ROTA dispara o trabalho de página; o observer só lê
+     *   addedNodes (vídeos novos) e checa a saúde da superfície. WeakSet por nó,
+     *   poda por isConnected, sem polling permanente. AbortController por vídeo
+     *   limpa todos os listeners de uma vez no destroy.
      * ==================================================================== */
 
     /* ------------------------------------------------------------------ *
@@ -46,28 +47,29 @@
     // do painel). `dep` esmaece o item quando a flag-pai está off; `hint` vira a linha de descrição.
     const GROUPS = [
         { title: "Feed (home)", items: [
-            { key: "masonry",   label: "Feed em mosaico",        hint: "Troca o feed da home por cards em multicolunas (masonry). Off = feed nativo do IG.", def: false },
-            { key: "hideRail",  label: "Esconder coluna direita", hint: "Remove a barra lateral direita (perfil/sugestões/rodapé) no feed em mosaico.", def: true, dep: "masonry" },
-            { key: "pinNav",    label: "Fixar menu lateral",      hint: "Trava a largura do menu esquerdo (sem expandir no hover).", def: true, dep: "masonry" },
-            { key: "showCaption", label: "Mostrar legenda",       hint: "Exibe a legenda (até 2 linhas) abaixo de cada card. (só home)", def: true, dep: "masonry" },
-            { key: "showCounts",  label: "Mostrar contadores",    hint: "Exibe curtidas/comentários/reposts na barra de ações. (só home)", def: true, dep: "masonry" },
+            { key: "masonry",   label: "Feed em mosaico",        hint: "Troca o feed da home por uma grade de cards do mesmo tamanho (9:16), em colunas. Off = feed nativo do IG.", def: false },
+            { key: "hideRail",  label: "Esconder coluna direita", hint: "Remove a coluna lateral direita (perfil, sugestões, rodapé) enquanto o mosaico da home está ligado.", def: true, dep: "masonry" },
+            { key: "pinNav",    label: "Fixar menu lateral",      hint: "Trava a largura do menu esquerdo (sem expandir no hover) enquanto o mosaico da home está ligado.", def: true, dep: "masonry" },
         ] },
         { title: "Grid (Explore / Perfil / Salvos)", items: [
-            { key: "gridExplore", label: "Grid no Explore", hint: "Troca a grade quadrada do /explore/ por um mosaico em proporção REAL (tiles só-mídia, clicar abre em modal).", def: false },
-            { key: "gridProfile", label: "Grid no perfil",  hint: "Mesmo mosaico na grade de posts dos perfis (/usuario/). Off = grade quadrada nativa.", def: false },
-            { key: "gridSaved",   label: "Grid nos salvos", hint: "Mosaico na página de Salvos (/usuario/saved/), com barra de ação em cada tile pra REMOVER dos salvos direto. Também liga junto com 'Grid no perfil'.", def: false },
+            { key: "gridExplore", label: "Grid no Explore", hint: "Troca a grade quadrada do /explore/ pelos mesmos cards da home (autor, ações e legenda). Off = grade nativa.", def: false },
+            { key: "gridProfile", label: "Grid no perfil",  hint: "Os mesmos cards na grade de posts dos perfis (/usuario/). Off = grade quadrada nativa.", def: false },
+            { key: "gridSaved",   label: "Grid nos salvos", hint: "Os mesmos cards nos Salvos, com remover direto no card e seleção múltipla pra remover ou mover pra uma coleção. Liga junto com 'Grid no perfil'.", def: false },
         ] },
-        { title: "Mosaico — largura · colunas · densidade", items: [   // valem p/ TODAS as superfícies (home + explore + perfil)
-            { key: "feedWidth", label: "Largura do conteúdo",     hint: "Largura máxima do bloco de conteúdo — vale pra home, explore E perfil.", type: "slider", min: 960, max: 1840, def: 1320, unit: "px", step: 20 },
-            { key: "cols",      label: "Colunas",                 hint: "Nº de colunas do mosaico (Auto se adapta à largura). 3 é o recomendado; 4 carrega muito mais mídia por tela e pode causar lentidão.", type: "select", def: "auto",
+        { title: "Cards — largura · colunas · densidade", items: [   // valem p/ TODAS as superfícies (home + explore + perfil + salvos)
+            { key: "feedWidth", label: "Largura do conteúdo",     hint: "Largura máxima do bloco de conteúdo — vale pra home, explore, perfil e salvos.", type: "slider", min: 960, max: 1840, def: 1320, unit: "px", step: 20 },
+            { key: "cols",      label: "Colunas",                 hint: "Nº de colunas da grade (Auto se adapta à largura). 3 é o recomendado; 4 carrega muito mais mídia por tela e pode causar lentidão.", type: "select", def: "auto",
               options: [{ value: "auto", label: "Auto" }, { value: "2", label: "2" }, { value: "3", label: "3 (Recomendado)" }, { value: "4", label: "4 (pode travar)" }] },
             { key: "density",   label: "Densidade",               hint: "Compacto = colunas mais estreitas, menos respiro, mais itens na tela.", type: "select", def: "comfortable",
               options: [{ value: "comfortable", label: "Confortável" }, { value: "compact", label: "Compacto" }] },
-            { key: "cardShadow",  label: "Sombra nos cards",      hint: "Eleva os cards/tiles com sombra (resting + realce no hover). Off = só borda.", def: true },
+            { key: "cardShadow",  label: "Sombra nos cards",      hint: "Eleva os cards com sombra (em repouso e no hover). Off = só borda.", def: true },
+            { key: "showCaption", label: "Mostrar legenda",       hint: "Uma linha de legenda em cada card; \"mais\" abre o texto inteiro por cima da mídia.", def: true },
+            { key: "showCounts",  label: "Mostrar contadores",    hint: "Exibe o nº de curtidas e comentários na barra de ações dos cards.", def: true },
         ] },
         { title: "Vídeo", items: [
+            { key: "hoverPreview", label: "Prévia ao passar o mouse", hint: "Nos cards, o vídeo toca sem som enquanto o mouse está em cima e para ao sair. Off = só toca no clique (clique de novo pausa; o ↗ no canto abre o post).", def: false },
             { key: "autoUnmute", label: "Auto-desmutar vídeos", hint: "Tira o mudo dos vídeos novos automaticamente (o player respeita seu mute manual).", def: false },
-            { key: "stories",    label: "Player nos stories",   hint: "Mostra a barra do player (no hover) também em /stories/.", def: true },
+            { key: "stories",    label: "Player nos stories",   hint: "Mostra a barra de progresso do player (arrastar pra avançar/voltar) também em /stories/.", def: true },
             { key: "keyboard",   label: "Atalhos de teclado",   hint: "Espaço/K play, J/L e setas seek, M mudo, F tela cheia, ,/. frame, [ ] velocidade…", def: true },
         ] },
         { title: "Interface", items: [
@@ -77,7 +79,7 @@
     ];
     const ITEMS = GROUPS.flatMap((g) => g.items);
     const DEFAULTS = Object.assign(
-        { volume: 0.6, speed: 1 },   // estado vivo do player (não exposto no painel)
+        { volume: 0.6, speed: 1, feedMuted: false },   // estado vivo do player (não exposto no painel)
         Object.fromEntries(ITEMS.map((i) => [i.key, i.def])),
     );
 
@@ -108,13 +110,48 @@
     const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
     const isHover = (n) => { try { return n.matches(":hover"); } catch { return false; } };
 
-    // Builder de DOM mínimo. props: class/html/style(obj)/on<Event>/attr.
+    /* RÓTULOS DO IG que a gente procura (aria-label / texto de botão) — en + pt num lugar só. O IG muda
+     * esses textos por locale/experimento: quando quebrar, é aqui. Onde há API (curtir/salvar/seguir),
+     * ela vem antes e o rótulo é só o plano B. "...Part" = trecho (casa por *=, sem caixa). */
+    const LABELS = {
+        like: ["Like", "Curtir", "Unlike", "Descurtir"],
+        save: ["Save", "Salvar", "Remove", "Remover"],
+        close: ["Close", "Fechar"],
+        follow: ["Follow", "Seguir"],
+        following: ["Following", "Seguindo"],
+        messages: ["Messages", "Mensagens"],
+        commentPart: ["omment", "oment"],                 // Comment / Comentar / Comentário
+        reelPart: ["eel", "lip"],                         // Reel / Clip
+        carouselPart: ["arousel"],
+        storiesPart: ["Stories"],
+        messagesPart: ["essage", "ensage", "essenger"],
+        volumePart: ["olume"], audioPart: ["Audio"], toggleAudioPart: ["Toggle audio"],
+        tagPart: ["Tag", "marca"],                        // botão de marcados no vídeo
+        searchPart: ["esquis", "earch"],                  // Pesquisar / Search
+    };
+    // tag omitida = svg (o IG rotula os ÍCONES); "" = qualquer elemento
+    const ariaIs = (key, tag = "svg") => LABELS[key].map((l) => tag + '[aria-label="' + l + '" i]').join(", ");
+    const ariaHas = (key, tag = "svg", tail = "") => LABELS[key].map((l) => tag + '[aria-label*="' + l + '" i]' + tail).join(", ");
+    const textRe = (...keys) => new RegExp("^(" + keys.flatMap((k) => LABELS[k]).join("|") + ")$", "i");
+    const SEL = {
+        reel: ariaHas("reelPart"),
+        carousel: ariaHas("carouselPart"),
+        comment: ariaHas("commentPart"),
+        commentBtn: ariaHas("commentPart", '[role="button"]') + ", " + ariaHas("commentPart", "button"),
+        save: ariaIs("save"),
+        close: ariaIs("close"),
+        stories: ariaHas("storiesPart", ""),
+        messages: 'a[href*="/direct/"], ' + ariaHas("messagesPart"),
+    };
+    const RE_FOLLOW = textRe("follow"), RE_FOLLOW_ANY = textRe("follow", "following");
+
+    // Builder de DOM mínimo. props: class/icon(spec SVG)/style(obj)/on<Event>/attr.
     function el(tag, props, ...kids) {
         const n = document.createElement(tag);
         if (props) for (const [k, v] of Object.entries(props)) {
             if (v == null) continue;
             if (k === "class") n.className = v;
-            else if (k === "html") n.innerHTML = v;
+            else if (k === "icon") n.appendChild(svgIcon(v));
             else if (k === "style" && typeof v === "object") Object.assign(n.style, v);
             else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2).toLowerCase(), v);
             else n.setAttribute(k, v);
@@ -181,6 +218,7 @@
         }
         if (!imageUrl && !videoUrl) return;
         const prev = igMedia.get(m.code) || {};
+        igMedia.delete(m.code);                 // re-insere no FIM → a ordem do Map vira um LRU por ingestão
         igMedia.set(m.code, {
             isVideo: isVideo || prev.isVideo, videoUrl: videoUrl || prev.videoUrl || "", imageUrl: imageUrl || prev.imageUrl || "",
             thumbUrl: thumbUrl || prev.thumbUrl || "",
@@ -192,23 +230,56 @@
             author: (m.user && m.user.username) || prev.author || "",
             avatar: (m.user && m.user.profile_pic_url) || prev.avatar || "",
             caption: (m.caption && (m.caption.text || (typeof m.caption === "string" ? m.caption : ""))) || prev.caption || "",
+            reel: m.product_type === "clips" || !!prev.reel,
             likes: fmtCountNum(m.like_count) || prev.likes || "",
             comments: fmtCountNum(m.comment_count) || prev.comments || "",
+            t: Date.now(),                      // hora da ingestão (o despejo nunca toca no que é recente)
         });
+        if (igMedia.size > IGMEDIA_MAX) pruneIgMedia();
+    }
+    /* MEMÓRIA: o explore e o feed despejam centenas de itens de API por sessão e o igMedia só crescia.
+     * Teto com despejo dos MAIS ANTIGOS — nunca de um código com card nosso (o card ainda lê videoUrl/pk/
+     * slides daqui) e nunca do que entrou há menos de IGMEDIA_MIN_AGE: o payload do boot da home (stories,
+     * sugestões, timeline) chega ANTES de o feed renderizar, e com o teto contado só por tamanho os
+     * primeiros posts eram despejados antes do harvest — card sem legenda e sem URL de vídeo. */
+    const IGMEDIA_MAX = 1500, IGMEDIA_MIN_AGE = 120000;
+    const liveCodes = new Set();
+    function pruneIgMedia() {
+        const target = Math.floor(IGMEDIA_MAX * 0.85), young = Date.now() - IGMEDIA_MIN_AGE;
+        for (const [code, rec] of igMedia) {
+            if (igMedia.size <= target || rec.t > young) break;   // ordem de ingestão: daqui pra frente é tudo mais novo
+            if (!liveCodes.has(code)) igMedia.delete(code);
+        }
     }
     const igCollections = new Map();        // collection_id -> collection_name (capturadas do tráfego do IG)
-    function walkForMedia(node, depth) {    // varre o JSON inteiro atrás de itens de mídia (schema aninhado/variável)
-        if (!node || typeof node !== "object" || depth > 12) return;
-        if (Array.isArray(node)) { for (const x of node) walkForMedia(x, depth + 1); return; }
-        if (node.code && (node.video_versions || node.image_versions2 || node.carousel_media)) ingestNode(node);
+    /* ORDEM DO FEED vinda da API: os itens que moram sob uma chave de TIMELINE (xdt_api__v1__feed__
+     * timeline__connection no graphql/SSR, feed_items na resposta REST de feed/timeline) são posts da
+     * home, na ordem do feed. Com isso a home monta cards ANTES de o IG renderizar qualquer <article>
+     * (o payload inline do HTML chega primeiro). Stories/sugestões ficam de fora (outra chave). */
+    const apiFeedCodes = [];
+    const apiFeedSet = new Set();
+    const FEED_KEY = /timeline|feed_items/i;
+    function walkForMedia(node, depth, inFeed) {    // varre o JSON inteiro atrás de itens de mídia (schema aninhado/variável)
+        // o HTML server-rendered embrulha os dados em camadas de require/__bbox: os posts iniciais ficam
+        // além de 12 níveis, e com o limite antigo eles nunca entravam no igMedia (card sem legenda/vídeo)
+        if (!node || typeof node !== "object" || depth > 64) return;
+        if (Array.isArray(node)) { for (const x of node) walkForMedia(x, depth + 1, inFeed); return; }
+        if (node.code && (node.video_versions || node.image_versions2 || node.carousel_media)) {
+            ingestNode(node);
+            if (inFeed && !apiFeedSet.has(node.code) && igMedia.has(node.code)) { apiFeedSet.add(node.code); apiFeedCodes.push(node.code); }
+            inFeed = false;                     // slides de carrossel / filhos não são posts do feed
+        }
         if (node.collection_id && node.collection_name) igCollections.set(String(node.collection_id), String(node.collection_name));   // coleções de salvos
-        for (const k in node) { const v = node[k]; if (v && typeof v === "object") walkForMedia(v, depth + 1); }
+        for (const k in node) { const v = node[k]; if (v && typeof v === "object") walkForMedia(v, depth + 1, inFeed || FEED_KEY.test(k)); }
     }
     function ingestText(text) {
         if (!text || text.length < 40 || (text.indexOf("video_versions") < 0 && text.indexOf("image_versions2") < 0 && text.indexOf("collection_id") < 0)) return;
-        let j; try { j = JSON.parse(text); } catch (_) { return; }
-        try { walkForMedia(j, 0); } catch (_) { /**/ }
+        let j; try { j = JSON.parse(text); } catch (_) { return false; }
+        const feedBefore = apiFeedCodes.length;
+        try { walkForMedia(j, 0, false); } catch (_) { /**/ }
         try { queueMetaUpdate(); } catch (_) { /**/ }   // igMedia atualizou → preenche header/legenda dos cards já renderizados
+        if (apiFeedCodes.length > feedBefore) { try { onApiFeed(); } catch (_) { /**/ } }   // posts novos do feed → cards já
+        return true;
     }
     // PERF: respostas interceptadas chegam no MEIO do scroll (paginação) — o 2º JSON.parse (centenas de KB)
     // + walk recursivo na main thread viravam spike de jank empilhado no parse do próprio IG. igMedia só é
@@ -253,8 +324,17 @@
             }
         } catch (_) { /**/ }
     }
-    function ingestInlineJSON() {           // posts iniciais vêm server-rendered no HTML (não via fetch)
-        try { for (const s of document.querySelectorAll('script[type="application/json"]')) ingestText(s.textContent || ""); } catch (_) { /**/ }
+    // posts iniciais vêm server-rendered no HTML (não via fetch). Cada <script> é lido UMA vez: no boot da
+    // home eles são lidos conforme o parser os insere (ver onMutations), e aqui só sobra o que faltou.
+    const inlineSeen = new WeakSet();
+    function ingestInlineScript(s) {
+        if (inlineSeen.has(s)) return;
+        const t = s.textContent || "";
+        // texto curto/sem mídia = nada a ler (marca); JSON que não parseia ainda pode estar chegando do parser → tenta de novo
+        if (t.length < 40 || (t.indexOf("image_versions2") < 0 && t.indexOf("video_versions") < 0 && t.indexOf("collection_id") < 0) || ingestText(t) !== false) inlineSeen.add(s);
+    }
+    function ingestInlineJSON() {
+        try { for (const s of document.querySelectorAll('script[type="application/json"]')) ingestInlineScript(s); } catch (_) { /**/ }
     }
     installInterceptors();                  // JÁ no document-start (antes do bundle do IG pegar o fetch)
     const codeOf = (key) => { const m = (key || "").match(/\/(?:p|reel)\/([^/?#]+)/); return m ? m[1] : ""; };
@@ -277,21 +357,70 @@
     /* ------------------------------------------------------------------ *
      * Ícones (Material, fill:currentColor)
      * ------------------------------------------------------------------ */
-    const svg = (p) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${p}"/></svg>`;
+    /* Ícones são DADOS ({ a: attrs do <svg>, k: [[tag, attrs], ...] }) e viram nó por createElementNS —
+     * nada de innerHTML (seguro sob Trusted Types, sem parser de HTML a cada troca de ícone). */
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    function svgIcon(spec) {
+        const root = document.createElementNS(SVG_NS, "svg");
+        root.setAttribute("viewBox", "0 0 24 24");
+        root.setAttribute("aria-hidden", "true");
+        if (spec.a) for (const k in spec.a) root.setAttribute(k, spec.a[k]);
+        for (const [tag, attrs] of spec.k) {
+            const n = document.createElementNS(SVG_NS, tag);
+            for (const k in attrs) n.setAttribute(k, attrs[k]);
+            root.appendChild(n);
+        }
+        return root;
+    }
+    const setIcon = (node, spec) => node.replaceChildren(svgIcon(spec));
+    const mIcon = (d) => ({ k: [["path", { d }]] });   // Material: 1 path, fill pelo CSS (currentColor)
     const ICONS = {
-        play: svg("M8 5v14l11-7z"),
-        pause: svg("M6 19h4V5H6v14zm8-14v14h4V5h-4z"),
-        volHigh: svg("M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"),
-        volLow: svg("M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"),
-        volMute: svg("M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4 9.91 6.09 12 8.18V4z"),
-        pip: svg("M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.11.9 2 2 2h18c1.1 0 2-.89 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z"),
-        fs: svg("M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"),
-        fsExit: svg("M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"),
-        gear: svg("M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84a.484.484 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.488.488 0 0 0-.59.22L2.74 8.87a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"),
+        play: mIcon("M8 5v14l11-7z"),
+        pause: mIcon("M6 19h4V5H6v14zm8-14v14h4V5h-4z"),
+        volHigh: mIcon("M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"),
+        volLow: mIcon("M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"),
+        volMute: mIcon("M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4 9.91 6.09 12 8.18V4z"),
+        pip: mIcon("M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.11.9 2 2 2h18c1.1 0 2-.89 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z"),
+        fs: mIcon("M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"),
+        fsExit: mIcon("M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"),
+        gear: mIcon("M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84a.484.484 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.488.488 0 0 0-.59.22L2.74 8.87a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"),
     };
 
     /* ------------------------------------------------------------------ *
-     * CSS
+     * CSS — TOKENS. Uma paleta só para tudo o que é nosso (cards, player,
+     *   salvos, menu de coleções, toast, painel). O claro é o padrão em :root;
+     *   html.igf-dark (posto pelo applyTheme) troca para o escuro.
+     *   Camadas: escala curta e ordenada (player < FAB < menus < painel < toast),
+     *   toda no topo do int32 pra ficar acima de qualquer overlay do IG.
+     * ------------------------------------------------------------------ */
+    addStyle(`
+:root{
+  --igf-accent:#0095f6; --igf-accent-soft:rgba(0,149,246,.14);
+  --igf-danger:#ed4956; --igf-like:#ff3040;
+  --igf-grad:linear-gradient(90deg,#feda75 0%,#fa7e1e 25%,#d62976 55%,#962fbf 78%,#4f5bd5 100%);
+  --igz-player:2147483000; --igz-fab:2147483100; --igz-menu:2147483200; --igz-panel:2147483300; --igz-toast:2147483400;
+  --igf-card-bg:#ffffff;  --igf-elev:#ffffff;  --igf-input:#efefef;
+  --igf-media-bg:#efefef; --igf-avatar-bg:#dbdbdb;
+  --igf-line:rgba(0,0,0,.12); --igf-line-hov:rgba(0,0,0,.26); --igf-border:#dbdbdb;
+  --igf-hover-bg:rgba(0,0,0,.05); --igf-track:#c7c7c7;
+  --igf-text:#0b0b0d; --igf-text-2:#5b5b62; --igf-muted:#737373;
+  --igf-shade:rgba(0,0,0,.16);
+  --igf-shadow:0 1px 2px rgba(0,0,0,.08); --igf-shadow-hov:0 16px 36px rgba(0,0,0,.18);
+  --igf-shadow-pop:0 12px 34px var(--igf-shade);
+}
+html.igf-dark{
+  --igf-card-bg:#0e0e10;  --igf-elev:#1c1c1e;  --igf-input:#000000;
+  --igf-media-bg:#0b0b0b; --igf-avatar-bg:#222222;
+  --igf-line:rgba(255,255,255,.10); --igf-line-hov:rgba(255,255,255,.26); --igf-border:#363638;
+  --igf-hover-bg:rgba(255,255,255,.08); --igf-track:#48484a;
+  --igf-text:#f4f4f5; --igf-text-2:#b9b9c0; --igf-muted:#8e8e93;
+  --igf-shade:rgba(0,0,0,.6);
+  --igf-shadow:0 1px 2px rgba(0,0,0,.55); --igf-shadow-hov:0 18px 44px rgba(0,0,0,.64);
+}
+`);
+
+    /* ------------------------------------------------------------------ *
+     * CSS — player
      * ------------------------------------------------------------------ */
     addStyle(`
 .igvc-host{ position:relative; isolation:isolate; --igvc-bar-h:44px; }
@@ -299,23 +428,22 @@
 /* IG nativo (modo padrão/feed): escondo o controle de volume do IG — temos o nosso —
    e subo o botão de "marcados" pra não ficar atrás da barra. Em stories esses
    elementos vivem no header (fora do host), então a regra é naturalmente só do feed. */
-.igvc-host div[role="slider"][aria-label*="olume" i],
-.igvc-host [role="slider"]:has(svg[aria-label*="Audio" i]),
-.igvc-host button[aria-label*="Toggle audio" i]{ display:none !important; }
-.igvc-host div:has(> button svg[aria-label*="Tag" i]),
-.igvc-host div:has(> button svg[aria-label*="marca" i]){
+${ariaHas("volumePart", '.igvc-host div[role="slider"]')},
+${ariaHas("audioPart", '.igvc-host [role="slider"]:has(svg', ")")},
+${ariaHas("toggleAudioPart", ".igvc-host button")}{ display:none !important; }
+${ariaHas("tagPart", ".igvc-host div:has(> button svg", ")")}{
   bottom:calc(var(--igvc-bar-h,44px) + 8px) !important; top:auto !important;
 }
 /* a barra cobre o vídeo inteiro (pointer-events:none) só pra poder ancorar o botão de SOM no topo;
    trilha e fileira seguem coladas no rodapé. Em story a barra continua sendo só a trilha. */
-.igvc-bar:not(.igvc-story){ top:0; }
 .igvc-bar{
-  position:absolute; left:0; right:0; bottom:0; z-index:2147483647;
+  position:absolute; left:0; right:0; bottom:0; z-index:var(--igz-player);
   pointer-events:none; color:#fff;
   font:500 12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   -webkit-font-smoothing:antialiased;
   user-select:none; -webkit-user-select:none;
 }
+.igvc-bar:not(.igvc-story){ top:0; }
 /* gradiente só no hover, atrás da fileira */
 .igvc-bar::before{
   content:""; position:absolute; left:0; right:0; bottom:0; height:68px;
@@ -345,20 +473,18 @@
   position:absolute; left:0; right:0; bottom:0; height:3px; z-index:2;   /* ACIMA da row: senão a fileira (irmã posterior) tapa a trilha no hover e o seek não pega */
   pointer-events:auto; cursor:pointer; touch-action:none;
   background:rgba(255,255,255,.22); transition:height .12s ease;
+  --igvc-grad:var(--igf-grad);
 }
 .igvc-bar.igvc-show .igvc-track{ height:9px; }
-.igvc-buffered{ position:absolute; left:0; top:0; bottom:0; width:0; background:rgba(255,255,255,.32); }
-/* progresso nas cores do INSTAGRAM (era o azul de sistema). O gradiente é pintado no tamanho da
-   TRILHA e recortado pela largura da fill (background-attachment não serve aqui) → as cores ficam
-   ancoradas na barra em vez de esticarem/andarem conforme o vídeo avança. */
-.igvc-track{ --igvc-grad:linear-gradient(90deg,#feda75 0%,#fa7e1e 25%,#d62976 55%,#962fbf 78%,#4f5bd5 100%); }
-.igvc-fill{ position:absolute; left:0; top:0; bottom:0; width:0; overflow:hidden; }
-.igvc-fill::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:420px; background:var(--igvc-grad); }
-/* com container queries o gradiente casa exatamente a largura da trilha (o 420px acima é o fallback) */
-@supports (width: 100cqw){
-  .igvc-track{ container-type:inline-size; }
-  .igvc-fill::before{ width:100cqw; }
-}
+/* PROGRESSO SÓ POR TRANSFORM (compositor): nada de width/left por timeupdate/pointermove.
+   .igvc-rail recorta; a fill tem a largura TODA da trilha e desliza (translateX(p−100%)), e o gradiente
+   dentro dela desliza de volta na mesma medida → as cores ficam ANCORADAS na trilha. O buffer escala
+   (scaleX) e o thumb anda num posicionador do tamanho da trilha (translateX(p)). */
+.igvc-rail{ position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+.igvc-buffered{ position:absolute; inset:0; background:rgba(255,255,255,.32); transform-origin:0 50%; transform:scaleX(0); }
+.igvc-fill{ position:absolute; inset:0; overflow:hidden; transform:translateX(-100%); }
+.igvc-grad{ position:absolute; inset:0; background:var(--igvc-grad); transform:translateX(100%); }
+.igvc-thumbpos{ position:absolute; inset:0; pointer-events:none; transform:translateX(0); }
 .igvc-thumb{
   position:absolute; top:50%; left:0; width:12px; height:12px; margin-left:-6px;
   border-radius:50%; background:#fff; box-shadow:0 0 0 2px #d62976, 0 1px 4px rgba(0,0,0,.5); pointer-events:none;
@@ -404,7 +530,7 @@ input.igvc-range{
 input.igvc-range::-webkit-slider-thumb{ -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:#fff; cursor:pointer; }
 input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-radius:50%; background:#fff; cursor:pointer; }
 
-/* popover de velocidade (config saiu pro painel flutuante) */
+/* popover de velocidade (fica sobre o vídeo → sempre escuro, independe do tema) */
 .igvc-pop{
   position:absolute; bottom:46px; min-width:84px; padding:6px;
   background:rgba(18,18,18,.97); border:1px solid rgba(255,255,255,.12);
@@ -415,7 +541,19 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igvc-pop-speed{ right:84px; min-width:84px; }
 .igvc-pop button{ background:transparent; border:0; color:#fff; text-align:left; padding:6px 10px; border-radius:6px; cursor:pointer; font:inherit; white-space:nowrap; }
 .igvc-pop button:hover{ background:rgba(255,255,255,.12); }
-.igvc-pop button.igvc-on{ color:#0095f6; font-weight:700; }
+.igvc-pop button.igvc-on{ color:var(--igf-accent); font-weight:700; }
+
+/* barra dos CARDS (uma só, no card ativo): mesma anatomia, mais limpa — alvos de 34px, trilha fina
+   que engorda pouco, área de pega da trilha maior que o traço, degradê mais longo atrás da fileira */
+.igvc-bar.igvc-card::before{ height:88px; background:linear-gradient(to top, rgba(0,0,0,.62), rgba(0,0,0,0)); }
+.igvc-bar.igvc-card .igvc-track{ background:rgba(255,255,255,.26); }
+.igvc-bar.igvc-card .igvc-track::before{ content:""; position:absolute; left:0; right:0; bottom:0; height:14px; }
+.igvc-bar.igvc-card.igvc-show .igvc-track, .igf-video.igf-active.igf-paused .igvc-bar.igvc-card .igvc-track{ height:5px; }
+.igvc-bar.igvc-card .igvc-thumb{ width:13px; height:13px; margin-left:-6.5px; box-shadow:0 0 0 2px rgba(255,255,255,.3), 0 1px 4px rgba(0,0,0,.5); }
+.igvc-bar.igvc-card .igvc-row{ gap:2px; padding:6px 10px 12px; }
+.igvc-bar.igvc-card .igvc-btn{ width:34px; height:34px; border-radius:10px; }
+.igvc-bar.igvc-card .igvc-speed{ width:auto; min-width:40px; }
+.igvc-bar.igvc-card .igvc-pop{ bottom:52px; }
 
 /* stories: do nosso player fica SÓ a barra de progresso (scrub) — o post original (reply, like,
    tudo) permanece INTACTO. Sem gradiente e sem a fileira de botões (não montados em story). */
@@ -430,187 +568,224 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 `);
 
     /* ------------------------------------------------------------------ *
-     * CSS — feed da home em MOSAICO (multicolunas estilo dashboard)
-     *   • só ADITIVO: alargo os wrappers de largura do route do feed e troco
-     *     a coluna única por CSS `columns`. Cards = os próprios <article>.
-     *   • tema-aware: cores via as vars do IG (--ig-elevated-background etc),
-     *     com fallback dark, então respeita claro/escuro.
+     * CSS — mosaico (home / explore / perfil / salvos)
+     *   .igm-* = classes que EU ponho em nós DO IG → !important pra vencer o
+     *   inline/atômico deles. .igf-* = DOM nosso → sem !important.
      * ------------------------------------------------------------------ */
     addStyle(`
+/* vars tunáveis: nav (offset), largura máx do bloco de conteúdo e respiro lateral */
+:root{ --igm-navw:72px; --igm-pinw:72px; --igm-maxw:1320px; --igf-pad:clamp(14px, 2vw, 30px); }
+
 /* largura: solto os caps de 470/630px do route do feed (NÃO toco no <main>, que é shell) */
 .igm-wide{ max-width:none !important; width:100% !important; --x-width:100% !important; --x-maxWidth:100% !important; }
-
 /* right rail (perfil/sugestões/footer) — irmão da coluna do feed na "row" */
 .igm-norail{ display:none !important; }
-
-/* vars tunáveis: nav (offset) e largura máx do bloco de conteúdo (≤3 colunas, preenchem) */
-:root{ --igm-navw:72px; --igm-pinw:72px; --igm-maxw:1320px; }
-
 /* nav esquerdo fixo: pino a largura (= --igm-navw) e mato a transition (sem hover-expand) */
 .igm-navpin{ width:var(--igm-pinw) !important; min-width:var(--igm-pinw) !important; max-width:var(--igm-pinw) !important; flex:0 0 var(--igm-pinw) !important; transition:none !important; }
-
-/* a coluna do feed começa em x=0 (nav é overlay fixo, não ocupa fluxo) → desloco o
-   conteúdo pela largura do nav. */
+/* a coluna do feed começa em x=0 (nav é overlay fixo, não ocupa fluxo) → desloco o conteúdo pela largura do nav */
 .igm-col{ box-sizing:border-box !important; padding-left:var(--igm-navw) !important; }
-
 /* wrapper comum que contém stories E cards: capo aqui (max-width + margin auto) → o
    bloco inteiro (stories + grid) centra no espaço útil e fica alinhado por construção. */
 .igm-content{ max-width:var(--igm-maxw) !important; width:100% !important; margin-left:auto !important; margin-right:auto !important; box-sizing:border-box !important; --x-width:100% !important; --x-maxWidth:100% !important; }
 /* coluna do grid (explore/profile) que nasce SOB o nav fixo: maxw + padding do nav → conteúdo maxw centrado em (viewport − nav), igual à home */
 .igm-gridnav{ max-width:calc(var(--igm-maxw) + var(--igm-navw)) !important; padding-left:var(--igm-navw) !important; }
-/* perfil: o header (avatar/bio/stats) mantém a centragem nativa do IG, mas MAIOR (zoom) e com respiro no
-   topo (o IG cola no topo). As abas (posts/reels/tagged) centralizadas. */
 /* HEADER DO PERFIL — ocupa mais espaço via zoom (amplia o bloco inteiro sem tocar na estrutura).
    NÃO mexer em flex/min-width/max-width dos filhos: a v3.16 fez isso e quebrou feio — o min-width:0
    caiu num wrapper errado e o texto passou a quebrar UMA LETRA POR LINHA, com o avatar solto no meio.
    O layout interno do header é do IG; aqui só escalamos e damos respiro. */
-.igm-gridcol header { padding-top:26px !important; }
+.igm-gridcol header{ padding-top:26px !important; }
 /* zoom só com folga: abaixo de ~1100px o header ampliado passava da coluna (rolagem horizontal/corte) */
-@media (min-width: 1100px){ .igm-gridcol header { zoom:1.28; } }
+@media (min-width: 1100px){ .igm-gridcol header{ zoom:1.28; } }
+.igm-gridcol [role="tablist"]{ justify-content:center !important; }
+/* explore/search: a barra de busca e o bloco de resultados acompanham a largura do conteúdo (best-effort) */
+.igm-gridcol [role="search"], .igm-gridcol form[role="search"],
+${ariaHas("searchPart", ".igm-gridcol div:has(> input", ")")},
+${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width:100% !important; }
+/* tray de stories: emoldurada como um card e alinhada à 1ª coluna (mesmo respiro lateral do feed) */
+.igm-stories{ width:calc(100% - 2 * var(--igf-pad)) !important; max-width:none !important;
+  margin:0 var(--igf-pad) 10px !important; padding:12px 14px !important; box-sizing:border-box !important;
+  background:var(--igf-card-bg); border:1px solid var(--igf-line); border-radius:14px; }
+
 /* botão de COPIAR o @ do perfil, ao lado do username */
 .igp-copy{ margin-left:8px; vertical-align:middle; flex:0 0 auto;
   display:inline-flex; align-items:center; justify-content:center;
   width:26px; height:26px; padding:0; border:0; border-radius:8px; cursor:pointer;
-  background:transparent; color:var(--ig-secondary-text, #a8a8a8); opacity:.85;
+  background:transparent; color:var(--igf-muted); opacity:.85;
   transition:background .15s ease, color .15s ease; }
-.igp-copy:hover{ background:var(--igf-hover-bg, rgba(255,255,255,.1)); color:var(--ig-primary-text, #f5f5f5); opacity:1; }
+.igp-copy:hover{ background:var(--igf-hover-bg); color:var(--igf-text); opacity:1; }
 .igp-copy svg{ width:17px; height:17px; display:block; }
-.igp-copy.igf-copied{ color:#0095f6; }
-.igm-gridcol [role="tablist"] { justify-content:center !important; }
-/* explore/search: a barra de busca e o bloco de resultados acompanham a largura do conteúdo (best-effort) */
-.igm-gridcol [role="search"], .igm-gridcol form[role="search"],
-.igm-gridcol div:has(> input[aria-label*="esquis" i]), .igm-gridcol div:has(> input[aria-label*="earch" i]),
-.igm-gridcol input[aria-label*="esquis" i], .igm-gridcol input[aria-label*="earch" i] { max-width:none !important; width:100% !important; }
-
-/* garante a tray de stories preenchendo o bloco e alinhada à esquerda (não centrada/estreita) */
-.igm-stories{ width:100% !important; max-width:none !important; margin-left:0 !important; margin-right:0 !important; }
+.igp-copy.igf-copied{ color:var(--igf-accent); }
 
 /* === FEED PRÓPRIO (DOM NOSSO) ============================================ *
  * A lista nativa do IG fica VIVA mas fora de vista (.igf-src): continua sendo o
  * "fornecedor" de dados (harvest) e mantém o IG carregando ao rolar. Eu renderizo
  * CARDS meus (.igf-card) num container meu (.igf-feed).
  *
- * v3.12 — GRADE UNIFORME (era masonry em JS). Todo card tem a MESMA altura, dada
- * por CSS: mídia em aspect-ratio fixo + faixas de altura fixa (head/ações/legenda).
- * Consequências: zero medição de altura em JS, zero posicionamento absoluto, zero
- * re-layout quando uma imagem carrega — o layout é do compositor, não nosso. Como a
- * altura é conhecida ANTES de qualquer conteúdo chegar, "content-visibility:auto" +
- * "contain-intrinsic-size" fazem o browser PULAR layout/paint/decode dos cards fora
- * da tela sem nenhum pulo de scroll (o placeholder tem o tamanho exato do real). */
-/* janela do fornecedor: cada post renderizado AQUI faz o IG baixar a mídia dele. 150vh mantinha ~3
-   posts vivos por vez; 90vh corta esse consumo sem prejudicar o harvest (que lê atributo, não pixel). */
+ * GRADE UNIFORME: todo card tem a MESMA altura, dada por CSS: mídia em aspect-ratio
+ * fixo + faixas de altura fixa (head/ações/legenda). Zero medição de altura em JS,
+ * zero re-layout quando uma imagem carrega. Como a altura é conhecida ANTES do conteúdo,
+ * "content-visibility:auto" + "contain-intrinsic-size" pulam layout/paint/decode dos
+ * cards fora da tela sem pulo de scroll. */
+/* janela do fornecedor (nó DO IG): cada post renderizado aqui faz o IG baixar a mídia dele; 90vh basta pro harvest */
 .igf-src{ position:fixed !important; top:0 !important; left:0 !important; width:480px !important; height:90vh !important; overflow-y:auto !important; opacity:0 !important; pointer-events:none !important; z-index:-1 !important; }
 .igf-feed{ display:grid; grid-template-columns:repeat(var(--igf-ncols,3), minmax(0,1fr)); gap:var(--igf-gap,24px);
-  width:100%; padding:8px 0 80px; box-sizing:border-box;
+  width:100%; padding:8px var(--igf-pad) 80px; box-sizing:border-box;
   --igf-ar:9/16;       /* proporção da mídia — a mais alta do IG (reels); igual pra todo item */
   /* faixas de altura FIXA: card = mídia + head + ações + legenda + respiro do rodapé.
      A legenda é UMA linha exata (line-height em px, caixa = padding-top + 1×linha, SEM padding-bottom:
      o overflow clipa na padding-box, então qualquer padding embaixo deixaria a 2ª linha espiando).
-     O respiro do rodapé é do CARD, não da legenda. Mexer aqui = mexer em cardHeightFor(). */
+     Mexer aqui = mexer em cardHeightFor(). */
   --igf-headh:48px; --igf-acth:40px; --igf-caph:25px; --igf-padb:9px;   /* legenda = 6 + 1×19 */
-  --igf-pad:clamp(14px, 2vw, 30px);   /* respiro lateral do conteúdo (some quando a janela é larga) */
   --igf-cardh:520px;   /* altura estimada p/ contain-intrinsic-size (recalculada no layout) */
 }
-/* RESPIRO LATERAL — enquanto a janela é maior que o cap (--igm-maxw) sobra margem naturalmente, mas
-   assim que ela encolhe o conteúdo passava a ENCOSTAR nas bordas (colado no nav de um lado e na borda
-   do outro). O padding é do container e cresce com a janela, então vale em qualquer largura.
-   As stories usam a MESMA medida pra ficarem alinhadas com a primeira coluna de cards. */
-.igf-feed{ padding-left:var(--igf-pad); padding-right:var(--igf-pad); }
-.igm-stories{ margin-left:var(--igf-pad) !important; margin-right:var(--igf-pad) !important; }
-/* content-visibility: o card fora da viewport não entra em layout/paint (nem decodifica a imagem).
-   contain-intrinsic-size dá a altura exata do que foi pulado → a barra de rolagem não pula. */
 .igf-card{ position:relative; min-width:0; box-sizing:border-box; border-radius:14px; overflow:hidden; padding-bottom:var(--igf-padb);
-  background:rgb(var(--ig-elevated-background, 32, 32, 32)); border:1px solid rgba(255,255,255,.08);
-  content-visibility:auto; contain-intrinsic-size:auto var(--igf-cardh); }
+  background:var(--igf-card-bg); border:1px solid var(--igf-line);
+  content-visibility:auto; contain-intrinsic-size:auto var(--igf-cardh);
+  transition:transform .2s cubic-bezier(.2,.7,.3,1), box-shadow .2s ease, border-color .2s ease; }
+.igf-card:hover{ border-color:var(--igf-line-hov); }
+.igf-feed.igf-shadow .igf-card{ box-shadow:var(--igf-shadow); }
+.igf-feed.igf-shadow .igf-card:hover{ transform:translateY(-4px); box-shadow:var(--igf-shadow-hov); }
 .igf-head{ display:flex; align-items:center; gap:8px; padding:0 11px; height:var(--igf-headh); box-sizing:border-box; }
 .igf-who{ display:flex; align-items:center; gap:8px; min-width:0; text-decoration:none; }
-.igf-head img{ width:30px; height:30px; border-radius:50%; object-fit:cover; flex:0 0 auto; background:#222; }
-.igf-head b{ font-size:13px; font-weight:600; color:var(--ig-primary-text, #f5f5f5); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.igf-head img{ width:30px; height:30px; border-radius:50%; object-fit:cover; flex:0 0 auto; background:var(--igf-avatar-bg); }
+.igf-head b{ font-size:13px; font-weight:600; color:var(--igf-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.igf-copyuser{ flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; margin-left:-4px;
+  padding:0; border:0; border-radius:7px; background:transparent; color:var(--igf-muted); cursor:pointer; opacity:.7;
+  transition:opacity .15s ease, background .15s ease, color .15s ease; }
+.igf-copyuser svg{ width:15px; height:15px; display:block; }
+.igf-copyuser:hover{ opacity:1; background:var(--igf-hover-bg); color:var(--igf-text); }
+.igf-copyuser.igf-copied{ color:var(--igf-accent); opacity:1; }
+.igf-who:has(b:empty) + .igf-copyuser{ display:none; }
 .igf-follow{ margin-left:auto; flex:0 0 auto; background:none; border:0; cursor:pointer; padding:6px 10px; border-radius:8px;
-  color:#4a9eff; font-size:13px; font-weight:700; }
-.igf-follow:hover{ background:rgba(255,255,255,.07); }
-.igf-follow.on{ color:var(--ig-secondary-text, #aaa); font-weight:600; }
+  color:var(--igf-accent); font-size:13px; font-weight:700; }
+.igf-follow:hover{ background:var(--igf-hover-bg); }
+.igf-follow.on{ color:var(--igf-muted); font-weight:600; }
 /* aspect-ratio FIXO (não a proporção real do post) = a fonte da uniformidade. "contain" isola o
    layout da mídia do resto: a imagem chegando não invalida o layout do feed inteiro. */
 .igf-media{ display:block; position:relative; width:100%; aspect-ratio:var(--igf-ar);
-  background:#0b0b0b; overflow:hidden; contain:layout paint; }
-/* fade curto ao carregar: a caixa já está no tamanho final, então isto é só o pixel entrando —
-   sem ele o card salta do fundo chapado pra imagem. ".on" é posto no load (ou já no cache). */
-.igf-media img{ width:100%; height:100%; object-fit:cover; display:block; opacity:0; transition:opacity .16s linear; }
+  background:var(--igf-media-bg); overflow:hidden; contain:layout paint; }
+/* fade curto ao carregar (".on" no load ou já no cache) + zoom leve no hover (overflow:hidden clipa) */
+.igf-media img{ width:100%; height:100%; object-fit:cover; display:block; opacity:0;
+  transition:opacity .16s linear, transform .35s cubic-bezier(.2,.7,.3,1); }
 .igf-media img.on{ opacity:1; }
-/* CONTEÚDO HORIZONTAL: numa caixa 9:16 o "cover" teria que ampliar absurdamente uma foto deitada —
-   sobrava uma faixa do meio, sem contexto. Com .igf-fit ela ENTRA INTEIRA (contain), centralizada, e o
-   espaço que sobra fica preenchido por uma cópia borrada da própria imagem, em vez de barra preta. */
-.igf-media.igf-fit img, .igf-media.igf-fit video{ object-fit:contain !important; z-index:1; position:relative; }
-.igf-media.igf-fit .igf-blur{ position:absolute; inset:0; z-index:0; background-size:cover; background-position:center;
-  filter:blur(26px) saturate(1.25) brightness(.65); transform:scale(1.15); pointer-events:none; }
-/* no hover a mídia dá um zoom leve; em conteúdo "contain" isso cortaria a imagem — aqui não amplia */
+.igf-card:hover .igf-media > img, .igf-card:hover .igf-cstage img{ transform:scale(1.045); }
+/* CONTEÚDO HORIZONTAL: numa caixa 9:16 o "cover" ampliaria absurdamente uma foto deitada. Com .igf-fit
+   ela ENTRA INTEIRA (contain) e o resto é preenchido por uma cópia borrada da própria imagem. No hover
+   não amplia (cortaria o que acabou de caber). */
+.igf-media.igf-fit img, .igf-media.igf-fit video{ object-fit:contain; z-index:1; }
+.igf-media.igf-fit img{ position:relative; }
 .igf-card:hover .igf-media.igf-fit img{ transform:none; }
-/* vídeo: cover como a imagem — na grade uniforme, "contain" deixaria letterbox de tamanho variável.
-   Entra TRANSPARENTE e só aparece com o 1º frame (.on, posto no loadeddata) → some o piscar preto. */
-.igf-video video{ position:absolute !important; inset:0 !important; width:100% !important; height:100% !important; object-fit:cover !important;
+.igf-media.igf-fit .igf-blur{ position:absolute; inset:0; z-index:0; background-size:cover; background-position:center;
+  filter:blur(16px) saturate(1.25) brightness(.65); transform:scale(1.1); pointer-events:none; }   /* raio menor = filtro bem mais barato; a fonte é o thumb pequeno */
+/* vídeo: cover como a imagem. Entra TRANSPARENTE e só aparece com o 1º frame (.on, posto no loadeddata) */
+.igf-video{ cursor:pointer; }
+.igf-video video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
   background:transparent; opacity:0; transition:opacity .2s ease; }
 .igf-video.on video{ opacity:1; }
-/* ▶ some enquanto TOCA; volta por cima do frame parado quando o hover sai (igf-paused) */
+/* tela cheia do card: o vídeo inteiro (contain) no tamanho da tela, não o tamanho natural do arquivo */
+.igf-video.igvc-fs video, .igf-video:fullscreen video{ width:100%; height:100%; max-width:none; max-height:none; object-fit:contain; }
+/* ▶ some enquanto TOCA; volta por cima do frame parado (igf-paused) */
+.igf-play{ position:absolute; inset:0; z-index:2; display:flex; align-items:center; justify-content:center; pointer-events:none; }   /* acima do <video> (irmão posterior): senão o ▶ do pausado ficava atrás do frame */
+.igf-play svg{ width:46px; height:46px; opacity:.92; filter:drop-shadow(0 1px 5px rgba(0,0,0,.55)); }
 .igf-video.on:not(.igf-paused) .igf-play{ display:none; }
 .igf-video.igf-paused .igf-play svg{ opacity:.75; }
-.igf-play{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
-.igf-play svg{ width:46px; height:46px; opacity:.92; filter:drop-shadow(0 1px 5px rgba(0,0,0,.55)); }
+/* clicou e o vídeo ainda não tem frame: o ▶ vira spinner (o clique foi registrado) */
+.igf-video.igf-loading .igf-play svg, .igf-video.igf-buffering .igf-play svg{ display:none; }
+.igf-video.igf-buffering .igf-play{ display:flex !important; }
+.igf-video.igf-buffering .igf-play::after{ content:""; width:38px; height:38px; border-radius:50%; box-sizing:border-box;
+  border:3px solid rgba(255,255,255,.35); border-top-color:#fff; animation:igf-rot .8s linear infinite;
+  filter:drop-shadow(0 1px 4px rgba(0,0,0,.5)); }
+.igf-video.igf-loading .igf-play::after{ content:""; width:38px; height:38px; border-radius:50%; box-sizing:border-box;
+  border:3px solid rgba(255,255,255,.35); border-top-color:#fff; animation:igf-rot .8s linear infinite;
+  filter:drop-shadow(0 1px 4px rgba(0,0,0,.5)); }
+/* vídeo ATIVO pausado: o player fica à mostra (sem depender do hover) pra retomar/arrastar */
+.igf-video.igf-active.igf-paused .igvc-bar::before{ opacity:1; }
+.igf-video.igf-active.igf-paused .igvc-row{ opacity:1; transform:none; pointer-events:auto; }
+.igf-video.igf-active.igf-paused .igvc-track{ height:9px; }
+.igf-video.igf-active.igf-paused .igvc-thumb{ transform:translateY(-50%) scale(1); }
 /* LEGENDA — o wrap tem a altura FIXA (é ele que mantém a uniformidade, mesmo sem legenda);
-   a legenda mora COLADA no rodapé dele e, ao expandir, cresce PRA CIMA por cima da mídia.
-   Assim "ver a descrição inteira" não muda a altura do card — a grade não se mexe. */
+   a legenda mora COLADA no rodapé dele e, ao expandir, cresce PRA CIMA por cima da mídia. */
 .igf-capwrap{ position:relative; height:var(--igf-caph); }
 .igf-cap{ position:absolute; left:0; right:0; bottom:0; max-height:var(--igf-caph); overflow:hidden;
-  padding:6px 12px 0; box-sizing:border-box; font-size:14px; line-height:19px; color:var(--ig-primary-text, #f5f5f5); }
+  padding:6px 12px 0; box-sizing:border-box; font-size:14px; line-height:19px; color:var(--igf-text); }
 .igf-cap b{ font-weight:600; }
 /* @menções e #hashtags: cor de link do IG, clicáveis (não abrem/fecham o "mais") */
 .igf-tag{ color:rgb(var(--ig-link, 0, 149, 246)); text-decoration:none; }
 .igf-tag:hover{ text-decoration:underline; }
-/* [data-capmore] = medido e TEM mais texto do que cabe (medição no 1º hover do card).
-   O "mais" fica no FIM DA LINHA, com um degradê à esquerda pra emendar no texto cortado. */
+/* [data-capmore] = medido e TEM mais texto do que cabe. O "mais" fica no FIM DA LINHA, com degradê à esquerda. */
 .igf-card[data-capmore] .igf-cap{ cursor:pointer; }
 .igf-card[data-capmore] .igf-capmore{ display:block; }
 .igf-capmore{ display:none; position:absolute; right:0; bottom:0; z-index:3; border:0; cursor:pointer;
-  padding:6px 12px 0 34px; font:600 13px/19px inherit; color:var(--ig-primary-text, #f5f5f5);
-  background:linear-gradient(90deg, rgba(0,0,0,0), var(--igf-card-bg, #111) 34%); }
+  padding:6px 12px 0 34px; font-family:inherit; font-size:13px; font-weight:600; line-height:19px; color:var(--igf-text);
+  background:linear-gradient(90deg, transparent, var(--igf-card-bg) 34%); }
 .igf-capmore:hover{ text-decoration:underline; }
 /* aberta: rola dentro do próprio card, com fundo sólido pra não misturar com a mídia atrás */
 .igf-card.igf-capopen .igf-cap{ max-height:calc(var(--igf-cardh) * .72); overflow-y:auto; overscroll-behavior:contain;
-  z-index:2; padding-bottom:26px; background:var(--igf-card-bg, #111);
-  border-top:1px solid var(--igf-line, rgba(255,255,255,.1)); box-shadow:0 -10px 24px rgba(0,0,0,.5); }
-.igf-card.igf-capopen .igf-capmore{ background:var(--igf-card-bg, #111); padding-left:12px; border-radius:8px 0 0 0; }
-/* barra de ações única abaixo da mídia (like/comment/repost/share … save) */
+  z-index:2; padding-bottom:26px; background:var(--igf-card-bg);
+  border-top:1px solid var(--igf-line); box-shadow:0 -10px 24px var(--igf-shade); }
+.igf-card.igf-capopen .igf-capmore{ background:var(--igf-card-bg); padding-left:12px; border-radius:8px 0 0 0; }
+/* barra de ações única abaixo da mídia (like/comment/copiar link … save). Repost saiu: o web não reposta, só abria o post. */
 .igf-actions{ display:flex; align-items:center; gap:2px; padding:0 7px; height:var(--igf-acth); box-sizing:border-box; }
 .igf-act{ display:inline-flex; align-items:center; gap:5px; background:none; border:0; cursor:pointer; padding:6px 7px; border-radius:8px;
-  color:var(--ig-primary-text, #f5f5f5); font-size:13px; font-weight:600; line-height:1; }
-.igf-act:hover{ background:rgba(255,255,255,.08); }
+  color:var(--igf-text); font-size:13px; font-weight:600; line-height:1; }
+.igf-act:hover{ background:var(--igf-hover-bg); }
 .igf-act svg{ width:22px; height:22px; display:block; }
-.igf-act.igf-like.on svg{ fill:#ff3040; stroke:#ff3040; }
+.igf-openpost{ text-decoration:none; }
+.igf-act.igf-like.on svg{ fill:var(--igf-like); stroke:var(--igf-like); }
 .igf-act.igf-save.on svg{ fill:currentColor; }
+.igf-act.igf-copied svg{ stroke:var(--igf-accent); }   /* share = COPIAR link: check de feedback */
+.igf-act.igf-busy{ opacity:.45; pointer-events:none; }  /* removendo dos salvos… */
 .igf-act-sp{ flex:1 1 auto; }
-.igf-video{ cursor:pointer; }
-/* loader: UM spinner no FIM do feed, SEMPRE visível (sem toggle = sem bug de "some, tem que scrollar").
-   Some só quando o feed se esgota (.igf-done). É também a sentinela que dispara o carregar-mais. */
+
+/* flags do painel: legenda / contadores */
+.igf-feed.igf-nocap{ --igf-caph:0px; }   /* legenda off → a faixa some (o JS zera a legenda no cálculo da altura) */
+.igf-feed.igf-nocap .igf-capwrap{ display:none; }
+.igf-feed.igf-nocounts .igf-act > span{ display:none; }
+/* densidade COMPACTA (GAP cai via JS; aqui as faixas + fontes). As alturas são VARS: mudar aqui
+   exige mudar os mesmos números em cardHeightFor() no JS. */
+.igf-feed.igf-dense{ --igf-headh:42px; --igf-acth:34px; --igf-caph:22px; --igf-padb:7px; }   /* legenda = 5 + 1×17 */
+.igf-feed.igf-dense.igf-nocap{ --igf-caph:0px; }
+.igf-feed.igf-dense .igf-card{ border-radius:12px; }
+.igf-feed.igf-dense .igf-head{ padding:0 9px; }
+.igf-feed.igf-dense .igf-head img{ width:26px; height:26px; }
+.igf-feed.igf-dense .igf-actions{ padding:0 5px; }
+.igf-feed.igf-dense .igf-act{ padding:5px 6px; font-size:12px; }
+.igf-feed.igf-dense .igf-act svg{ width:20px; height:20px; }
+.igf-feed.igf-dense .igf-cap{ padding:5px 10px 0; font-size:13px; line-height:17px; }
+.igf-feed.igf-dense .igf-capmore{ font-size:12px; line-height:17px; padding:5px 10px 0 30px; }
+
+/* loader: UM spinner no FIM do feed, sempre visível até o feed esgotar (.igf-done). É também a sentinela do carregar-mais. */
 .igf-loader{ display:flex; align-items:center; justify-content:center; gap:10px; padding:34px 26px 60px; min-height:40px;
-  color:var(--ig-secondary-text, #aaa); font-size:13px; }
+  color:var(--igf-muted); font-size:13px; }
 .igf-loader.igf-done{ display:none; }
-.igf-spin{ width:26px; height:26px; border:3px solid rgba(128,128,128,.25); border-top-color:var(--igf-text, #fff); border-radius:50%; animation:igf-rot .8s linear infinite; }
+.igf-spin{ width:26px; height:26px; border:3px solid rgba(128,128,128,.25); border-top-color:var(--igf-text); border-radius:50%; animation:igf-rot .8s linear infinite; }
 @keyframes igf-rot{ to{ transform:rotate(360deg); } }
-/* skeleton de CARREGAMENTO: cards fantasmas DENTRO do próprio grid, no lugar exato onde os posts
-   vão entrar (nada de overlay por cima da página). Altura = a do card real, pela mesma conta do
-   contain-intrinsic-size → o conteúdo real substitui sem salto. Some no 1º card (ou no timeout).
-   NÃO é o "carregando mais" do fim do feed (esse é o .igf-loader). */
-.igf-skel{ height:calc(var(--igf-cardh) + var(--igf-padb) + 2px);
-  background:linear-gradient(100deg, rgba(255,255,255,.04) 30%, rgba(255,255,255,.10) 50%, rgba(255,255,255,.04) 70%);
-  background-size:200% 100%; animation:igf-shim 1.2s linear infinite; }
-@keyframes igf-shim{ to{ background-position:-200% 0; } }
-/* share virou COPIAR link: feedback de copiado (check azul) */
-.igf-act.igf-copied svg{ stroke:#0095f6; }
+/* skeleton de CARREGAMENTO: cards fantasmas DENTRO do grid, no lugar exato onde os posts vão entrar.
+   Altura = a do card real (mesma conta do contain-intrinsic-size). Shimmer neutro (claro e escuro). */
+.igf-card.igf-skel{ height:calc(var(--igf-cardh) + var(--igf-padb) + 2px); pointer-events:none;
+  background:linear-gradient(100deg, rgba(128,128,128,.10) 30%, rgba(128,128,128,.22) 50%, rgba(128,128,128,.10) 70%) 0 0 / 200% 100%, var(--igf-card-bg);
+  animation:igf-shim 1.2s linear infinite; }
+@keyframes igf-shim{ to{ background-position:-200% 0, 0 0; } }
+/* BOOT da home (mosaico): até o nosso feed montar, o <main> do IG (skeletons, lista, coluna direita)
+   fica invisível desde o 1º paint; tray de stories e o nosso feed voltam a aparecer (visibility herda). */
+html.igf-boot main{ visibility:hidden !important; }
+html.igf-boot main [data-pagelet="story_tray"], html.igf-boot .igm-stories, html.igf-boot .igf-feed, html.igf-boot .igf-loader{ visibility:visible !important; }
+html.igf-boot .igm-content > :not(.igf-feed):not(.igf-loader):not(.igf-keep){ position:fixed !important; top:0 !important; left:0 !important;
+  width:480px !important; height:90vh !important; overflow:hidden !important; opacity:0 !important; pointer-events:none !important; z-index:-1 !important; }
+.igf-bootshell{ position:fixed; top:0; right:0; bottom:0; left:var(--igm-navw); overflow:hidden; z-index:0; }
+.igf-bootwrap{ max-width:var(--igm-maxw); margin:0 auto; padding-top:22px; box-sizing:border-box; }
+.igf-boottray{ height:108px; margin:0 var(--igf-pad) 10px; border:1px solid var(--igf-line); border-radius:14px; box-sizing:border-box;
+  background:linear-gradient(100deg, rgba(128,128,128,.10) 30%, rgba(128,128,128,.22) 50%, rgba(128,128,128,.10) 70%) 0 0 / 200% 100%, var(--igf-card-bg);
+  animation:igf-shim 1.2s linear infinite; }
+.igf-bootshell .igf-loader{ display:none; }
+/* clique registrado, esperando o IG renderizar o post pra abrir a overlay (some sozinho ao abrir) */
+.igf-card.igf-opening{ cursor:progress; }
+.igf-card.igf-opening .igf-media::after{ content:""; position:absolute; inset:0; z-index:4; background:rgba(0,0,0,.35); }
 
 /* ===== carrossel/galeria: setas + dots + contador (slide em cover; larga demais entra em contain) ===== */
 .igf-carousel{ position:relative; display:block; }
 .igf-cstage{ position:absolute; inset:0; }
-.igf-cstage img, .igf-cstage video{ width:100% !important; height:100% !important; object-fit:cover; display:block; }
+.igf-cstage img, .igf-cstage video{ width:100%; height:100%; object-fit:cover; display:block; }
 .igf-cnav{ position:absolute; top:50%; transform:translateY(-50%); z-index:3; width:30px; height:30px; padding:0;
   display:flex; align-items:center; justify-content:center; border:0; border-radius:50%;
   background:rgba(0,0,0,.45); color:#fff; cursor:pointer; opacity:0; transition:opacity .15s ease; }
@@ -625,116 +800,27 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igf-cdot.on{ background:#fff; }
 .igf-ccount{ position:absolute; top:8px; right:8px; z-index:3; pointer-events:none;
   background:rgba(0,0,0,.55); color:#fff; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; }
-`);
-
-    /* ------------------------------------------------------------------ *
-     * CSS — v3.2 POLISH do mosaico: paleta própria (preto premium no escuro,
-     *   claro no light), micro-interações, densidade, estados. O tema real do
-     *   IG é detectado por LUMINÂNCIA do fundo em JS → html.igf-dark.
-     *   Bloco POSTERIOR ao CSS base → sobrepõe por ordem de origem.
-     * ------------------------------------------------------------------ */
-    addStyle(`
-/* paleta — escuro: card quase-preto (AMOLED) separado do fundo por hairline+sombra; texto bem claro */
-html.igf-dark{
-  --igf-card-bg:#0e0e10;
-  --igf-line: rgba(255,255,255,.10);
-  --igf-line-hov: rgba(255,255,255,.26);
-  --igf-hover-bg: rgba(255,255,255,.08);
-  --igf-text:#f4f4f5;
-  --igf-text-2:#b9b9c0;
-  --igf-shadow: 0 1px 2px rgba(0,0,0,.55);
-  --igf-shadow-hov: 0 18px 44px rgba(0,0,0,.64);
-  --igs-bg:#1c1c1e; --igs-fg:#f5f5f5; --igs-fg2:#dcdcdd; --igs-muted:#8e8e93; --igs-muted2:#6b6b70;
-  --igs-border:#363638; --igs-line:#2a2a2d; --igs-hover:#2c2c2e; --igs-input:#000; --igs-track:#48484a;
-  --igs-shadow:rgba(0,0,0,.6);
-}
-/* claro */
-html:not(.igf-dark){
-  --igf-card-bg:#ffffff;
-  --igf-line: rgba(0,0,0,.12);
-  --igf-line-hov: rgba(0,0,0,.26);
-  --igf-hover-bg: rgba(0,0,0,.05);
-  --igf-text:#0b0b0d;
-  --igf-text-2:#5b5b62;
-  --igf-shadow: 0 1px 2px rgba(0,0,0,.08);
-  --igf-shadow-hov: 0 16px 36px rgba(0,0,0,.18);
-  --igs-bg:#ffffff; --igs-fg:#0c1014; --igs-fg2:#262626; --igs-muted:#737373; --igs-muted2:#a8a8a8;
-  --igs-border:#dbdbdb; --igs-line:#efefef; --igs-hover:#f2f2f2; --igs-input:#efefef; --igs-track:#c7c7c7;
-  --igs-shadow:rgba(0,0,0,.16);
-}
-/* card: bg + borda da paleta + transições; sombra (resting + hover) só com a flag igf-shadow */
-.igf-card{ background:var(--igf-card-bg) !important; border-color:var(--igf-line) !important;
-  transition:transform .2s cubic-bezier(.2,.7,.3,1), box-shadow .2s ease, border-color .2s ease; }
-.igf-feed.igf-shadow .igf-card{ box-shadow:var(--igf-shadow); }
-.igf-feed.igf-shadow .igf-card:hover{ transform:translateY(-4px); box-shadow:var(--igf-shadow-hov); border-color:var(--igf-line-hov) !important; }
-.igf-feed:not(.igf-shadow) .igf-card:hover{ border-color:var(--igf-line-hov) !important; }
-/* texto legível (sobrepõe o cinza nativo do IG) */
-.igf-head b{ color:var(--igf-text) !important; }
-.igf-act{ color:var(--igf-text) !important; }
-/* legenda no texto PRIMÁRIO (era o cinza secundário — ficava apagada demais pra ler no mosaico) */
-.igf-cap{ color:var(--igf-text) !important; }
-.igf-cap b{ color:var(--igf-text) !important; }
-.igf-capmore{ color:var(--igf-text) !important; background:linear-gradient(90deg, rgba(0,0,0,0), var(--igf-card-bg) 34%) !important; }
-.igf-card.igf-capopen .igf-cap{ background:var(--igf-card-bg) !important; border-top-color:var(--igf-line) !important; }
-.igf-card.igf-capopen .igf-capmore{ background:var(--igf-card-bg) !important; }
-/* zoom leve da mídia no hover (a .igf-media tem overflow:hidden → clipa o zoom) */
-.igf-media > img, .igf-cstage img{ transition:transform .35s cubic-bezier(.2,.7,.3,1); }
-.igf-card:hover .igf-media > img, .igf-card:hover .igf-cstage img{ transform:scale(1.045); }
-/* hovers neutros */
-.igf-act:hover, .igf-follow:hover{ background:var(--igf-hover-bg) !important; }
-
-/* flags do painel: sombra / legenda / contadores */
-.igf-feed.igf-nocap .igf-capwrap{ display:none; }
-.igf-feed.igf-nocounts .igf-act > span{ display:none; }
-
-/* densidade COMPACTA (GAP cai via JS; aqui as faixas + fontes). As alturas são VARS: mudar aqui
-   exige mudar os mesmos números em cardHeightFor() no JS (a dica do content-visibility). */
-.igf-feed.igf-dense{ --igf-headh:42px; --igf-acth:34px; --igf-caph:22px; --igf-padb:7px; }   /* legenda = 5 + 1×17 */
-.igf-feed.igf-dense .igf-head{ padding:0 9px; }
-.igf-feed.igf-dense .igf-head img{ width:26px; height:26px; }
-.igf-feed.igf-dense .igf-actions{ padding:0 5px; }
-.igf-feed.igf-dense .igf-act{ padding:5px 6px; font-size:12px; }
-.igf-feed.igf-dense .igf-act svg{ width:20px; height:20px; }
-.igf-feed.igf-dense .igf-cap{ padding:5px 10px 0; font-size:13px; line-height:17px; }
-.igf-feed.igf-dense .igf-capmore{ font-size:12px; line-height:17px; padding:5px 10px 0 30px; }
-.igf-feed.igf-dense .igf-card{ border-radius:12px; }
-/* legenda off → a faixa some de vez (o JS zera --igf-caph no cálculo da altura) */
-.igf-feed.igf-nocap{ --igf-caph:0px; }
-
-/* skeleton: shimmer NEUTRO (visível em claro e escuro) */
-.igf-skel{ background:linear-gradient(100deg, rgba(128,128,128,.10) 30%, rgba(128,128,128,.22) 50%, rgba(128,128,128,.10) 70%); background-size:200% 100%; }
-
-/* stories: emoldura a tray como um card (alinha com a grade do mosaico) */
-.igm-stories{ background:var(--igf-card-bg); border:1px solid var(--igf-line); border-radius:14px; padding:12px 14px !important; margin-bottom:10px !important; box-sizing:border-box; }
-
-.igf-act.igf-busy{ opacity:.45; pointer-events:none; }   /* removendo dos salvos… */
-/* clique registrado, esperando o IG renderizar o post pra abrir a overlay (some sozinho ao abrir) */
-.igf-card.igf-opening{ cursor:progress; }
-.igf-card.igf-opening .igf-media::after{ content:""; position:absolute; inset:0; z-index:4; background:rgba(0,0,0,.35); }
 
 /* ===== SALVOS: toolbar de multisseleção + overlay/checkbox nos tiles ===== */
 .igf-savedbar{ display:flex; align-items:center; gap:10px; padding:4px 2px 12px; }
-/* LIGADA (seleção ou lote rodando) a barra GRUDA no topo: numa limpeza longa você rola metros de
-   grade, e ter que voltar ao topo pra clicar em "Remover" era o pior da experiência. */
+/* LIGADA (seleção ou lote rodando) a barra GRUDA no topo: numa limpeza longa não é preciso voltar ao topo. */
 .igf-savedbar.on{ position:sticky; top:0; z-index:60; margin-bottom:12px;
   padding:10px 14px; border-radius:12px;
-  background:var(--igf-card-bg, #111); border:1px solid var(--igf-line, rgba(255,255,255,.1));
-  box-shadow:0 10px 26px rgba(0,0,0,.5); backdrop-filter:saturate(1.2) blur(6px); }
+  background:var(--igf-card-bg); border:1px solid var(--igf-line);
+  box-shadow:var(--igf-shadow-pop); backdrop-filter:saturate(1.2) blur(6px); }
 .igf-sb-sp{ flex:1 1 auto; }
 .igf-sb-count{ font-size:13px; color:var(--igf-text-2); }
-/* progresso do lote: só existe enquanto remove, e mostra QUANTO falta (era um laço mudo) */
-.igf-sb-prog{ display:none; flex:2 1 220px; height:6px; border-radius:999px; overflow:hidden;
-  background:rgba(128,128,128,.28); }
+/* progresso do lote: só existe enquanto remove, e mostra QUANTO falta */
+.igf-sb-prog{ display:none; flex:2 1 220px; height:6px; border-radius:999px; overflow:hidden; background:rgba(128,128,128,.28); }
 .igf-savedbar.busy .igf-sb-prog{ display:block; }
-.igf-sb-progfill{ height:100%; width:0; border-radius:999px; transition:width .18s ease;
-  background:linear-gradient(90deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5); }
-.igf-sb-btn{ all:unset; cursor:pointer; padding:8px 15px; border-radius:9px; font:700 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:#fff; background:#0095f6; }
+.igf-sb-progfill{ height:100%; width:0; border-radius:999px; transition:width .18s ease; background:var(--igf-grad); }
+.igf-sb-btn{ all:unset; cursor:pointer; padding:8px 15px; border-radius:9px; font:700 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:#fff; background:var(--igf-accent); }
 .igf-sb-btn:hover{ filter:brightness(1.08); }
 .igf-sb-ghost{ background:transparent; color:var(--igf-text); border:1px solid var(--igf-line); }
-.igf-sb-danger{ background:#ed4956; }
+.igf-sb-danger{ background:var(--igf-danger); }
 .igf-sb-btn[disabled]{ opacity:.45; pointer-events:none; }
 /* visibilidade por modo: normal = só "Selecionar"; seleção = count + Todos/Cancelar/Mover/Remover;
-   lote rodando = só o progresso e "Parar" (nada de clicar em Remover duas vezes no meio) */
+   lote rodando = só o progresso e "Parar" */
 .igf-savedbar .igf-sb-ghost, .igf-savedbar .igf-sb-danger, .igf-savedbar .igf-sb-count{ display:none; }
 .igf-savedbar.on .igf-sb-sel{ display:none; }
 .igf-savedbar.on .igf-sb-ghost, .igf-savedbar.on .igf-sb-danger{ display:inline-block; }
@@ -743,110 +829,132 @@ html:not(.igf-dark){
 .igf-savedbar.busy .igf-sb-stop{ display:inline-block; }
 .igf-savedbar.busy .igf-sb-sel, .igf-savedbar.busy .igf-sb-all,
 .igf-savedbar.busy .igf-sb-cancel, .igf-savedbar.busy .igf-sb-coll, .igf-savedbar.busy .igf-sb-danger{ display:none; }
-/* REMOVIDO dos salvos: o card FICA no lugar (a grade não reflui no meio da limpeza), só apaga e
-   ganha o selo. Some de vez só no próximo carregamento da página. */
-.igf-card.igf-gone{ opacity:.32; filter:grayscale(.7); transition:opacity .25s ease, filter .25s ease; }
-.igf-card.igf-gone:hover{ opacity:.5; }
-.igf-card.igf-gone::before{ content:"removido"; position:absolute; z-index:7; top:10px; left:10px;
-  padding:3px 10px; border-radius:999px; pointer-events:none;
-  background:rgba(0,0,0,.78); color:#fff; font:700 11px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-.igf-card.igf-gone .igf-selovl{ display:none !important; }   /* não dá pra re-selecionar o que já saiu */
-/* falhou ao remover (API recusou): fica marcado em vermelho pra você ver o que sobrou */
-.igf-card.igf-failed{ outline:2px solid #ed4956; outline-offset:-2px; }
-.igf-card.igf-failed::before{ content:"falhou"; position:absolute; z-index:7; top:10px; left:10px;
-  padding:3px 10px; border-radius:999px; pointer-events:none;
-  background:#ed4956; color:#fff; font:700 11px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
 /* overlay de seleção: cobre o tile só no modo seleção (captura o clique → marca/desmarca) */
 .igf-selovl{ display:none; position:absolute; inset:0; z-index:6; cursor:pointer; transition:background .12s ease; }
 .igf-feed.igf-selecting .igf-card-saved .igf-selovl{ display:block; }
 .igf-feed.igf-selecting .igf-card-saved .igf-actions{ display:none; }   /* no modo seleção esconde a barra de ação */
-.igf-card.igf-sel .igf-selovl{ background:rgba(0,149,246,.22); }
-.igf-card.igf-sel{ outline:3px solid #0095f6; outline-offset:-3px; }
+.igf-card.igf-sel .igf-selovl{ background:var(--igf-accent-soft); }
+.igf-card.igf-sel{ outline:3px solid var(--igf-accent); outline-offset:-3px; }
 .igf-selcb{ position:absolute; top:10px; left:10px; width:24px; height:24px; border-radius:50%; border:2px solid #fff; background:rgba(0,0,0,.4); box-shadow:0 1px 5px rgba(0,0,0,.55); box-sizing:border-box; }
-.igf-card.igf-sel .igf-selcb{ background:#0095f6; }
+.igf-card.igf-sel .igf-selcb{ background:var(--igf-accent); }
 .igf-card.igf-sel .igf-selcb::after{ content:""; position:absolute; left:8px; top:4px; width:6px; height:11px; border:solid #fff; border-width:0 2.5px 2.5px 0; transform:rotate(45deg); }
-/* menu de coleções + toast */
-.igf-collmenu{ position:fixed; z-index:2147483647; min-width:220px; max-height:60vh; overflow-y:auto; padding:6px; background:var(--igs-bg); border:1px solid var(--igs-border); border-radius:12px; box-shadow:0 12px 34px var(--igs-shadow); }
-.igf-cm-head{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--igs-muted); padding:6px 10px 4px; }
-.igf-cm-item{ all:unset; cursor:pointer; display:block; width:100%; box-sizing:border-box; padding:9px 11px; border-radius:8px; color:var(--igs-fg); font:600 13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-.igf-cm-item:hover{ background:var(--igs-hover); }
-.igf-cm-new{ color:#0095f6; }
-.igf-toast{ position:fixed; left:50%; bottom:80px; transform:translateX(-50%) translateY(8px); z-index:2147483647; background:var(--igs-bg); color:var(--igs-fg); border:1px solid var(--igs-border); border-radius:999px; padding:9px 18px; font:13px -apple-system,sans-serif; box-shadow:0 6px 22px var(--igs-shadow); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
+/* REMOVIDO dos salvos: o card FICA no lugar (a grade não reflui no meio da limpeza), só apaga e ganha o selo */
+.igf-card.igf-gone{ opacity:.32; filter:grayscale(.7); transition:opacity .25s ease, filter .25s ease; }
+.igf-card.igf-gone:hover{ opacity:.5; }
+.igf-feed .igf-card.igf-gone .igf-selovl{ display:none; }   /* não dá pra re-selecionar o que já saiu */
+/* falhou ao remover (API recusou): fica marcado em vermelho pra você ver o que sobrou */
+.igf-card.igf-failed{ outline:2px solid var(--igf-danger); outline-offset:-2px; }
+.igf-card.igf-gone::before, .igf-card.igf-failed::before{ position:absolute; z-index:7; top:10px; left:10px;
+  padding:3px 10px; border-radius:999px; pointer-events:none; color:#fff;
+  font:700 11px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+.igf-card.igf-gone::before{ content:"removido"; background:rgba(0,0,0,.78); }
+.igf-card.igf-failed::before{ content:"falhou"; background:var(--igf-danger); }
+
+/* menu de coleções + toast (superfícies elevadas, mesma paleta do painel) */
+.igf-collmenu{ position:fixed; z-index:var(--igz-menu); min-width:220px; max-height:60vh; overflow-y:auto; padding:6px; background:var(--igf-elev); border:1px solid var(--igf-border); border-radius:12px; box-shadow:var(--igf-shadow-pop); }
+.igf-cm-head{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--igf-muted); padding:6px 10px 4px; }
+.igf-cm-item{ all:unset; cursor:pointer; display:block; width:100%; box-sizing:border-box; padding:9px 11px; border-radius:8px; color:var(--igf-text); font:600 13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+.igf-cm-item:hover{ background:var(--igf-hover-bg); }
+.igf-cm-new{ color:var(--igf-accent); }
+.igf-toast{ position:fixed; left:50%; bottom:80px; transform:translateX(-50%) translateY(8px); z-index:var(--igz-toast); background:var(--igf-elev); color:var(--igf-text); border:1px solid var(--igf-border); border-radius:999px; padding:9px 18px; font:13px -apple-system,sans-serif; box-shadow:var(--igf-shadow-pop); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
 .igf-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 `);
 
     /* ------------------------------------------------------------------ *
      * CSS — painel de ajustes flutuante (mesmo modelo do reddit/twitter,
-     *   prefixo igs-, accent azul do IG). FAB de engrenagem no canto.
+     *   prefixo igs-). FAB de engrenagem no canto. --k-* = aliases locais dos tokens.
      * ------------------------------------------------------------------ */
     addStyle(`
-#igs-fab{ position:fixed; right:18px; bottom:18px; z-index:2147483646; width:44px; height:44px;
-  display:flex; align-items:center; justify-content:center; background:var(--igs-bg); color:var(--igs-fg);
-  border:1px solid var(--igs-border); border-radius:50%; cursor:pointer; opacity:.72;
-  box-shadow:0 6px 20px var(--igs-shadow);
+#igs-fab, #igs-totop{ position:fixed; right:18px; z-index:var(--igz-fab);
+  display:flex; align-items:center; justify-content:center; background:var(--igf-elev); color:var(--igf-text);
+  border:1px solid var(--igf-border); border-radius:50%; cursor:pointer; opacity:.72;
+  box-shadow:0 6px 20px var(--igf-shade);
   transition:opacity .2s, color .15s, background .15s, border-color .15s, transform .2s; }
-#igs-fab:hover{ opacity:1; color:#fff; background:#0095f6; border-color:#0095f6; transform:rotate(30deg); }
+#igs-fab{ bottom:18px; width:44px; height:44px; }
+#igs-fab:hover{ opacity:1; color:#fff; background:var(--igf-accent); border-color:var(--igf-accent); transform:rotate(30deg); }
 #igs-fab svg{ width:21px; height:21px; fill:currentColor; display:block; }
-/* esconder o dock de mensagens */
-html.igf-no-msg .igf-msgdock{ display:none !important; }
 /* botão voltar-ao-topo: acima do FAB, aparece só ligado + rolado */
-#igs-totop{ position:fixed; right:18px; bottom:72px; z-index:2147483646; width:42px; height:42px;
-  display:none; align-items:center; justify-content:center; background:var(--igs-bg); color:var(--igs-fg);
-  border:1px solid var(--igs-border); border-radius:50%; cursor:pointer; opacity:.72; box-shadow:0 6px 20px var(--igs-shadow);
-  transition:opacity .2s, color .15s, background .15s, border-color .15s, transform .2s; }
-#igs-totop:hover{ opacity:1; color:#fff; background:#0095f6; border-color:#0095f6; transform:translateY(-2px); }
+#igs-totop{ bottom:72px; width:42px; height:42px; display:none; }
+#igs-totop:hover{ opacity:1; color:#fff; background:var(--igf-accent); border-color:var(--igf-accent); transform:translateY(-2px); }
 #igs-totop svg{ width:20px; height:20px; fill:currentColor; display:block; }
 html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
-#igs-panel{ position:fixed; right:18px; bottom:70px; z-index:2147483647; width:min(384px, calc(100vw - 36px)); max-height:min(88vh, calc(100vh - 88px));
-  display:none; flex-direction:column; overflow:hidden;
-  background:var(--igs-bg); color:var(--igs-fg); border:1px solid var(--igs-border); border-radius:18px; box-shadow:0 16px 50px var(--igs-shadow);
-  font:14px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; transform-origin:bottom right; }
-#igs-panel.open{ display:flex; animation:igs-pop .16s cubic-bezier(.2,.7,.3,1); }
-@keyframes igs-pop{ from{ opacity:0; transform:translateY(10px) scale(.97); } to{ opacity:1; transform:none; } }
-.igs-head{ display:flex; align-items:center; gap:10px; padding:14px 14px 12px; border-bottom:1px solid var(--igs-line); }
-.igs-logo{ width:28px; height:28px; border-radius:9px; background:#0095f6; display:flex; align-items:center; justify-content:center; flex:none; }
-.igs-logo svg{ width:17px; height:17px; fill:#fff; }
-.igs-head b{ font-size:16px; font-weight:800; flex:1; }
-.igs-x{ all:unset; cursor:pointer; color:var(--igs-muted); width:28px; height:28px; display:flex; align-items:center; justify-content:center; font-size:16px; border-radius:50%; transition:.15s; }
-.igs-x:hover{ color:var(--igs-fg); background:var(--igs-hover); }
-.igs-search{ padding:10px 14px; border-bottom:1px solid var(--igs-line); }
-.igs-search > div{ display:flex; align-items:center; gap:8px; background:var(--igs-input); border:1px solid var(--igs-border); border-radius:999px; padding:7px 12px; transition:border-color .15s; }
-.igs-search > div:focus-within{ border-color:#0095f6; }
-.igs-search svg{ width:16px; height:16px; fill:var(--igs-muted); flex:none; }
-.igs-search input{ all:unset; flex:1; color:var(--igs-fg); font:inherit; }
-.igs-search input::placeholder{ color:var(--igs-muted); }
-.igs-body{ display:flex; min-height:0; flex:1; }
-.igs-rail{ display:flex; flex-direction:column; gap:4px; padding:10px 8px; border-right:1px solid var(--igs-line); flex:none; }
-.igs-tab{ all:unset; box-sizing:border-box; width:40px; height:40px; border-radius:11px; display:flex; align-items:center; justify-content:center; color:var(--igs-muted); cursor:pointer; transition:background .15s,color .15s; }
-.igs-tab svg{ width:21px; height:21px; fill:currentColor; }
-.igs-tab:hover{ background:var(--igs-hover); color:var(--igs-fg); }
-.igs-tab.active{ background:rgba(0,149,246,.15); color:#0095f6; }
-.igs-content{ flex:1; min-width:0; overflow-y:auto; padding:6px 0 12px; scrollbar-width:thin; scrollbar-color:var(--igs-track) transparent; }
-.igs-content::-webkit-scrollbar{ width:8px; }
-.igs-content::-webkit-scrollbar-thumb{ background:var(--igs-track); border-radius:99px; border:2px solid var(--igs-bg); }
-.igs-sec{ display:none; }
-.igs-sec-title{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--igs-muted); padding:12px 16px 6px; }
-.igs-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 12px; cursor:pointer; border-radius:9px; margin:1px 6px; transition:background .12s; }
-.igs-row:hover{ background:var(--igs-hover); }
-.igs-rowlbl{ flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; }
-.igs-hint{ color:var(--igs-muted); font-size:11px; line-height:1.3; font-weight:400; }
-.igs-row select{ background:var(--igs-input); color:var(--igs-fg); border:1px solid var(--igs-border); border-radius:8px; padding:5px 8px; font:inherit; cursor:pointer; flex:0 0 auto; }
-.igs-row.dim, .igs-slider.dim{ opacity:.4; pointer-events:none; }
-.igs-sw{ position:relative; width:38px; height:22px; flex:none; }
-.igs-sw input{ position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; }
-.igs-sw i{ position:absolute; inset:0; border-radius:999px; background:var(--igs-track); transition:.18s; pointer-events:none; }
-.igs-sw i::after{ content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:.18s; box-shadow:0 1px 2px rgba(0,0,0,.4); }
-.igs-sw input:checked + i{ background:#0095f6; }
-.igs-sw input:checked + i::after{ transform:translateX(16px); }
-.igs-slider{ display:flex; flex-direction:column; gap:8px; padding:10px 12px; margin:1px 6px; }
-.igs-lab{ display:flex; justify-content:space-between; align-items:center; color:var(--igs-fg2); }
-.igs-lab .val{ color:#0095f6; font-weight:700; background:rgba(0,149,246,.12); border-radius:6px; padding:1px 8px; font-size:13px; min-width:38px; text-align:center; }
-.igs-slider input[type=range]{ width:100%; accent-color:#0095f6; cursor:pointer; }
-.igs-empty{ display:none; color:var(--igs-muted); text-align:center; padding:32px 16px; }
-.igs-foot{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-top:1px solid var(--igs-line); }
-.igs-ver{ color:var(--igs-muted2); font-size:12px; }
-.igs-reset{ all:unset; cursor:pointer; color:var(--igs-muted); font-size:13px; font-weight:600; padding:4px 8px; border-radius:7px; transition:.15s; }
-.igs-reset:hover{ color:#ff3040; background:rgba(255,48,64,.1); }
+/* esconder o dock de mensagens (nó DO IG) */
+html.igf-no-msg .igf-msgdock{ display:none !important; }
+/* ===== settings panel — fixed size, side tabs with labels, grouped cards ===== */
+#igs-panel {
+    --k-bg: var(--igf-elev); --k-fg: var(--igf-text); --k-muted: var(--igf-muted); --k-border: var(--igf-border);
+    --k-line: var(--igf-line); --k-hover: var(--igf-hover-bg); --k-input: var(--igf-input); --k-track: var(--igf-track);
+    --k-shadow: var(--igf-shade); --k-accent: var(--igf-accent); --k-accent-soft: var(--igf-accent-soft); --k-danger: var(--igf-danger);
+    --k-card: color-mix(in srgb, var(--k-fg) 4%, var(--k-bg));
+    position: fixed; right: 16px; bottom: 72px; z-index: var(--igz-panel);
+    /* tamanho FIXO: não muda conforme a aba, a busca ou a página */
+    width: min(600px, calc(100vw - 32px)); height: min(640px, calc(100vh - 96px));
+    display: none; flex-direction: column; overflow: hidden; box-sizing: border-box;
+    background: var(--k-bg); color: var(--k-fg); border: 1px solid var(--k-border);
+    border-radius: 20px; box-shadow: 0 24px 64px var(--k-shadow);
+    font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-transform: none; letter-spacing: normal; text-align: left;
+    transform-origin: bottom right;
+}
+#igs-panel.open { display: flex; animation: igs-pop .16s cubic-bezier(.2,.7,.3,1); }
+#igs-panel *, #igs-panel *::before, #igs-panel *::after { box-sizing: border-box; }
+@keyframes igs-pop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+.igs-head { display: flex; align-items: center; gap: 12px; padding: 16px 14px 12px 18px; }
+.igs-logo { width: 36px; height: 36px; border-radius: 11px; background: var(--k-accent); display: flex; align-items: center; justify-content: center; flex: none; }
+.igs-logo svg { width: 20px; height: 20px; fill: #fff; color: #fff; }
+.igs-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.igs-titles b { font-size: 16px; font-weight: 700; line-height: 20px; color: var(--k-fg); }
+.igs-titles small { font-size: 12px; line-height: 16px; color: var(--k-muted); }
+.igs-x { all: unset; box-sizing: border-box; cursor: pointer; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--k-muted); transition: background .15s, color .15s; }
+.igs-x svg { width: 20px; height: 20px; fill: currentColor; }
+.igs-x:hover { background: var(--k-hover); color: var(--k-fg); }
+.igs-search { padding: 0 16px 12px; border: 0; }
+.igs-search > div { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; border-radius: 12px; background: var(--k-input); border: 1px solid transparent; transition: border-color .15s, background .15s; }
+.igs-search > div:focus-within { border-color: var(--k-accent); background: var(--k-bg); }
+.igs-search svg { width: 17px; height: 17px; fill: var(--k-muted); color: var(--k-muted); flex: none; }
+.igs-search input { all: unset; flex: 1; min-width: 0; color: var(--k-fg); font: inherit; }
+.igs-search input::placeholder { color: var(--k-muted); }
+.igs-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 188px 1fr; border-top: 1px solid var(--k-line); }
+.igs-rail { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; border-right: 1px solid var(--k-line); overflow-y: auto; scrollbar-width: none; }
+.igs-tab { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 8px 10px; line-height: 1.25; border-radius: 10px; color: var(--k-muted); cursor: pointer; font-size: 13.5px; font-weight: 600; transition: background .15s, color .15s; }
+.igs-tab svg { width: 19px; height: 19px; fill: currentColor; flex: none; }
+.igs-tab span { min-width: 0; overflow-wrap: anywhere; }
+.igs-tab:hover { background: var(--k-hover); color: var(--k-fg); }
+.igs-tab.active { background: var(--k-accent-soft); color: var(--k-accent); }
+.igs-tab:focus-visible, .igs-x:focus-visible { outline: 2px solid var(--k-accent); outline-offset: 1px; }
+.igs-content { min-width: 0; overflow-y: auto; padding: 16px 16px 20px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--k-track) transparent; }
+.igs-content::-webkit-scrollbar { width: 8px; }
+.igs-content::-webkit-scrollbar-thumb { background: var(--k-track); border-radius: 99px; border: 2px solid var(--k-bg); }
+.igs-sec { display: none; margin-bottom: 24px; }
+.igs-sec-title { margin: 0 0 10px 2px; padding: 0; font-size: 17px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--k-fg); background: none; border: 0; }
+.igs-card { background: var(--k-card); border: 1px solid var(--k-line); border-radius: 14px; overflow: hidden; }
+.igs-card > * { margin: 0; border-radius: 0; }
+.igs-card > * + * { border-top: 1px solid var(--k-line); }
+.igs-empty { display: none; color: var(--k-muted); text-align: center; padding: 48px 16px; font-size: 14px; }
+.igs-foot { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--k-line); }
+.igs-foot small { flex: 1; text-align: right; color: var(--k-muted); font-size: 12px; }
+.igs-reset { all: unset; cursor: pointer; color: var(--k-muted); font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 10px; transition: background .15s, color .15s; }
+.igs-reset:hover { color: var(--k-danger); background: color-mix(in srgb, var(--k-danger) 10%, transparent); }
+@media (max-width: 560px) {
+    .igs-body { grid-template-columns: 56px 1fr; }
+    .igs-tab { justify-content: center; padding: 0; }
+    .igs-tab span { display: none; }
+}
+.igs-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 10px 14px; cursor: pointer; transition: background .12s; }
+.igs-row:hover { background: var(--k-hover); }
+.igs-rowlbl { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.igs-hint { color: var(--k-muted); font-size: 11px; line-height: 1.3; font-weight: 400; }
+.igs-row select { background: var(--k-input); color: var(--k-fg); border: 1px solid var(--k-border); border-radius: 8px; padding: 5px 8px; font: inherit; cursor: pointer; flex: 0 0 auto; }
+.igs-row.dim, .igs-slider.dim { opacity: .4; pointer-events: none; }
+.igs-sw { position: relative; width: 38px; height: 22px; flex: none; }
+.igs-sw input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.igs-sw i { position: absolute; inset: 0; border-radius: 999px; background: var(--k-track); transition: .18s; pointer-events: none; }
+.igs-sw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: .18s; box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+.igs-sw input:checked + i { background: var(--k-accent); }
+.igs-sw input:checked + i::after { transform: translateX(16px); }
+.igs-slider { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; }
+.igs-lab { display: flex; justify-content: space-between; align-items: center; color: var(--k-fg); }
+.igs-lab .val { color: var(--k-accent); font-weight: 700; background: var(--k-accent-soft); border-radius: 6px; padding: 1px 8px; font-size: 13px; min-width: 38px; text-align: center; }
+.igs-slider input[type=range] { width: 100%; accent-color: var(--k-accent); cursor: pointer; }
 `);
 
     /* ------------------------------------------------------------------ *
@@ -884,6 +992,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         if (video.closest && video.closest(".igf-src")) return;   // vídeo da lista nativa off-screen → só anexa quando eu mover pro card
         const host = findWrapper(video);
         if (!host) return;
+        if (host.classList.contains("igf-video")) { attachCard(video, host); return; }   // card nosso: barra ÚNICA compartilhada
 
         const story = isStory();
         if (story && !prefs.stories) { bound.add(video); return; }  // marca e ignora
@@ -900,24 +1009,25 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
 
         /* ---- DOM ---- */
         const buffered = el("div", { class: "igvc-buffered" });
-        const fill = el("div", { class: "igvc-fill" });
-        const thumb = el("div", { class: "igvc-thumb" });
-        const track = el("div", { class: "igvc-track", title: "" }, buffered, fill, thumb);
+        const grad = el("div", { class: "igvc-grad" });
+        const fill = el("div", { class: "igvc-fill" }, grad);
+        const thumbPos = el("div", { class: "igvc-thumbpos" }, el("div", { class: "igvc-thumb" }));
+        const track = el("div", { class: "igvc-track", title: "" }, el("div", { class: "igvc-rail" }, buffered, fill), thumbPos);
 
-        const playBtn = el("button", { class: "igvc-btn", "aria-label": "Play/Pause", html: ICONS.play });
+        const playBtn = el("button", { class: "igvc-btn", "aria-label": "Play/Pause", icon: ICONS.play });
         const time = el("span", { class: "igvc-time" }, "0:00");
 
         const speedBtn = el("button", { class: "igvc-btn igvc-speed", "aria-label": "Velocidade" }, speedLabel(prefs.speed));
         const speedPop = el("div", { class: "igvc-pop igvc-pop-speed" });
 
         // botão de som SEMPRE visível no canto (o mute/desmute não fica mais só na fileira do hover)
-        const soundBtn = el("button", { class: "igvc-sound", type: "button", "aria-label": "Ativar/desativar som", html: ICONS.volHigh });
-        const muteBtn = el("button", { class: "igvc-btn", "aria-label": "Mudo", html: ICONS.volHigh });
+        const soundBtn = el("button", { class: "igvc-sound", type: "button", "aria-label": "Ativar/desativar som", icon: ICONS.volHigh });
+        const muteBtn = el("button", { class: "igvc-btn", "aria-label": "Mudo", icon: ICONS.volHigh });
         const range = el("input", { class: "igvc-range", type: "range", min: "0", max: "1", step: "0.01", value: String(prefs.volume), "aria-label": "Volume" });
         const volGroup = el("div", { class: "igvc-vol" }, muteBtn, range);
 
-        const pipBtn = el("button", { class: "igvc-btn", "aria-label": "Picture-in-Picture", html: ICONS.pip });
-        const fsBtn = el("button", { class: "igvc-btn", "aria-label": "Tela cheia", html: ICONS.fs });
+        const pipBtn = el("button", { class: "igvc-btn", "aria-label": "Picture-in-Picture", icon: ICONS.pip });
+        const fsBtn = el("button", { class: "igvc-btn", "aria-label": "Tela cheia", icon: ICONS.fs });
         // (config/ajustes saíram do player → painel flutuante único, ver buildPanel)
 
         const row = el("div", { class: "igvc-row" },
@@ -925,7 +1035,9 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             speedBtn, volGroup, pipBtn, fsBtn, speedPop);
 
         // story: SÓ a barra de progresso (track). feed/reels: track + fileira + botão de som. (el ignora kid null)
-        const bar = el("div", { class: "igvc-bar" + (story ? " igvc-story" : "") }, track, story ? null : row, story ? null : soundBtn);
+        // nos CARDS nossos o som fica só no volume da fileira (o mudo lembrado — feedMuted — segue por ele)
+        const cardHost = host.classList.contains("igf-video");
+        const bar = el("div", { class: "igvc-bar" + (story ? " igvc-story" : "") }, track, story ? null : row, (story || cardHost) ? null : soundBtn);
 
         // Onde montar a barra:
         //  • feed: dentro do host (acompanha o vídeo).
@@ -964,14 +1076,12 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         // LINK, com a imagem do post como ghost ("puxa a imagem de trás"). O dragstart
         // dispara no <a> (ancestral), não no controle — então marco o press na barra e
         // cancelo o dragstart no document (capture) enquanto durar.
-        let pressing = false;
-        on(bar, "pointerdown", (e) => { pressing = true; e.stopPropagation(); });
-        on(document, "pointerup", () => { pressing = false; });
-        on(document, "pointercancel", () => { pressing = false; });
-        on(document, "dragstart", (e) => { if (pressing) e.preventDefault(); }, { capture: true });
+        // (o press e o dragstart moram nos listeners COMPARTILHADOS do document — ver bindPlayerShared)
+        on(bar, "pointerdown", (e) => { playerShared.pressing = true; e.stopPropagation(); });
 
-        const controller = { video, host, bar, destroy };
+        const controller = { video, host, bar, destroy, closePops: () => closePops(), syncFs: () => syncFs(), endVolDrag: () => endVolDrag() };
         controllers.set(video, controller);
+        bindPlayerShared();
 
         // stories: se o card/rodapé ainda não montou, tenta de novo e RELOCA a barra
         // do host pro card (+ religa o hover no card).
@@ -1000,29 +1110,35 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         sig.addEventListener("abort", () => { clearTimeout(t1); clearTimeout(t2); });
 
         /* ---- progresso / tempo ---- */
-        let dragging = false;
+        let dragging = false, lastPc = -1;
+        function setProgress(f) {                 // só transform: o compositor anda a barra, sem layout
+            const pc = Math.round(clamp(f, 0, 1) * 1000) / 10;   // 0.1% de resolução → pula escrita idêntica
+            if (pc === lastPc) return;
+            lastPc = pc;
+            fill.style.transform = "translateX(" + (pc - 100) + "%)";
+            grad.style.transform = "translateX(" + (100 - pc) + "%)";
+            thumbPos.style.transform = "translateX(" + pc + "%)";
+        }
         function renderTime() {
             if (dragging) return;
             const d = video.duration;
-            if (!isFinite(d) || d <= 0) { fill.style.width = "0%"; thumb.style.left = "0%"; if (time.textContent) time.textContent = ""; return; }
-            const pc = clamp(video.currentTime / d, 0, 1) * 100;
-            fill.style.width = pc + "%";
-            thumb.style.left = pc + "%";
+            if (!isFinite(d) || d <= 0) { setProgress(0); if (time.textContent) time.textContent = ""; return; }
+            setProgress(video.currentTime / d);
             const tt = fmt(video.currentTime) + " / " + fmt(d);   // guard "mudou?" (mesmo padrão do setVolIcon): timeupdate é ~4Hz, o texto só muda 1×/s
             if (time.textContent !== tt) time.textContent = tt;
         }
         function renderBuffered() {
             try {
                 const b = video.buffered, d = video.duration;
-                if (b && b.length && isFinite(d) && d > 0) buffered.style.width = clamp(b.end(b.length - 1) / d, 0, 1) * 100 + "%";
+                if (b && b.length && isFinite(d) && d > 0) buffered.style.transform = "scaleX(" + clamp(b.end(b.length - 1) / d, 0, 1).toFixed(3) + ")";
             } catch { /**/ }
         }
-        let dragRect = null;   // rect do track cacheado no pointerdown (não muda no meio do drag) — getBoundingClientRect por pointermove forçava layout (os writes de fill/thumb sujam o layout entre moves)
+        let dragRect = null;   // rect do track cacheado no pointerdown (não muda no meio do drag) — sem getBoundingClientRect por pointermove
         const fracAt = (clientX) => { const r = dragRect || track.getBoundingClientRect(); return r.width ? clamp((clientX - r.left) / r.width, 0, 1) : 0; };
         function seekTo(f) {
             const d = video.duration;
             if (isFinite(d) && d > 0) video.currentTime = f * d;
-            fill.style.width = f * 100 + "%"; thumb.style.left = f * 100 + "%";
+            setProgress(f);
         }
         on(track, "pointerdown", (e) => { e.preventDefault(); dragging = true; dragRect = track.getBoundingClientRect(); try { track.setPointerCapture(e.pointerId); } catch { /**/ } seekTo(fracAt(e.clientX)); });
         on(track, "pointermove", (e) => { if (dragging) seekTo(fracAt(e.clientX)); });
@@ -1036,7 +1152,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         on(video, "loadedmetadata", () => { renderTime(); renderBuffered(); });
 
         /* ---- play / pause ---- */
-        function setPlayIcon() { playBtn.innerHTML = video.paused ? ICONS.play : ICONS.pause; }
+        function setPlayIcon() { setIcon(playBtn, video.paused ? ICONS.play : ICONS.pause); }
         on(playBtn, "click", () => { if (video.paused) video.play().catch(() => { }); else video.pause(); });
         on(video, "play", setPlayIcon);
         on(video, "pause", setPlayIcon);
@@ -1050,8 +1166,8 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             const want = (video.muted || video.volume === 0) ? "mute" : (video.volume < 0.5 ? "low" : "high");
             if (want !== lastVolIcon) {
                 const svg = want === "mute" ? ICONS.volMute : want === "low" ? ICONS.volLow : ICONS.volHigh;
-                muteBtn.innerHTML = svg;
-                soundBtn.innerHTML = svg;
+                setIcon(muteBtn, svg);
+                setIcon(soundBtn, svg);
                 soundBtn.classList.toggle("igvc-muted", want === "mute");
                 soundBtn.title = want === "mute" ? "Ativar som" : "Silenciar";
                 lastVolIcon = want;
@@ -1078,8 +1194,8 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         // gesto e o arraste "cai" na imagem do post atrás (drag nativo da <img>).
         on(volGroup, "mouseenter", () => volGroup.classList.add("igvc-vol-open"));
         on(volGroup, "mouseleave", () => { if (!volDragging) volGroup.classList.remove("igvc-vol-open"); });
-        on(range, "pointerdown", () => { volDragging = true; volGroup.classList.add("igvc-vol-open"); });
-        on(document, "pointerup", () => { if (volDragging) { volDragging = false; if (!isHover(volGroup)) volGroup.classList.remove("igvc-vol-open"); } });
+        on(range, "pointerdown", () => { volDragging = true; playerShared.volDrag = controller; volGroup.classList.add("igvc-vol-open"); });
+        function endVolDrag() { if (volDragging) { volDragging = false; if (!isHover(volGroup)) volGroup.classList.remove("igvc-vol-open"); } }
         on(video, "volumechange", () => {
             setVolIcon();
             if (video._igvcSettled && !video.muted && video.volume > 0) { prefs.volume = video.volume; savePrefsSoon(); }
@@ -1092,12 +1208,9 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             speedBtn.textContent = speedLabel(r);
             for (const b of speedPop.children) b.classList.toggle("igvc-on", parseFloat(b.dataset.r) === r);
         }
-        for (const r of SPEEDS) {
-            const b = el("button", { "data-r": String(r) }, speedLabel(r));
-            b.addEventListener("click", () => { setSpeed(r); closePops(); });
-            speedPop.appendChild(b);
-        }
-        on(speedBtn, "click", () => { const open = speedPop.classList.contains("igvc-open"); closePops(); if (!open) speedPop.classList.add("igvc-open"); });
+        for (const r of SPEEDS) speedPop.appendChild(el("button", { "data-r": String(r) }, speedLabel(r)));
+        on(speedPop, "click", (e) => { const b = e.target.closest && e.target.closest("button[data-r]"); if (b) { setSpeed(parseFloat(b.dataset.r)); closePops(); } });
+        on(speedBtn, "click", () => { const open = speedPop.classList.contains("igvc-open"); closePops(); if (!open) { speedPop.classList.add("igvc-open"); playerShared.openPop = controller; } });
         on(video, "ratechange", () => { speedBtn.textContent = speedLabel(video.playbackRate); });
 
         /* ---- PiP ---- */
@@ -1110,15 +1223,15 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
 
         /* ---- fullscreen (no host, pra barra continuar visível) ---- */
         on(fsBtn, "click", () => { toggleFullscreen(host, video); });
-        on(document, "fullscreenchange", () => {
+        function syncFs() {                       // chamado pelo listener compartilhado de fullscreenchange
             const fs = document.fullscreenElement === host;
+            if (fs === host.classList.contains("igvc-fs")) return;
             host.classList.toggle("igvc-fs", fs);
-            fsBtn.innerHTML = fs ? ICONS.fsExit : ICONS.fs;
-        });
+            setIcon(fsBtn, fs ? ICONS.fsExit : ICONS.fs);
+        }
 
         /* ---- popovers (só velocidade; ajustes ficam no painel flutuante) ---- */
-        function closePops() { speedPop.classList.remove("igvc-open"); }
-        on(document, "click", (e) => { if (!bar.contains(e.target)) closePops(); }, { capture: true });
+        function closePops() { speedPop.classList.remove("igvc-open"); if (playerShared.openPop === controller) playerShared.openPop = null; }
 
         /* ---- show/hide da fileira (hover) ---- */
         let hideTimer = 0;
@@ -1148,12 +1261,232 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
 
         function destroy() {
             ac.abort();
+            if (playerShared.openPop === controller) playerShared.openPop = null;
+            if (playerShared.volDrag === controller) playerShared.volDrag = null;
             bar.remove();
             host.classList.remove("igvc-host", "igvc-show", "igvc-fs");
             live.delete(video);
             controllers.delete(video);
             bound.delete(video);
         }
+    }
+
+    /* PLAYER DOS CARDS — UMA barra só, reaproveitada. Antes cada <video> de card (inclusive os
+     * aquecidos no hover, até KEEP_ALIVE deles) ganhava a barra inteira: ~25 nós + ~30 listeners.
+     * Agora o card ocioso tem só vídeo/poster + o ▶; a barra mora no card ATIVO (playCard) e é
+     * religada ao <video> dele (bindCardBar) — os listeners do vídeo vivem num AbortController
+     * por ligação, os dos controles são da barra e leem cardBar.video na hora.
+     * Progresso só por transform; o rect da trilha é lido 1× por arraste (pointerdown). */
+    let cardBar = null;
+    function attachCard(video, host) {
+        bound.add(video);
+        live.add(video);
+        host.classList.add("igvc-host");
+        try { video.playbackRate = prefs.speed; } catch (_) { /**/ }
+        const c = {
+            video, host, bar: null,
+            closePops: () => { if (cardBar) cardBar.closePops(); },
+            syncFs: () => {
+                const fs = document.fullscreenElement === host;
+                host.classList.toggle("igvc-fs", fs);
+                if (cardBar && cardBar.video === video) setIcon(cardBar.fsBtn, fs ? ICONS.fsExit : ICONS.fs);
+            },
+            endVolDrag: () => { if (cardBar) cardBar.endVolDrag(); },
+            destroy: () => {
+                if (cardBar && cardBar.video === video) unbindCardBar();
+                host.classList.remove("igvc-host", "igvc-fs", "igf-buffering");
+                live.delete(video); controllers.delete(video); bound.delete(video);
+            },
+        };
+        controllers.set(video, c);
+        bindPlayerShared();
+        syncCardBar();
+    }
+    // a barra segue o card ativo: liga no vídeo dele, ou sai de cena quando não há (ou ele foi devolvido)
+    function syncCardBar() {
+        const v = cardVideo(playCard);
+        if (v && controllers.has(v) && controllers.get(v).host.classList.contains("igf-video")) bindCardBar(v);
+        else unbindCardBar();
+    }
+    function buildCardBar() {
+        const buffered = el("div", { class: "igvc-buffered" });
+        const grad = el("div", { class: "igvc-grad" });
+        const fill = el("div", { class: "igvc-fill" }, grad);
+        const thumbPos = el("div", { class: "igvc-thumbpos" }, el("div", { class: "igvc-thumb" }));
+        const track = el("div", { class: "igvc-track" }, el("div", { class: "igvc-rail" }, buffered, fill), thumbPos);
+        const playBtn = el("button", { class: "igvc-btn", type: "button", "aria-label": "Play/Pause", icon: ICONS.play });
+        const time = el("span", { class: "igvc-time" }, "");
+        const speedBtn = el("button", { class: "igvc-btn igvc-speed", type: "button", "aria-label": "Velocidade" }, speedLabel(prefs.speed));
+        const speedPop = el("div", { class: "igvc-pop igvc-pop-speed" });
+        const muteBtn = el("button", { class: "igvc-btn", type: "button", "aria-label": "Mudo", icon: ICONS.volHigh });
+        const range = el("input", { class: "igvc-range", type: "range", min: "0", max: "1", step: "0.01", value: String(prefs.volume), "aria-label": "Volume" });
+        const volGroup = el("div", { class: "igvc-vol" }, muteBtn, range);
+        const pipBtn = el("button", { class: "igvc-btn", type: "button", "aria-label": "Picture-in-Picture", icon: ICONS.pip });
+        const fsBtn = el("button", { class: "igvc-btn", type: "button", "aria-label": "Tela cheia", icon: ICONS.fs });
+        const row = el("div", { class: "igvc-row" }, playBtn, time, el("span", { class: "igvc-spacer" }), speedBtn, volGroup, pipBtn, fsBtn, speedPop);
+        const bar = el("div", { class: "igvc-bar igvc-card" }, track, row);
+        const cb = { bar, fsBtn, video: null, host: null, ac: null, closePops, endVolDrag };
+        const V = () => cb.video;
+
+        let lastPc = -1, dragging = false, dragRect = null, volDragging = false, lastVolIcon = "", hideTimer = 0;
+        function setProgress(f) {
+            const pc = Math.round(clamp(f, 0, 1) * 1000) / 10;
+            if (pc === lastPc) return;
+            lastPc = pc;
+            fill.style.transform = "translateX(" + (pc - 100) + "%)";
+            grad.style.transform = "translateX(" + (100 - pc) + "%)";
+            thumbPos.style.transform = "translateX(" + pc + "%)";
+        }
+        function renderTime() {
+            const v = V(); if (!v || dragging) return;
+            const d = v.duration;
+            if (!isFinite(d) || d <= 0) { setProgress(0); if (time.textContent) time.textContent = ""; return; }
+            setProgress(v.currentTime / d);
+            const tt = fmt(v.currentTime) + " / " + fmt(d);
+            if (time.textContent !== tt) time.textContent = tt;
+        }
+        function renderBuffered() {
+            const v = V(); if (!v) return;
+            try {
+                const b = v.buffered, d = v.duration;
+                buffered.style.transform = "scaleX(" + ((b && b.length && isFinite(d) && d > 0) ? clamp(b.end(b.length - 1) / d, 0, 1).toFixed(3) : 0) + ")";
+            } catch (_) { /**/ }
+        }
+        const fracAt = (x) => { const r = dragRect; return r && r.width ? clamp((x - r.left) / r.width, 0, 1) : 0; };
+        function seekTo(f) { const v = V(); if (!v) return; const d = v.duration; if (isFinite(d) && d > 0) v.currentTime = f * d; setProgress(f); }
+        track.addEventListener("pointerdown", (e) => { e.preventDefault(); dragging = true; dragRect = track.getBoundingClientRect(); try { track.setPointerCapture(e.pointerId); } catch (_) { /**/ } seekTo(fracAt(e.clientX)); });
+        track.addEventListener("pointermove", (e) => { if (dragging) seekTo(fracAt(e.clientX)); });
+        const endDrag = () => { dragging = false; dragRect = null; };
+        track.addEventListener("pointerup", endDrag);
+        track.addEventListener("pointercancel", endDrag);
+        track.addEventListener("wheel", (e) => { const v = V(); if (!v) return; e.preventDefault(); const d = v.duration; if (isFinite(d)) v.currentTime = clamp(v.currentTime + (e.deltaY < 0 ? 2 : -2), 0, d); }, { passive: false });
+
+        function setPlayIcon() { const v = V(); setIcon(playBtn, !v || v.paused ? ICONS.play : ICONS.pause); }
+        playBtn.addEventListener("click", () => { const v = V(); if (!v) return; if (v.paused) v.play().catch(() => { /**/ }); else v.pause(); });
+
+        function setVolIcon() {
+            const v = V(); if (!v) return;
+            const want = (v.muted || v.volume === 0) ? "mute" : (v.volume < 0.5 ? "low" : "high");
+            if (want !== lastVolIcon) { setIcon(muteBtn, want === "mute" ? ICONS.volMute : want === "low" ? ICONS.volLow : ICONS.volHigh); lastVolIcon = want; }
+            const rv = String(v.muted ? 0 : v.volume);
+            if (range.value !== rv && !volDragging && document.activeElement !== range) range.value = rv;
+        }
+        muteBtn.addEventListener("click", () => {
+            const v = V(); if (!v) return;
+            const m = !(v.muted || v.volume === 0);
+            v.muted = m; v._igvcMuteIntent = m;
+            if (!m && v.volume === 0) v.volume = prefs.volume || 0.5;
+            if (!m && v.paused) { try { const pr = v.play(); if (pr && pr.catch) pr.catch(() => { /**/ }); } catch (_) { /**/ } }   // desmutar parado = tocar
+            setVolIcon();
+        });
+        range.addEventListener("input", () => {
+            const v = V(); if (!v) return;
+            const x = parseFloat(range.value);
+            v.volume = x; v.muted = x === 0; v._igvcMuteIntent = x === 0;
+            prefs.volume = x; savePrefsSoon(); setVolIcon();
+        });
+        volGroup.addEventListener("mouseenter", () => volGroup.classList.add("igvc-vol-open"));
+        volGroup.addEventListener("mouseleave", () => { if (!volDragging) volGroup.classList.remove("igvc-vol-open"); });
+        range.addEventListener("pointerdown", () => { volDragging = true; playerShared.volDrag = cb; volGroup.classList.add("igvc-vol-open"); });
+        function endVolDrag() { if (volDragging) { volDragging = false; if (!isHover(volGroup)) volGroup.classList.remove("igvc-vol-open"); } }
+
+        function setSpeed(r) {
+            const v = V(); if (v) v.playbackRate = r;
+            prefs.speed = r; savePrefsSoon();
+            speedBtn.textContent = speedLabel(r);
+            for (const b of speedPop.children) b.classList.toggle("igvc-on", parseFloat(b.dataset.r) === r);
+        }
+        for (const r of SPEEDS) speedPop.appendChild(el("button", { type: "button", "data-r": String(r) }, speedLabel(r)));
+        speedPop.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest("button[data-r]"); if (b) { setSpeed(parseFloat(b.dataset.r)); closePops(); } });
+        speedBtn.addEventListener("click", () => { const open = speedPop.classList.contains("igvc-open"); closePops(); if (!open) { speedPop.classList.add("igvc-open"); playerShared.openPop = cb; } });
+        function closePops() { speedPop.classList.remove("igvc-open"); if (playerShared.openPop === cb) playerShared.openPop = null; }
+
+        pipBtn.addEventListener("click", async () => {
+            const v = V(); if (!v) return;
+            try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else if (v.requestPictureInPicture) await v.requestPictureInPicture(); } catch (_) { /**/ }
+        });
+        fsBtn.addEventListener("click", () => { if (cb.host && cb.video) toggleFullscreen(cb.host, cb.video); });
+
+        // guarda: clique na barra não vira toque/pausa do card nem navegação
+        bar.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
+        bar.addEventListener("mousedown", (e) => e.stopPropagation());
+        bar.addEventListener("pointerdown", (e) => { playerShared.pressing = true; e.stopPropagation(); });
+
+        const popsOpen = () => speedPop.classList.contains("igvc-open");
+        function show() {
+            bar.classList.add("igvc-show");
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => { if (!isHover(bar) && !popsOpen()) bar.classList.remove("igvc-show"); }, HIDE_DELAY);
+        }
+        function hide() { clearTimeout(hideTimer); if (!popsOpen()) bar.classList.remove("igvc-show"); }
+
+        cb.bind = (v, host) => {
+            cb.video = v; cb.host = host; cb.ac = new AbortController();
+            const o = { signal: cb.ac.signal };
+            v.addEventListener("timeupdate", renderTime, o);
+            v.addEventListener("durationchange", renderTime, o);
+            v.addEventListener("seeked", renderTime, o);
+            v.addEventListener("progress", renderBuffered, o);
+            v.addEventListener("loadedmetadata", () => { renderTime(); renderBuffered(); }, o);
+            v.addEventListener("play", setPlayIcon, o);
+            v.addEventListener("pause", setPlayIcon, o);
+            v.addEventListener("ratechange", () => { speedBtn.textContent = speedLabel(v.playbackRate); }, o);
+            v.addEventListener("volumechange", () => {
+                setVolIcon();
+                if (!v._igfPreviewPlay && !v._igfAutoMute && !v.muted && v.volume > 0 && v.volume !== prefs.volume) { prefs.volume = v.volume; savePrefsSoon(); }
+            }, o);
+            // buffering no meio do play → spinner (o 1º frame já tem o .igf-loading do activateVideo)
+            v.addEventListener("waiting", () => host.classList.add("igf-buffering"), o);
+            for (const ev of ["playing", "canplay", "pause", "emptied"]) v.addEventListener(ev, () => host.classList.remove("igf-buffering"), o);
+            host.addEventListener("mousemove", show, Object.assign({ capture: true }, o));
+            host.addEventListener("mouseleave", hide, o);
+            host.appendChild(bar);
+            lastPc = -1; lastVolIcon = "";
+            speedBtn.textContent = speedLabel(v.playbackRate || prefs.speed);
+            setPlayIcon(); setVolIcon(); renderTime(); renderBuffered();
+            setIcon(fsBtn, document.fullscreenElement === host ? ICONS.fsExit : ICONS.fs);
+        };
+        cb.unbind = () => {
+            if (cb.ac) cb.ac.abort();
+            if (cb.host) cb.host.classList.remove("igf-buffering");
+            cb.ac = null; cb.video = null; cb.host = null;
+            closePops(); endDrag(); clearTimeout(hideTimer);
+            bar.classList.remove("igvc-show");
+            bar.remove();
+        };
+        return cb;
+    }
+    function bindCardBar(v) {
+        if (!cardBar) cardBar = buildCardBar();
+        const host = controllers.get(v).host;
+        if (cardBar.video === v && cardBar.bar.parentElement === host) return;
+        cardBar.unbind();
+        cardBar.bind(v, host);
+    }
+    function unbindCardBar() { if (cardBar && cardBar.video) cardBar.unbind(); }
+
+    /* Listeners de DOCUMENT do player — UM conjunto para todos os vídeos (antes eram 6 por vídeo:
+     * pointerup ×2, pointercancel, dragstart, fullscreenchange, click). O estado por vídeo fica no
+     * controller; aqui só o "quem está com o popover aberto / arrastando o volume".
+     *   • dragstart: o player vive DENTRO do <a href="/reels/..."> e anchors são draggable — arrastar um
+     *     controle arrastaria o LINK (com a imagem do post de ghost). Cancelo enquanto há press na barra. */
+    const playerShared = { bound: false, pressing: false, openPop: null, volDrag: null };
+    function bindPlayerShared() {
+        if (playerShared.bound) return;
+        playerShared.bound = true;
+        const endPress = () => {
+            playerShared.pressing = false;
+            const c = playerShared.volDrag; playerShared.volDrag = null;
+            if (c) c.endVolDrag();
+        };
+        document.addEventListener("pointerup", endPress);
+        document.addEventListener("pointercancel", endPress);
+        document.addEventListener("dragstart", (e) => { if (playerShared.pressing) e.preventDefault(); }, true);
+        document.addEventListener("click", (e) => {
+            const c = playerShared.openPop;
+            if (c && !c.bar.contains(e.target)) c.closePops();
+        }, true);
+        document.addEventListener("fullscreenchange", () => { for (const v of live) { const c = controllers.get(v); if (c) c.syncFs(); } });
     }
 
     /* ------------------------------------------------------------------ *
@@ -1172,6 +1505,13 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
      * Teclado — age no vídeo mais centralizado e visível
      * ------------------------------------------------------------------ */
     function activeVideo() {
+        // o vídeo de card que o usuário pôs pra tocar manda (mesmo pausado), enquanto estiver à vista
+        const pv = cardVideo(playCard);
+        if (pv && pv.isConnected) {
+            const r = pv.getBoundingClientRect();
+            const vis = r.height ? (Math.min(r.bottom, innerHeight) - Math.max(r.top, 0)) / r.height : 0;
+            if (vis >= VIS_MIN) return pv;
+        }
         let best = null, bestD = Infinity;
         const cy = innerHeight / 2;
         for (const v of document.querySelectorAll("video")) {
@@ -1298,42 +1638,60 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     const keyOf = (node) => surface === "home" ? postKey(node) : tileKey(node);
 
     function feedArticleList() {
-        // The home can start from one article; other surfaces still require two siblings.
+        // A lista = o pai que segura MAIS <article> (não o pai do 1º: um post solto fora da lista enganava).
+        // A home pode começar com um só; as outras superfícies exigem dois irmãos.
         const arts = document.querySelectorAll("main article");
         const minArticles = isHome() ? 1 : 2;
         if (arts.length < minArticles) return null;
-        const p = arts[0].parentElement;
-        let n = 0;
-        for (const a of arts) if (a.parentElement === p) n++;
-        return n >= minArticles ? p : null;
+        const count = new Map();
+        let best = null, bestN = 0;
+        for (const a of arts) {
+            const p = a.parentElement, n = (count.get(p) || 0) + 1;
+            count.set(p, n);
+            if (n > bestN) { bestN = n; best = p; }
+        }
+        return bestN >= minArticles ? best : null;
     }
 
-    // coluna do feed + a(s) rail(s) irmã(s). A coluna = filho direto da "row" de
-    // 2 colunas. Ancoro no cap inline de 630px (constante de layout do IG); a
-    // stories-tray mora DENTRO do cap630, então nunca é confundida com rail.
-    // Fallback (se o 630 sumir): o split de 2 colunas mais EXTERNO antes do <main>.
+    // coluna do feed + a(s) rail(s) irmã(s). ESTRUTURA primeiro: a coluna = o ancestral mais EXTERNO
+    // (abaixo do <main>) que tem um irmão À DIREITA dele — a rail. O teste geométrico é o que separa a
+    // rail da tray de stories (que mora ACIMA da lista, dentro da coluna) e de qualquer bloco acima/abaixo.
+    // Uma rail que nós mesmos já escondemos (.igm-norail, sem caixa) conta. Só roda na montagem (rota).
+    // Fallback: o cap inline de 630px que o IG usa hoje na coluna (constante de layout, frágil por natureza).
     function feedColumnSplit(list) {
-        let col = null;
-        for (let n = list.parentElement; n && n.tagName !== "MAIN" && n !== document.body; n = n.parentElement) {
-            if (/max-width\s*:\s*630px/.test(n.getAttribute("style") || "")) { col = n; break; }
+        let col = null, rails = null;
+        for (let c = list.parentElement; c && c.parentElement; c = c.parentElement) {
+            const row = c.parentElement;
+            if (row.tagName === "MAIN" || row === document.body) break;
+            const sibs = [...row.children].filter((k) => k !== c && !k.contains(list));
+            if (!sibs.length) continue;
+            const cr = c.getBoundingClientRect();
+            const right = sibs.filter((k) => {
+                if (k.classList.contains("igm-norail")) return true;
+                const r = k.getBoundingClientRect();
+                return r.width > 0 && r.left >= cr.right - 2;
+            });
+            if (right.length) { col = c; rails = right; }   // mantém o mais externo
         }
         if (!col) {
-            for (let c = list.parentElement; c && c.parentElement; c = c.parentElement) {
-                const row = c.parentElement;
-                if (row.tagName === "MAIN" || row === document.body) break;
-                const kids = [...row.children].filter((k) => k.nodeType === 1);
-                if (kids.length >= 2 && kids.some((k) => k !== c && !k.contains(list))) col = c; // mantém o mais externo
+            for (let n = list.parentElement; n && n.tagName !== "MAIN" && n !== document.body; n = n.parentElement) {
+                if (/max-width\s*:\s*630px/.test(n.getAttribute("style") || "")) { col = n; break; }
             }
+            if (!col || !col.parentElement) return null;
+            rails = [...col.parentElement.children].filter((k) => k.nodeType === 1 && k !== col && !k.contains(list));
         }
-        if (!col || !col.parentElement) return null;
-        const rails = [...col.parentElement.children].filter((k) => k.nodeType === 1 && k !== col && !k.contains(list));
         return { col, rails };
     }
 
     // caixa de largura do nav esquerdo: ancestral (com width px + transition) dos
     // links de nav (explore/reels). É o que o IG anima no hover. Uso a.pathname
     // (não o href cru) p/ casar tanto href relativo quanto absoluto.
+    // Cache POR ROTA (zerado em onRoute) e revalidado por isConnected: antes era 1 querySelectorAll de
+    // links + subida de ancestrais a cada scan.
+    let navBoxCache = null;
     function leftNavWidthBox() {
+        if (navBoxCache && navBoxCache.isConnected) return navBoxCache;
+        navBoxCache = null;
         let a = null;
         for (const x of document.querySelectorAll('a[href*="explore"], a[href*="reels"]')) {
             const p = x.pathname || "";
@@ -1343,8 +1701,9 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         let n = a.parentElement, best = null;
         for (let d = 0; d < 16 && n && n.tagName !== "MAIN" && n !== document.body; d++, n = n.parentElement) {
             const st = n.getAttribute("style") || "";
-            if (/width\s*:\s*\d+px/i.test(st)) { best = n; if (/transition/i.test(st)) return n; }
+            if (/width\s*:\s*\d+px/i.test(st)) { best = n; if (/transition/i.test(st)) break; }
         }
+        navBoxCache = best;
         return best;
     }
 
@@ -1372,21 +1731,19 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     // ampliado pra preencher: ganha .igf-fit e entra inteiro na caixa (ver mediaFit).
     // Espelha --igf-ar no CSS; mudar aqui exige mudar lá.
     const AR_W = 9, AR_H = 16;
-    const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>';
+    const PLAY_SVG = { a: { fill: "#fff" }, k: [["path", { d: "M8 5v14l11-7z" }]] };
     // ícones da barra de ações (outline, herdam currentColor)
+    const OUTLINE = { fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" };
     const ICO = {
-        like: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1 7.8 7.8 7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>',
-        comment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.8-.8L3 20.5l1.4-4.1A8.4 8.4 0 0 1 3.5 11.5a8.5 8.5 0 0 1 17 0z"/></svg>',
-        repost: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
-        share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>',
-        save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>',
-        open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>',
-        link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>',
-        check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
-        chevL: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>',
-        chevR: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>',
+        like: { a: OUTLINE, k: [["path", { d: "M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1 7.8 7.8 7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" }]] },
+        comment: { a: OUTLINE, k: [["path", { d: "M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.8-.8L3 20.5l1.4-4.1A8.4 8.4 0 0 1 3.5 11.5a8.5 8.5 0 0 1 17 0z" }]] },
+        save: { a: OUTLINE, k: [["path", { d: "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" }]] },
+        open: { a: OUTLINE, k: [["path", { d: "M15 3h6v6" }], ["path", { d: "M10 14 21 3" }], ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }]] },
+        link: { a: OUTLINE, k: [["path", { d: "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5" }], ["path", { d: "M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5" }]] },
+        check: { a: Object.assign({}, OUTLINE, { "stroke-width": "2.5" }), k: [["path", { d: "M20 6 9 17l-5-5" }]] },
+        chevL: { a: { fill: "currentColor" }, k: [["path", { d: "M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" }]] },
+        chevR: { a: { fill: "currentColor" }, k: [["path", { d: "M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" }]] },
     };
-    const SPIN_HTML = '<div class="igf-spin"></div><span>Carregando mais…</span>';
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const posts = new Map();        // key -> dados do post (dedup por permalink)
     const order = [];               // keys na ordem de harvest
@@ -1395,7 +1752,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     const carouselWait = new Map(); // key -> 1ª vez vista como galeria (espera os slides da API p/ ter ‹ ›)
     let feedEl = null, igSrc = null, srcMO = null, srcMOTarget = null, resizeBound = false, layoutQ = false;
     let feedNcols = 0, feedColw = 0;
-    let loaderEl = null, loaderIO = null, loading = false, nativePauseTimer = null, nativePlayBound = false, feedExhausted = false, nativeHideTimer = null;
+    let loaderEl = null, loaderIO = null, loading = false, nativePlayBound = false, feedExhausted = false, nativeHideTimer = null;
     const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
     let inlineJSONTask = null;
     function scheduleInlineJSON() {
@@ -1417,19 +1774,40 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     function postKey(a) {
         const link = a.querySelector('a[href*="/p/"], a[href*="/reel/"]');
         if (!link) return null;
-        const m = (link.pathname || link.getAttribute("href") || "").match(/\/(?:p|reel)\/[^/?#]+/);
+        const m = (link.pathname || link.getAttribute("href") || "").match(/\/(?:p|reel)\/([^/?#]+)/);
         if (!m) return null;
-        if (a.dataset.igfKey !== m[0]) a.dataset.igfKey = m[0];   // hint p/ nativeArticle (lá é VERIFICADO — React pode reciclar o nó com outro post)
-        return m[0];
+        const key = "/p/" + m[1];   // chave CANÔNICA por código (/reel/X e /p/X são o mesmo post — e o card da API usa a mesma)
+        if (a.dataset.igfKey !== key) a.dataset.igfKey = key;   // hint p/ nativeArticle (lá é VERIFICADO — React pode reciclar o nó com outro post)
+        return key;
+    }
+    // MOLDURA DA MÍDIA de um <article>: a maior <img>/<video> do post (o avatar é minúsculo) e, a partir
+    // dela, o ancestral mais alto que ainda tem o MESMO tamanho (a caixa só da mídia — o header e a barra de
+    // ações ficam fora, e somam altura). Antes ancorava no cap inline de 470px do IG; ele vira só o fallback
+    // quando nada tem caixa ainda (artigo recém-montado, sem layout). Roda 1× por post novo (harvest).
+    function mediaBoxOf(a) {
+        let best = null, area = 0;
+        for (const m of a.querySelectorAll("video, img")) {
+            const r = m.getBoundingClientRect(), ar = r.width * r.height;
+            if (ar > area) { area = ar; best = m; }
+        }
+        if (!best || area < 120 * 120) return a.querySelector('[style*="470px"]');
+        const br = best.getBoundingClientRect();
+        let box = best.parentElement || best;
+        for (let n = box.parentElement; n && n !== a; n = n.parentElement) {
+            const r = n.getBoundingClientRect();
+            if (Math.abs(r.width - br.width) > 2 || Math.abs(r.height - br.height) > 2) break;
+            box = n;
+        }
+        return box;
     }
     // lê um post de um <article> do IG. true se um NOVO post entrou.
     function harvestPost(a) {
         const key = postKey(a);
         if (!key || posts.has(key)) return false;
-        const box = a.querySelector('[style*="470px"]');
+        const box = mediaBoxOf(a);
         if (!box) return false;
         const video = box.querySelector("video");
-        // o carrier de 470px só contém a MÍDIA (o avatar fica no header, fora dele) → 1ª img = a mídia/poster
+        // a moldura só contém a MÍDIA (o avatar fica no header, fora dela) → 1ª img = a mídia/poster
         const mainImg = box.querySelector("img");
         // `currentSrc` (a variante que o browser REALMENTE baixou) antes do atributo `src` — com
         // srcset os dois costumam ser variantes diferentes, e pedir a errada duplica o download.
@@ -1450,31 +1828,34 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         if (!avatar) for (const im of a.querySelectorAll("img")) { if (!box.contains(im)) { avatar = im; break; } }
         const capEl = a.querySelector("h1");
         const link = a.querySelector('a[href*="/p/"], a[href*="/reel/"]');
-        // contadores (na área de ações, DEPOIS da mídia, em ordem: like, comment, repost)
-        const nums = [];
+        // contadores: da API (igMedia) primeiro; o DOM é só o fallback — varrer todo span/a/div do artigo
+        // atrás de números era a parte cara do harvest. Na área de ações, DEPOIS da mídia: like, comment.
+        const rec0 = igMedia.get(codeOf(key)) || {};
+        const nums = (rec0.likes || rec0.comments) ? [rec0.likes || "", rec0.comments || ""] : [];
         let afterMedia = false;
-        for (const e of a.querySelectorAll("span, a, div")) {
+        if (!nums.length) for (const e of a.querySelectorAll("span, a, div")) {
             if (e === box || box.contains(e)) { afterMedia = true; continue; }
             if (!afterMedia || e.children.length) continue;
             const t = (e.textContent || "").trim();
-            if (/^\d[\d.,]*\s?[KMmilB]*$/.test(t) && t.length < 10 && !nums.includes(t)) { nums.push(t); if (nums.length >= 3) break; }
+            if (/^\d[\d.,]*\s?[KMmilB]*$/.test(t) && t.length < 10 && !nums.includes(t)) { nums.push(t); if (nums.length >= 2) break; }
         }
         // follow: existe um botão "Follow"/"Seguir" no post? (= ainda não sigo)
         let canFollow = false;
         for (const b of a.querySelectorAll('button, [role="button"]')) {
-            if (/^(follow|seguir)$/i.test((b.textContent || "").trim())) { canFollow = true; break; }
+            if (RE_FOLLOW.test((b.textContent || "").trim())) { canFollow = true; break; }
         }
         // LEGENDA: o <h1> do post nem sempre existe no momento do harvest (o IG renderiza a legenda tarde,
         // e no <article> virtualizado às vezes nem chega) — daí a descrição sumir na home. Caio na API
         // (igMedia, alimentada por feed/timeline), e se ela ainda não respondeu o updateCardsMeta completa
-        // depois. Limite alto: o texto inteiro é o que o "mais" expande; só as 2 primeiras linhas ficam à mostra.
+        // depois. Limite alto: o texto inteiro é o que o "mais" expande; só a 1ª linha fica à mostra.
         const code = codeOf(key);
         const capText = (capEl && (capEl.textContent || "").trim()) || (igMedia.get(code) || {}).caption || "";
+        liveCodes.add(code);
         posts.set(key, {
             key, code, href: (link.pathname || link.getAttribute("href") || ""), author,
             avatar: avatar ? avatar.src : "", media, srcset, sizes, isVideo: !!video,
             caption: capText.slice(0, 1500),
-            likes: nums[0] || "", comments: nums[1] || "", reposts: nums[2] || "", follow: canFollow,
+            likes: nums[0] || "", comments: nums[1] || "", follow: canFollow,
         });
         order.push(key);
         return true;
@@ -1482,13 +1863,14 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     // chave de um TILE (o próprio <a> é o item; href tem /p/CODE ou /{user}/p/CODE)
     function tileKey(a) {
         const href = a.getAttribute("href") || a.href || "";
-        const m = href.match(/\/(?:p|reel)\/[^/?#]+/);
+        const m = href.match(/\/(?:p|reel)\/([^/?#]+)/);
         if (!m) return null;
-        if (a.dataset.igfKey !== m[0]) a.dataset.igfKey = m[0];
-        return m[0];
+        const key = "/p/" + m[1];
+        if (a.dataset.igfKey !== key) a.dataset.igfKey = key;
+        return key;
     }
-    // lê um TILE (explore/profile) → post só-mídia. Proporção REAL: API (igMedia w/h) → senão naturalW/H
-    // do thumbnail (o IG serve a imagem em aspecto real e só CORTA por CSS p/ quadrado) → senão 1:1.
+    // lê um TILE (explore/perfil/salvos) → post. Mídia = thumb da API (ou o <img>/poster do tile);
+    // autor/avatar/legenda vêm da API (igMedia) e preenchem o card depois, se chegarem atrasados.
     function harvestTile(a) {
         const key = tileKey(a);
         if (!key || posts.has(key)) return false;
@@ -1502,8 +1884,8 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         // o <img> da grade nativa off-screen carregar, que é o gargalo). Fallbacks: img/poster nativo, imagem cheia.
         const media = rec.thumbUrl || (img && img.getAttribute("src")) || (vid && (vid.getAttribute("poster") || vid.poster)) || rec.imageUrl || "";
         if (!media) return false;                             // sem poster/thumb ainda → NÃO commita (re-tenta quando renderizar) → nunca tela preta
-        const isVideo = !!rec.isVideo || !!vid || !!a.querySelector('svg[aria-label="Reel" i], svg[aria-label="Clip" i], svg[aria-label*="eel" i], svg[aria-label*="lip" i]');
-        const iconCarousel = !!a.querySelector('svg[aria-label*="arousel" i]');   // ícone de galeria no tile
+        const isVideo = !!rec.isVideo || !!vid || !!a.querySelector(SEL.reel);
+        const iconCarousel = !!a.querySelector(SEL.carousel);   // ícone de galeria no tile
         const hasSlides = !!(rec.carousel && rec.carousel.length > 1);
         // GALERIA: se o tile É galeria mas a API ainda não trouxe os slides, ESPERA até ~1.5s (a navegação ‹ ›
         // precisa deles). Sem isto, harvestava cedo demais e a galeria virava capa única (sem setas).
@@ -1514,10 +1896,12 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         }
         // (v3.12) a proporção do post NÃO é mais lida: a grade é uniforme, a caixa da mídia já nasce
         // com a altura final. Um leitor a menos por tile no caminho crítico do harvest.
+        carouselWait.delete(key);
+        liveCodes.add(code);
         posts.set(key, {
             key, code, href: (a.getAttribute("href") || a.href || ""), media, isVideo, tile: true,
             // dados p/ o CARD COMPLETO (explore/perfil/salvos): vêm da API (igMedia), não do DOM do tile
-            author: rec.author || "", avatar: rec.avatar || "", caption: rec.caption || "", likes: rec.likes || "", comments: rec.comments || "", reposts: "",
+            author: rec.author || "", avatar: rec.avatar || "", caption: rec.caption || "", likes: rec.likes || "", comments: rec.comments || "",
             authorPk: rec.authorPk || "", following: rec.following, follow: rec.following !== true,   // mostra "Seguir" a menos que JÁ siga
         });
         order.push(key);
@@ -1537,16 +1921,22 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             document.execCommand("copy"); ta.remove(); if (done) done();
         } catch (_) { /**/ }
     }
-    function copyLink(p, btn) {            // share = COPIAR o link limpo pro clipboard (+ feedback de check)
-        const url = cleanPostUrl(p);
-        const done = () => {
-            btn.classList.add("igf-copied"); btn.innerHTML = ICO.check; btn.title = "Link copiado";
-            setTimeout(() => { btn.classList.remove("igf-copied"); btn.innerHTML = ICO.link; btn.title = "Copiar link"; }, 1500);
-        };
+    function copyText(text, done) {        // clipboard com fallback (um caminho só pra link, @ do perfil e @ do card)
         try {
-            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, done));
-            else fallbackCopy(url, done);
-        } catch (_) { fallbackCopy(url, done); }
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+            else fallbackCopy(text, done);
+        } catch (_) { fallbackCopy(text, done); }
+    }
+    // feedback de copiado num botão de ícone: vira ✓ por um instante (+ toast opcional)
+    function copyWithFeedback(btn, text, icon, msg) {
+        copyText(text, () => {
+            btn.classList.add("igf-copied"); setIcon(btn, ICO.check);
+            setTimeout(() => { btn.classList.remove("igf-copied"); setIcon(btn, icon); }, 1400);
+            if (msg) toast(msg);
+        });
+    }
+    function copyLink(p, btn) {            // share = COPIAR o link limpo pro clipboard (+ feedback de check)
+        copyWithFeedback(btn, cleanPostUrl(p), ICO.link, "Link copiado");
     }
     // ABRIR A MODAL (overlay sobre o feed), não navegar. O <a> de permalink (`/p/CODE/`) só NAVEGA →
     // página do post ("outra página"). A modal in-feed é aberta por `openPostModalForId` (bundle), que
@@ -1555,13 +1945,13 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     function nativeModalTrigger(art) {
         if (!art) return null;
         // ícone de comentário (locale varia: Comment / Comentar / Comentário) → seu botão clicável (role=button)
-        const svg = art.querySelector('svg[aria-label="Comment" i], svg[aria-label="Comentar" i], svg[aria-label="Comentário" i], svg[aria-label*="omment" i], svg[aria-label*="oment" i]');
+        const svg = art.querySelector(SEL.comment);
         const btn = svg && svg.closest('[role="button"], button, a');
         if (btn) return btn;
         // FALLBACKS (o aria-label muda com locale/experimento e era aí que a modal falhava e virava
         // redirect): 1) botão cujo próprio aria-label fala de comentário; 2) o link do permalink com
         // role=link, que o roteador do IG intercepta e abre como overlay.
-        const byLabel = art.querySelector('[role="button"][aria-label*="oment" i], button[aria-label*="oment" i]');
+        const byLabel = art.querySelector(SEL.commentBtn);
         if (byLabel) return byLabel;
         return art.querySelector('a[role="link"][href*="/p/"], a[role="link"][href*="/reel/"]');
     }
@@ -1596,15 +1986,16 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
      * O gatilho tem que ser o nó NATIVO do post (é o React do IG que abre o lightbox), mas a lista
      * nativa vive off-screen e virtualizada: o artigo/tile do post clicado pode não estar no DOM.
      * Antes: tentativa a cada ~100ms e desistência em <1s → caía no redirect com frequência.
-     * Agora: EVENT-DRIVEN — um MutationObserver no igSrc clica no instante em que o nó aparece,
-     * enquanto um nudge periódico varre a janela virtualizada em torno da posição estimada. O
-     * redirect virou último recurso de verdade (só se nada renderizar em OPEN_MAX_MS). */
+     * Agora: EVENT-DRIVEN — um MutationObserver no igSrc clica no instante em que o nó aparece.
+     * A varredura da janela virtualizada (±1 tela em torno da posição estimada) não é mais um
+     * setInterval: é UM timeout re-armado a cada mutação, então o próximo passo só sai quando a
+     * lista PAROU de renderizar o passo anterior. O redirect é último recurso (OPEN_MAX_MS). */
     const OPEN_MAX_MS = 4000;
     let openWait = null;
     function cancelOpenWait() {
         if (!openWait) return;
         try { openWait.obs.disconnect(); } catch (_) { /**/ }
-        clearTimeout(openWait.timer); clearInterval(openWait.nudge);
+        clearTimeout(openWait.timer); openWait.stopSweep();
         if (openWait.card) openWait.card.classList.remove("igf-opening");
         openWait = null;
     }
@@ -1621,7 +2012,8 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     function openViaNative(p, card, tryOpen) {
         cancelOpenWait();
         // vai abrir a overlay por cima → o vídeo do card não pode continuar tocando atrás dela
-        if (hoverCard) { const h = hoverCard; hoverCard = null; suspendVideo(h); }
+        if (playCard) suspendVideo(playCard);
+        if (previewCard) { const h = previewCard; previewCard = null; suspendVideo(h); }
         clearTimeout(hoverT); hoverNext = null;
         if (tryOpen()) return;                                   // o nó já estava lá → overlay na hora
         const src = igSrc;
@@ -1634,14 +2026,15 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             src.scrollTop = Math.max(0, Math.min(max, frac * max + bias * src.clientHeight * 0.5 - src.clientHeight / 2));
         };
         const check = () => { if (igSrc !== src) { cancelOpenWait(); return true; } if (!tryOpen()) return false; cancelOpenWait(); return true; };
+        let n = 0, sweepT = 0;
+        const arm = () => { clearTimeout(sweepT); sweepT = setTimeout(sweep, 220); };
+        const sweep = () => { if (check()) return; n++; seek((n % 5) - 2); arm(); };   // varre ±1 tela em torno do palpite
         seek(0);
-        const obs = new MutationObserver(check);
+        const obs = new MutationObserver(() => { if (!check()) arm(); });
         try { obs.observe(src, { childList: true, subtree: true }); } catch (_) { /**/ }
-        let n = 0;
-        const nudge = setInterval(() => { if (check()) return; n++; seek((n % 5) - 2); }, 200);   // varre ±1 tela em torno do palpite
         const timer = setTimeout(() => { const pend = openWait; cancelOpenWait(); if (pend && !tryOpen()) go(cleanPostUrl(p)); }, OPEN_MAX_MS);
-        openWait = { obs, timer, nudge, card };
-        check();
+        openWait = { obs, timer, card, stopSweep: () => clearTimeout(sweepT) };
+        if (!check()) arm();
     }
     // acha o <article> nativo (vivo no igSrc) pelo permalink — p/ like/follow real e mover o vídeo.
     // FAST-PATH pelo data-igf-key estampado no postKey (chamado por frame de scroll via syncSrcScroll):
@@ -1658,10 +2051,10 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
      * Na home dependiam do botão nativo dentro do <article> virtualizado: curtir NAVEGAVA pro post
      * quando não achava (`go(p.href)`) e salvar desistia calado. Agora vai pela API (pk da mídia),
      * com o clique no nativo como plano B e aviso quando nada funciona. */
-    function nativeActionBtn(key, labels) {
+    function nativeActionBtn(key, labelKey) {
         const art = nativeArticle(key);
         if (!art) return null;
-        const svg = art.querySelector(labels.map((l) => 'svg[aria-label="' + l + '" i]').join(", "));
+        const svg = art.querySelector(ariaIs(labelKey));
         return svg && svg.closest('[role="button"], button, a, div');
     }
     async function toggleAction(p, btn, kind) {
@@ -1675,9 +2068,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
                 ? "/api/v1/web/likes/" + pk + (on ? "/like/" : "/unlike/")
                 : "/api/v1/web/save/" + pk + (on ? "/save/" : "/unsave/");
             if (pk && await igApiPost(path, "")) return;
-            const nb = nativeActionBtn(p.key, kind === "like"
-                ? ["Like", "Curtir", "Unlike", "Descurtir"]
-                : ["Save", "Salvar", "Remove", "Remover"]);
+            const nb = nativeActionBtn(p.key, kind === "like" ? "like" : "save");
             if (nb) { nb.click(); return; }                    // plano B: o botão nativo do post
             btn.classList.toggle("on", !on);                   // não deu → desfaz e avisa (nunca em silêncio)
             toast(pk ? "O Instagram recusou a ação" : "A API ainda não trouxe este post");
@@ -1717,7 +2108,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         const art = nativeArticle(key);
         if (!art) return null;
         for (const b of art.querySelectorAll('button, [role="button"]')) {
-            if (/^(follow|seguir|following|seguindo)$/i.test((b.textContent || "").trim())) return b;
+            if (RE_FOLLOW_ANY.test((b.textContent || "").trim())) return b;
         }
         return null;
     }
@@ -1755,100 +2146,169 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         } finally { delete btn.dataset.busy; btn.classList.remove("igf-busy"); }
     }
 
-    /* === HOVER-TO-PLAY (v3.14, reescrito) ====================================================
-     * O modelo antigo criava o <video> ao entrar e o DESTRUÍA ao sair — voltar num card já visto
-     * recarregava tudo do zero, e atravessar a grade disparava uma cascata de create/destroy.
-     * Agora:
-     *   • DEBOUNCE de entrada (HOVER_IN): passar por cima não dispara nada; só parar sobre o card.
-     *   • O NOSSO <video> (URL .mp4 da API) SOBREVIVE ao fim do hover, apenas pausado — voltar é
-     *     instantâneo, sem rede. Um LRU curto (KEEP_ALIVE) segura os últimos; o resto volta ao poster.
-     *   • O <video> NATIVO emprestado (fallback quando a API não deu URL) continua sendo devolvido
-     *     na saída: o IG mata a MediaSource ao virtualizar o artigo e ele viraria tela preta.
-     *   • O vídeo só APARECE quando tem frame (loadeddata) → fade por cima do poster, nunca um
-     *     retângulo preto no meio do card.
-     *   • Todo play() revalida se o card ainda é o do cursor — nada de tocar o card errado depois
-     *     de uma promessa lenta resolver.
-     *   • A lista nativa off-screen só é sincronizada quando o card em hover PRECISA dela (sem URL
-     *     na API); com URL, o hover não provoca nenhum churn no React do IG. */
-    const HOVER_IN = 110;      // ms sobre o card antes de começar a tocar
-    const KEEP_ALIVE = 5;      // quantos <video> NOSSOS ficam vivos (pausados) fora do hover
-    let videoIO = null, pickQ = false, hoverCard = null, hoverT = 0, hoverNext = null;
+    /* === VÍDEO NOS CARDS: CLIQUE PRA TOCAR ======================================================
+     * Antes o vídeo tocava no hover e parava quando o mouse saía — contra-intuitivo: pra continuar
+     * assistindo era preciso segurar o mouse em cima do card. Agora:
+     *   • CLIQUE na mídia toca (com som, conforme o volume/mudo salvos) e o vídeo SEGUE tocando
+     *     quando o mouse sai. Clicar de novo (ou Espaço/K com ele ativo) pausa.
+     *   • UM vídeo nosso por vez: tocar outro pausa o anterior (vale também pro play do player/teclado).
+     *   • Rolou e o vídeo ficou com menos de ~40% à mostra → pausa e NÃO retoma sozinho.
+     *   • O post abre pelo botão ↗ no canto da mídia (ou pelo comentar da barra de ações).
+     *   • "Prévia ao passar o mouse" (opcional, off): toca SEM som no hover e para ao sair — a menos
+     *     que você clique, aí vira reprodução de verdade.
+     * Herdado do modelo anterior: o NOSSO <video> (URL .mp4 da API) sobrevive pausado sob um LRU curto
+     * (KEEP_ALIVE) → voltar é instantâneo; o <video> NATIVO emprestado (sem URL na API) é devolvido na
+     * pausa, porque o IG mata a MediaSource ao virtualizar; o vídeo só aparece com o 1º frame. */
+    const HOVER_IN = 110;      // ms sobre o card antes de começar a prévia (atravessar a grade não dispara nada)
+    const KEEP_ALIVE = 5;      // quantos <video> NOSSOS ficam vivos (pausados) fora do card ativo
+    const VIS_MIN = 0.4;       // fração visível abaixo da qual o vídeo tocando pausa
+    let videoIO = null, pickQ = false, hoverT = 0, hoverNext = null;
+    let playCard = null;       // card que o USUÁRIO pôs pra tocar (segue "ativo" mesmo pausado: teclado age nele)
+    let previewCard = null;    // card em prévia muda (hover, só com a flag)
     const visVids = new Set();      // cards de vídeo VISÍVEIS
     const liveCards = [];           // LRU (mais recente no fim) dos cards com <video> nosso vivo
-    const videoState = new Map();   // code -> currentTime: retoma de onde parou quando o vídeo é recriado
-    let feedSoundOn = false;        // intenção GLOBAL de som no feed: o 1º unmute (gesto) liga; novos vídeos já entram com som
+    const videoState = new Map();   // code -> currentTime: retoma de onde parou quando o vídeo é recriado (LRU)
+    const VIDEO_STATE_MAX = 40;
     const apiVideoUrl = (card) => (igMedia.get(card.dataset.code || "") || {}).videoUrl || "";
+    const cardVideo = (card) => { const m = card && card.querySelector(".igf-video"); return m && m.querySelector("video"); };
     // algum card de vídeo VISÍVEL depende do <video> nativo? (= a API não deu URL pra ele).
     // É o único caso que ainda justifica manter a lista nativa alinhada ao scroll.
     function needsNativeVideo() {
         for (const card of visVids) if (card.isConnected && !apiVideoUrl(card)) return true;
         return false;
     }
+    function setPlayCard(card) {
+        if (playCard === card) return;
+        const old = playCard && playCard.querySelector(".igf-video");
+        if (old) old.classList.remove("igf-active");
+        playCard = card;
+        const m = card && card.querySelector(".igf-video");
+        if (m) m.classList.add("igf-active");   // CSS: o player fica à mostra enquanto ESTE estiver pausado
+        syncCardBar();                          // a barra única muda pro card ativo
+    }
     function ensureVideoIO() {
         if (videoIO || typeof IntersectionObserver === "undefined") return;
         videoIO = new IntersectionObserver((ents) => {
             for (const e of ents) {
-                if (e.isIntersecting) { visVids.add(e.target); continue; }
-                visVids.delete(e.target);
-                if (hoverCard === e.target) hoverCard = null;
-                if (hoverNext === e.target) { clearTimeout(hoverT); hoverNext = null; }
-                releaseVideo(e.target);   // saiu da tela → devolve de vez (não segura memória fora de vista)
+                const card = e.target;
+                if (e.isIntersecting) visVids.add(card); else visVids.delete(card);
+                if (e.intersectionRatio < VIS_MIN) {
+                    if (card === previewCard) { previewCard = null; suspendVideo(card); }
+                    if (card === playCard) { const v = cardVideo(card); if (v && !v.paused) suspendVideo(card); }   // não retoma sozinho
+                    if (hoverNext === card) { clearTimeout(hoverT); hoverNext = null; }
+                }
+                if (!e.isIntersecting) releaseVideo(card);   // saiu da tela → devolve de vez (não segura memória fora de vista)
             }
-        }, { threshold: 0 });
+        }, { threshold: [0, VIS_MIN] });
     }
-    // garante o invariante "só o card sob o cursor está TOCANDO" (o scroll pode ter movido a grade
-    // sob o mouse). Percorre só os vivos (≤ KEEP_ALIVE), não todos os cards visíveis.
+    // invariante "só o card ativo (ou a prévia) TOCA" — o play pode ter vindo de qualquer lugar.
+    // Percorre só os vivos (≤ KEEP_ALIVE), não todos os cards visíveis.
     function pickVideos() {
-        if (hoverCard && !hoverCard.isConnected) hoverCard = null;
+        if (playCard && !playCard.isConnected) setPlayCard(null);
+        if (previewCard && !previewCard.isConnected) previewCard = null;
         for (const card of liveCards.slice()) {
-            if (card === hoverCard) continue;
-            const v = card.querySelector(".igf-video video");
+            if (card === playCard || card === previewCard) continue;
+            const v = cardVideo(card);
             if (v && !v.paused) suspendVideo(card);
         }
-        if (hoverCard) activateVideo(hoverCard);
     }
     function queuePick() { if (pickQ) return; pickQ = true; raf(() => { pickQ = false; pickVideos(); }); }
-    function onCardEnter(card) {
-        if (hoverCard === card || hoverNext === card) return;
-        clearTimeout(hoverT);
-        hoverNext = card;
-        hoverT = setTimeout(() => { hoverNext = null; beginHover(card); }, HOVER_IN);
+    // algum <video> nosso começou a tocar (clique, prévia, botão do player, teclado) → pausa os outros
+    function onOwnPlay(card, v) {
+        const preview = !!v._igfPreviewPlay;
+        v._igfPreviewPlay = false;
+        if (!preview && previewCard === card) previewCard = null;            // play "de verdade" num card em prévia
+        if (!preview) setPlayCard(card);
+        for (const c of liveCards.slice()) {
+            if (c === card) continue;
+            const o = cardVideo(c);
+            if (o && !o.paused) { if (c === previewCard) previewCard = null; suspendVideo(c); }
+        }
     }
-    function onCardLeave(card) {
-        if (hoverNext === card) { clearTimeout(hoverT); hoverNext = null; }
-        if (hoverCard === card) { hoverCard = null; suspendVideo(card); }
+    // CLIQUE na mídia de vídeo: toca ou alterna pausa
+    function clickVideoCard(card) {
+        const v = cardVideo(card);
+        const media = card.querySelector(".igf-video");
+        // ainda carregando (sem 1º frame): o 2º clique "impaciente" NÃO pausa — antes ele pausava o vídeo
+        // que nem tinha aparecido, e o clique parecia não fazer nada
+        if (v && playCard === card && media && media.classList.contains("igf-loading")) return;
+        if (v && playCard === card && !v.paused) { suspendVideo(card); return; }
+        startCard(card);
     }
-    function beginHover(card) {
+    function startCard(card) {
         if (!card.isConnected) return;
-        if (hoverCard && hoverCard !== card) suspendVideo(hoverCard);
-        hoverCard = card;
-        if (apiVideoUrl(card)) { activateVideo(card); return; }
+        clearTimeout(hoverT); hoverNext = null;
+        if (previewCard === card) previewCard = null;                         // a prévia vira reprodução de verdade
+        if (playCard && playCard !== card) suspendVideo(playCard);
+        setPlayCard(card);
+        if (apiVideoUrl(card) || cardVideo(card)) { activateVideo(card, false); return; }
         // sem URL na API → depende do <video> NATIVO, que pode estar virtualizado. Puxo a lista
-        // off-screen pra posição do card e re-tento por ~1s: antes, se o nativo não estivesse lá no
-        // exato instante do hover, o card simplesmente não tocava até o próximo scroll.
+        // off-screen pra posição do card e re-tento por ~1s.
         syncSrcScroll();
         let tries = 0;
         const tryLater = () => {
-            if (hoverCard !== card || !card.isConnected) return;
-            activateVideo(card);
-            if (!card.querySelector(".igf-video video") && ++tries < 6) setTimeout(tryLater, 160);
+            if (playCard !== card || !card.isConnected) return;
+            activateVideo(card, false);
+            if (!cardVideo(card) && ++tries < 6) setTimeout(tryLater, 160);
         };
         tryLater();
     }
-    function activateVideo(card) {
+    function onCardEnter(card) {
+        if (!prefs.hoverPreview) { warmSoon(card); return; }
+        if (card === playCard || card === previewCard || hoverNext === card) return;
+        const pv = cardVideo(playCard);
+        if (pv && !pv.paused) return;                       // um vídeo de verdade está tocando → a prévia não atropela
+        clearTimeout(hoverT);
+        hoverNext = card;
+        hoverT = setTimeout(() => {
+            hoverNext = null;
+            if (!card.isConnected || !prefs.hoverPreview || card === playCard) return;
+            if (previewCard && previewCard !== card) suspendVideo(previewCard);
+            previewCard = card;
+            if (apiVideoUrl(card) || cardVideo(card)) activateVideo(card, true);   // prévia só com URL (sem churn na lista nativa)
+        }, HOVER_IN);
+    }
+    /* AQUECIMENTO: no modelo de hover o vídeo começava a baixar quando o mouse PARAVA no card, então já
+     * tinha frame quando você olhava. No clique-pra-tocar o download só começava no clique — 1-2s de
+     * poster parado na rede do IG. Agora o hover (mesmo debounce) cria o <video> PAUSADO com
+     * preload=auto: quando o clique chega, os dados já estão vindo. Entra no LRU (KEEP_ALIVE). */
+    function warmSoon(card) {
+        if (hoverNext === card || cardVideo(card) || !apiVideoUrl(card)) return;
+        clearTimeout(hoverT);
+        hoverNext = card;
+        hoverT = setTimeout(() => {
+            hoverNext = null;
+            const media = card.isConnected && card.querySelector(".igf-video");
+            if (media && !media.querySelector("video") && apiVideoUrl(card) && createVideo(card, media)) media.classList.add("igf-paused");   // frame parado + ▶
+        }, HOVER_IN);
+    }
+    function onCardLeave(card) {
+        if (hoverNext === card) { clearTimeout(hoverT); hoverNext = null; }
+        if (previewCard === card) { previewCard = null; suspendVideo(card); }   // clicou durante a prévia → não é mais prévia, segue
+    }
+    function activateVideo(card, preview) {
         const media = card.querySelector(".igf-video");
         if (!media) return;
         const v = media.querySelector("video") || createVideo(card, media);
         if (!v) return;
         media.classList.remove("igf-paused");
-        if (!v.paused) { if (v.dataset.igOwn) trackLive(card); return; }   // já tocando (o pick roda a cada scroll) → nada a fazer
+        try {
+            if (preview) v.muted = true;
+            else { v.muted = !!prefs.feedMuted; v.volume = prefs.volume; }   // som conforme o volume/mudo salvos
+        } catch (_) { /**/ }
+        if (v.dataset.igOwn) trackLive(card);
+        if (!v.paused) { if (!preview) onOwnPlay(card, v); return; }   // a prévia virou play: ganha som acima, segue tocando
+        v._igfPreviewPlay = !!preview;
         try {
             v.loop = true; v.playsInline = true;
             const pr = v.play && v.play();
-            if (pr && pr.catch) pr.catch(() => {
-                if (hoverCard !== card) return;            // já saiu → o pause é que interrompeu; nada a fazer
-                // som sem gesto do usuário é bloqueado pela política de autoplay → cai pra mudo (mas TOCA)
-                try { v.muted = true; const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => { /**/ }); } catch (_) { /**/ }
+            if (!preview && !media.classList.contains("on")) media.classList.add("igf-loading");   // ▶ vira spinner até o 1º frame
+            if (pr && pr.catch) pr.catch((err) => {
+                media.classList.remove("igf-loading");
+                if (playCard !== card && previewCard !== card) return;   // o pause é que interrompeu; nada a fazer
+                if (err && err.name !== "NotAllowedError") return;       // AbortError = um pause() no meio; não força play mudo
+                // som bloqueado pela política de autoplay → cai pra mudo (mas TOCA). Não conta como "o usuário mutou".
+                try { v._igfAutoMute = true; v.muted = true; const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => { /**/ }); } catch (_) { /**/ }
             });
         } catch (_) { /**/ }
     }
@@ -1859,11 +2319,18 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             // CAMINHO BOM: MEU <video> com a URL .mp4 REAL da API → confiável, recriável, sem preto
             v = el("video", { src: url, preload: "auto", playsinline: "", "webkit-playsinline": "" });
             v.loop = true; v.playsInline = true; v.dataset.igOwn = "1";
-            v.muted = !feedSoundOn;                          // preserva a intenção de som (não re-muta a cada hover)
+            v.muted = true;                                  // nasce mudo; o activateVideo dá o som conforme o modo
             try { v.volume = prefs.volume; } catch (_) { /**/ }
             const savedT = videoState.get(card.dataset.code || "");   // retoma de onde parou
             if (savedT) v.addEventListener("loadedmetadata", () => { try { if (savedT < (v.duration || 1e9)) v.currentTime = savedT; } catch (_) { /**/ } }, { once: true });
-            v.addEventListener("volumechange", () => { feedSoundOn = !v.muted && v.volume > 0; });   // (des)mutou → intenção global segue
+            // mudo/desmudo NO VÍDEO ATIVO = preferência do usuário (próximos vídeos já entram assim).
+            // Prévia (sempre muda) e o fallback de autoplay não contam.
+            v.addEventListener("volumechange", () => {
+                if (v._igfAutoMute) { v._igfAutoMute = false; return; }
+                if (card !== playCard || v._igfPreviewPlay) return;
+                const m = v.muted || v.volume === 0;
+                if (m !== !!prefs.feedMuted) { prefs.feedMuted = m; savePrefsSoon(); }
+            });
             v.addEventListener("error", () => releaseVideo(card), { once: true });   // URL expirada → volta o poster (sem tela preta)
             trackLive(card);
         } else {
@@ -1873,24 +2340,27 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             if (!v) return null;                             // sem URL e sem nativo → fica o poster
             v.muted = true;
         }
+        v.addEventListener("play", () => { media.classList.remove("igf-paused"); onOwnPlay(card, v); });   // um por vez, venha o play de onde vier
+        v.addEventListener("pause", () => { if (v.isConnected && media.contains(v)) media.classList.add("igf-paused"); });   // pausou pelo player/teclado também mostra ▶
         // .on = "tem imagem": só entra quando há 1º frame → o fade cobre o poster sem piscar preto.
         // No mesmo gancho decido se o vídeo é largo demais pra caixa (então entra inteiro, sem zoom).
         const reveal = () => {
             if (!v.isConnected) return;
+            media.classList.remove("igf-loading");
             media.classList.add("on");
             // o backdrop borrado sai do POSTER (o <video> não serve de background-image) — sem isso o
             // vídeo deitado entrava em contain sobre o fundo chapado, com barras pretas em vez do borrão
             const poster = media.querySelector("img");
-            mediaFit(media, v.videoWidth, v.videoHeight, (poster && (poster.currentSrc || poster.src)) || "");
+            mediaFit(media, v.videoWidth, v.videoHeight, blurSrc(card, (poster && (poster.currentSrc || poster.src)) || ""));
         };
         if (v.readyState >= 2) reveal(); else v.addEventListener("loadeddata", reveal, { once: true });
         if (!media.querySelector("[data-instancekey]")) media.appendChild(el("div", { "data-instancekey": "igf" }));   // âncora p/ o player mirar a MÍDIA
         media.appendChild(v);
-        try { attach(v); } catch (_) { /**/ }   // barra de player (uma vez por vídeo, não por hover)
+        try { attach(v); } catch (_) { /**/ }   // registra no player (a barra única só liga no card ativo)
         return v;
     }
-    // fim do hover: PAUSA. O nosso vídeo fica no card (frame parado + ▶ por cima) pro próximo hover
-    // ser instantâneo; o nativo emprestado é devolvido na hora.
+    // PAUSA. O nosso vídeo fica no card (frame parado + ▶ por cima) pra retomar instantâneo;
+    // o nativo emprestado é devolvido na hora.
     function suspendVideo(card) {
         const media = card && card.querySelector(".igf-video");
         const v = media && media.querySelector("video");
@@ -1902,7 +2372,12 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     }
     function saveVideoTime(card, v) {
         const code = card.dataset.code;
-        if (code && v.dataset.igOwn) { const t = v.currentTime; if (isFinite(t) && t > 0) videoState.set(code, t); }
+        if (code && v.dataset.igOwn) {
+            const t = v.currentTime;
+            if (!(isFinite(t) && t > 0)) return;
+            videoState.delete(code); videoState.set(code, t);                     // LRU curto: só os últimos importam
+            if (videoState.size > VIDEO_STATE_MAX) videoState.delete(videoState.keys().next().value);
+        }
     }
     // LRU dos vídeos vivos: segura os últimos KEEP_ALIVE e devolve o mais antigo ao poster.
     function trackLive(card) {
@@ -1911,12 +2386,13 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         liveCards.push(card);
         while (liveCards.length > KEEP_ALIVE) {
             const old = liveCards.shift();
-            if (old !== hoverCard) releaseVideo(old);
-            else liveCards.push(old);   // o do cursor nunca é despejado
+            if (old !== playCard && old !== previewCard) releaseVideo(old);
+            else liveCards.push(old);   // o ativo e a prévia nunca são despejados
         }
     }
     // devolve de vez: pausa, destrói a barra do player, REMOVE o <video> e volta o poster.
     function releaseVideo(card) {
+        if (card === previewCard) previewCard = null;
         const i = liveCards.indexOf(card);
         if (i >= 0) liveCards.splice(i, 1);
         const media = card && card.querySelector(".igf-video");
@@ -1929,6 +2405,48 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         try { v.remove(); } catch (_) { /**/ }
         const dummy = media.querySelector('[data-instancekey="igf"]'); if (dummy) dummy.remove();
         media.classList.remove("on", "igf-paused");                                // poster + badge de play reaparecem
+    }
+    /* DESCARGA DE CARDS LONGE DA TELA. O feed é append-only (a grade uniforme precisa dos cards no lugar
+     * pra altura do scroll ficar certa), mas o que pesa num card não é o nó: é a imagem decodificada, o
+     * <video> e o backdrop borrado. A ~3 telas de distância o card devolve tudo isso (src/srcset vão pro
+     * dataset, o vídeo é liberado, o estado de retomada é esquecido) e recarrega ao voltar à faixa.
+     * Com content-visibility:auto ele já não pintava; agora também não segura memória. */
+    let farIO = null;
+    function observeFar(card) {
+        if (typeof IntersectionObserver === "undefined") return;
+        if (!farIO) farIO = new IntersectionObserver((ents) => {
+            for (const e of ents) { if (e.isIntersecting) reloadCard(e.target); else unloadCard(e.target); }
+        }, { rootMargin: "2600px 0px 2600px 0px" });
+        farIO.observe(card);
+    }
+    function unloadCard(card) {
+        if (card.dataset.unloaded) return;
+        card.dataset.unloaded = "1";
+        if (card === playCard) setPlayCard(null);
+        releaseVideo(card);
+        const code = card.dataset.code;
+        if (code) videoState.delete(code);
+        // (o card SEGUE em metaPending: a legenda/header que chegarem depois ainda precisam entrar nele —
+        // um card montado escondido, longe ou com o feed em display:none, perdia a legenda pra sempre)
+        for (const img of card.querySelectorAll(".igf-media img")) {
+            const src = img.getAttribute("src");
+            if (!src) continue;
+            img.dataset.src = src;
+            const ss = img.getAttribute("srcset"); if (ss) { img.dataset.srcset = ss; img.removeAttribute("srcset"); }
+            img.removeAttribute("src");
+        }
+        const bg = card.querySelector(".igf-blur");
+        if (bg && bg.style.backgroundImage) { bg.dataset.bg = bg.style.backgroundImage; bg.style.backgroundImage = ""; }
+    }
+    function reloadCard(card) {
+        if (!card.dataset.unloaded) return;
+        delete card.dataset.unloaded;
+        for (const img of card.querySelectorAll(".igf-media img[data-src]")) {
+            if (img.dataset.srcset) { img.setAttribute("srcset", img.dataset.srcset); delete img.dataset.srcset; }   // srcset ANTES do src (um download só)
+            img.setAttribute("src", img.dataset.src); delete img.dataset.src;
+        }
+        const bg = card.querySelector(".igf-blur[data-bg]");
+        if (bg) { bg.style.backgroundImage = bg.dataset.bg; delete bg.dataset.bg; }
     }
     function observeVideoCard(card) {
         if (card.dataset.vio || !card.querySelector(".igf-video")) return;
@@ -1958,7 +2476,8 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         raf(() => {
             syncQ = false;
             if (!igSrc || loading) return;
-            const anchor = (hoverCard && hoverCard.isConnected) ? hoverCard : centeredVideoCard();   // hover manda; senão o card central
+            const act = playCard || previewCard;
+            const anchor = (act && act.isConnected) ? act : centeredVideoCard();   // o card ativo manda; senão o card central
             const art = anchor && nativeArticle(anchor.dataset.key);
             if (art) {
                 // centraliza o ARTIGO nativo dentro do igSrc → natives da região visível ficam vivos.
@@ -1968,7 +2487,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
                 const sr = igSrc.getBoundingClientRect(), ar = art.getBoundingClientRect();
                 const delta = (ar.top - sr.top) - (igSrc.clientHeight / 2 - ar.height / 2);
                 if (Math.abs(delta) > (igSrc.clientHeight || 480) / 3) igSrc.scrollTop += delta;
-                queuePick();                                   // nativo certo agora existe → toca o card central
+                queuePick();
             } else {
                 // âncora ainda não renderizada (virtualizada) → aproxima por ratio e afina 1x quando renderizar
                 const docMax = (document.documentElement.scrollHeight - (window.innerHeight || 800)) || 1;
@@ -1983,16 +2502,14 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     // galeria/carrossel: navega os slides com SETAS (+ dots + contador). A caixa é a mesma do card e não
     // muda de slide pra slide → trocar de slide não mexe em NADA do layout; quem se ajusta é a mídia
     // (mediaFit por slide). Slide de vídeo mostra a capa + ▶ (abre a modal).
+    // passo do carrossel por card (os cliques/rodas chegam pelo handler DELEGADO do feed, ver bindFeedEvents)
+    const carouselStep = new WeakMap();   // card -> (delta) => void
     function buildCarousel(p, card, slides) {
-        const wrap = el("a", { class: "igf-media igf-carousel", href: cleanPostUrl(p) });
-        wrap.addEventListener("click", (e) => {               // clicar o slide → modal (ctrl/cmd/meio = nova aba)
-            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
-            e.preventDefault(); openItem(p, card);            // home → modal in-feed; tile → clica o <a> nativo
-        });
+        const wrap = el("a", { class: "igf-media igf-carousel", href: cleanPostUrl(p), "data-open": "1" });   // clicar o slide → modal
         let idx = 0;
         const stage = el("div", { class: "igf-cstage" });
-        const prev = el("button", { class: "igf-cnav igf-cprev", type: "button", "aria-label": "Anterior", html: ICO.chevL });
-        const next = el("button", { class: "igf-cnav igf-cnext", type: "button", "aria-label": "Próximo", html: ICO.chevR });
+        const prev = el("button", { class: "igf-cnav igf-cprev", type: "button", "aria-label": "Anterior", "data-act": "cprev", icon: ICO.chevL });
+        const next = el("button", { class: "igf-cnav igf-cnext", type: "button", "aria-label": "Próximo", "data-act": "cnext", icon: ICO.chevR });
         const dots = el("div", { class: "igf-cdots" });
         for (let i = 0; i < slides.length; i++) dots.appendChild(el("span", { class: "igf-cdot" }));
         const counter = el("div", { class: "igf-ccount" });
@@ -2007,37 +2524,20 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             const fit = () => {
                 if (stage.firstChild !== si) return;               // slide já trocou → esta proporção é de outro
                 si.classList.add("on");                            // mesmo fade-in dos demais (o CSS parte de opacity:0)
-                mediaFit(wrap, s.w || si.naturalWidth, s.h || si.naturalHeight, si.currentSrc || url);
+                mediaFit(wrap, s.w || si.naturalWidth, s.h || si.naturalHeight, s.thumbUrl || si.currentSrc || url);
             };
             stage.appendChild(si);
             // a API já traz original_width/height do slide → enquadra ANTES de a imagem baixar (sem pulo)
             if (s.w && s.h) mediaFit(wrap, s.w, s.h, url);
             if (si.complete && si.naturalWidth) fit();             // do cache: `complete` no mesmo tick, sem evento `load`
             else si.addEventListener("load", fit, { once: true });
-            if (s.isVideo) stage.appendChild(el("div", { class: "igf-play", html: PLAY_SVG }));   // capa de vídeo: ▶ (abre na modal)
+            if (s.isVideo) stage.appendChild(el("div", { class: "igf-play", icon: PLAY_SVG }));   // capa de vídeo: ▶ (abre na modal)
             for (let i = 0; i < dots.children.length; i++) dots.children[i].classList.toggle("on", i === idx);
             counter.textContent = (idx + 1) + "/" + slides.length;
             prev.hidden = idx === 0;
             next.hidden = idx === slides.length - 1;
         }
-        const step = (d) => { const ni = clamp(idx + d, 0, slides.length - 1); if (ni === idx) return; idx = ni; render(); };
-        const nav = (d, e) => { e.preventDefault(); e.stopPropagation(); step(d); };
-        prev.addEventListener("click", (e) => nav(-1, e));
-        next.addEventListener("click", (e) => nav(1, e));
-        // SCROLL HORIZONTAL do mouse/trackpad (ou shift+roda) navega os slides — 1 por gesto (lock + acúmulo).
-        let wheelAcc = 0, wheelLock = false;
-        wrap.addEventListener("wheel", (e) => {
-            const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
-            if (!dx) return;                                 // gesto vertical puro → deixa a página rolar
-            e.preventDefault(); e.stopPropagation();
-            if (wheelLock) return;
-            wheelAcc += dx;
-            if (Math.abs(wheelAcc) >= 40) {                  // limiar → 1 passo (trackpad manda muitos deltas pequenos)
-                step(wheelAcc > 0 ? 1 : -1);
-                wheelAcc = 0; wheelLock = true;
-                setTimeout(() => { wheelLock = false; }, 240);
-            }
-        }, { passive: false });
+        carouselStep.set(card, (d) => { const ni = clamp(idx + d, 0, slides.length - 1); if (ni === idx) return; idx = ni; render(); });
         wrap.append(stage, prev, next, counter, dots);
         render();
         return wrap;
@@ -2054,6 +2554,9 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
      * fundo vira uma cópia borrada dela mesma. Aplico assim que souber a proporção — pela API, se ela
      * já trouxe w/h, senão no load da imagem/vídeo. `natW/natH` é o tamanho real do arquivo. */
     const FIT_LIMIT = AR_W / AR_H;   // acima desta razão (largura/altura) o conteúdo é "largo demais" pra caixa
+    // backdrop borrado: a variante PEQUENA da API (thumb ≥360px) basta — borrada, ninguém vê a resolução,
+    // e o GPU filtra uma textura bem menor que a foto cheia.
+    const blurSrc = (card, fallback) => ((card && igMedia.get(card.dataset.code || "")) || {}).thumbUrl || fallback;
     function mediaFit(media, natW, natH, url) {
         if (!media || !natW || !natH) return;
         media.classList.toggle("igf-fit", natW / natH > FIT_LIMIT * 1.02);
@@ -2084,7 +2587,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             // ser inserido no card — parentElement era null e a mídia larga ficava em cover (cortada).
             // Como o card copia srcset/sizes do <img> nativo justamente pra cair no cache, esse era o
             // caminho COMUM, não o raro: a maioria das fotos nunca chegava a ganhar o .igf-fit.
-            mediaFit(media || img.parentElement, w, h, img.currentSrc || img.src);
+            mediaFit(media || img.parentElement, w, h, rec.thumbUrl || img.currentSrc || img.src);
         };
         if (img.complete && img.naturalWidth) ready();                    // veio do cache → sem fade
         else img.addEventListener("load", ready, { once: true });
@@ -2262,28 +2765,35 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         const a = nativeTile(p.key);
         if (!a) { openTile(p, card); return; }
         btn.classList.add("igf-busy");
-        a.click();                                            // abre a modal
-        let tries = 0;
-        const iv = setInterval(() => {
-            tries++;
+        // espera o botão de salvar da modal APARECER (observer no body, sem polling) — teto de ~3.3s
+        let done = false, obs = null, to = 0;
+        const stop = () => { done = true; if (obs) obs.disconnect(); clearTimeout(to); };
+        const check = () => {
+            if (done) return;
             const dlg = document.querySelector('[role="dialog"]');
-            const svg = dlg && dlg.querySelector('svg[aria-label="Remove" i], svg[aria-label="Remover" i], svg[aria-label="Save" i], svg[aria-label="Salvar" i]');
+            const svg = dlg && dlg.querySelector(SEL.save);
             const sb = svg && svg.closest('[role="button"], button, div[role="button"]');
             if (sb) {
-                clearInterval(iv);
+                stop();
                 sb.click();                                   // des-salva
                 // fecha a modal (botão X, senão Escape) e remove o card
                 setTimeout(() => {
-                    const x = dlg.querySelector('svg[aria-label="Close" i], svg[aria-label="Fechar" i]');
+                    const x = dlg.querySelector(SEL.close);
                     const xb = x && x.closest('[role="button"], button');
                     if (xb) xb.click(); else document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
                     markUnsaved(card);   // mesma regra do caminho por API: escurece, não some
                 }, 140);
-            } else if (tries > 30) { clearInterval(iv); btn.classList.remove("igf-busy"); }
-        }, 110);
+            }
+        };
+        obs = new MutationObserver(check);
+        obs.observe(document.body, { childList: true, subtree: true });
+        to = setTimeout(() => { if (!done) { stop(); btn.classList.remove("igf-busy"); } }, 3300);
+        a.click();                                            // abre a modal
+        check();
     }
     // UM card pra TODAS as superfícies (home, explore, perfil, salvos): header + mídia + barra de ações
-    // + legenda. O perfil também usa este — era tile só-mídia até a v3.13.
+    // + legenda. Nenhum listener por card: cada controle leva um data-act e o feed trata TUDO num
+    // handler delegado (bindFeedEvents) — antes eram ~10 listeners por card, crescendo com a sessão.
     function buildCard(p) {
         const code = p.code || codeOf(p.key);
         const card = el("div", { class: "igf-card" + (surface === "saved" ? " igf-card-saved" : ""), "data-key": p.key, "data-code": code });
@@ -2293,12 +2803,13 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         if (p.avatar) who.appendChild(el("img", { src: p.avatar, loading: "lazy", alt: "" }));
         who.appendChild(el("b", {}, p.author || ""));
         head.appendChild(who);
+        // copiar o @ (sem a arroba) — fora do <a> do perfil; some enquanto o autor não chegou (CSS :empty)
+        head.appendChild(el("button", { class: "igf-copyuser", type: "button", "data-act": "copyuser", title: "Copiar @", "aria-label": "Copiar nome de usuário", icon: ICO_COPY }));
         // "Seguir" não aparece no PERFIL: lá todo card é do mesmo autor, então o botão viraria ruído
         // repetido em cada item (e o header do próprio perfil já tem o dele).
         if (p.follow && surface !== "profile") {              // só quando ainda não sigo — home + explore + salvos
-            const fb = el("button", { class: "igf-follow" }, "Seguir");
+            const fb = el("button", { class: "igf-follow", type: "button", "data-act": "follow" }, "Seguir");
             if (p.following) { fb.classList.add("on"); fb.textContent = "Seguindo"; }   // estado real, quando a API já disse
-            fb.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); followUser(p, fb); });
             head.appendChild(fb);
         }
         card.appendChild(head);
@@ -2307,60 +2818,111 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         let media;
         if (isCarousel) {
             media = buildCarousel(p, card, slides);            // galeria: setas + dots + contador (cada slide se enquadra sozinho)
+        } else if (p.isVideo) {
+            // vídeo: clique TOCA/PAUSA; abrir o post é o ↗ da barra de ações (ou o comentar)
+            media = el("div", { class: "igf-media igf-video" });
+            if (p.media) media.appendChild(mediaImg(p, media));
+            media.appendChild(el("div", { class: "igf-play", icon: PLAY_SVG }));
         } else {
-            // mídia: imagem = link pro post; vídeo = autoplay/pause (hover) + click liga/desliga som
-            media = p.isVideo ? el("div", { class: "igf-media igf-video" }) : el("a", { class: "igf-media", href: cleanPostUrl(p) });
-            if (!p.isVideo) media.addEventListener("click", (e) => {   // clique na IMAGEM → modal do IG (post + comentários), sem sair da página
-                if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;   // ctrl/cmd/meio = deixa abrir em nova aba
-                e.preventDefault(); openItem(p, card);
-            });
+            // imagem = link pro post (ctrl/cmd/meio abre em nova aba; clique normal → modal do IG)
+            media = el("a", { class: "igf-media", href: cleanPostUrl(p), "data-open": "1" });
             if (p.media) media.appendChild(mediaImg(p, media));   // altura já é a final (aspect-ratio fixo no CSS) — o load não mexe em layout
-            if (p.isVideo) {
-                media.appendChild(el("div", { class: "igf-play", html: PLAY_SVG }));
-                // hover no CARD INTEIRO (não só na mídia): passar o mouse pela barra de ações ou pela
-                // legenda não interrompe mais o vídeo — era um corte constante ao mirar um botão.
-                card.addEventListener("mouseenter", () => onCardEnter(card));
-                card.addEventListener("mouseleave", () => onCardLeave(card));
-                media.addEventListener("click", (e) => {
-                    if (e.target.closest && e.target.closest(".igvc-bar")) return;   // clique no player (seek/mudo/etc) → ignora
-                    // MESMO comportamento em toda superfície: clique no item = abre em MODAL. (O som
-                    // saiu daqui pro botão dedicado do player — antes, na home, clicar no vídeo mutava.)
-                    e.preventDefault(); openItem(p, card);
-                });
-            }
         }
         card.appendChild(media);
         // barra de ações única abaixo da mídia
         const actions = el("div", { class: "igf-actions" });
-        const act = (icon, count, onClick, cls) => {
-            const b = el("button", { class: "igf-act" + (cls ? " " + cls : "") });
-            b.innerHTML = icon;
+        const act = (icon, count, name, cls, title) => {
+            const b = el("button", { class: "igf-act" + (cls ? " " + cls : ""), type: "button", "data-act": name, title, icon });
             if (count) b.appendChild(el("span", {}, count));
-            b.addEventListener("click", onClick);
             return b;
         };
-        actions.appendChild(act(ICO.like, p.likes, (e) => likeItem(p, card, e.currentTarget), "igf-like"));
-        actions.appendChild(act(ICO.comment, p.comments, () => openItem(p, card)));   // → modal (comentários)
-        actions.appendChild(act(ICO.repost, p.reposts, () => openItem(p, card)));
-        const sh = act(ICO.link, "", (e) => copyLink(p, e.currentTarget), "igf-share"); sh.title = "Copiar link";
-        actions.appendChild(sh);                              // share → COPIAR link limpo (sem tracking)
+        actions.appendChild(act(ICO.like, p.likes, "like", "igf-like"));
+        actions.appendChild(act(ICO.comment, p.comments, "comment"));                        // → modal (comentários)
+        actions.appendChild(act(ICO.link, "", "share", "igf-share", "Copiar link"));         // share → COPIAR link limpo (sem tracking)
+        // ↗ ABRIR O POST — sempre à mostra na barra, em todo card. É um <a> de verdade: ctrl/cmd/meio
+        // abre em nova aba; o clique normal vira a modal do IG (handler delegado)
+        actions.appendChild(el("a", { class: "igf-act igf-openpost", href: cleanPostUrl(p), "data-act": "open", title: "Abrir post", "aria-label": "Abrir post", icon: ICO.open }));
         actions.appendChild(el("div", { class: "igf-act-sp" }));
-        const sv = act(ICO.save, "", (e) => saveItem(p, card, e.currentTarget), "igf-save");
-        sv.title = surface === "saved" ? "Remover dos salvos" : "Salvar";
-        if (surface === "saved") sv.classList.add("on");      // já está salvo → bookmark preenchido (clicar des-salva + some o card)
+        const sv = act(ICO.save, "", "save", "igf-save", surface === "saved" ? "Remover dos salvos" : "Salvar");
+        if (surface === "saved") sv.classList.add("on");      // já está salvo → bookmark preenchido (clicar des-salva)
         actions.appendChild(sv);
         card.appendChild(actions);
-        if (surface === "saved") {                            // overlay de multisseleção (cobre o card no modo seleção)
-            const ovl = el("div", { class: "igf-selovl" }, el("div", { class: "igf-selcb" }));
-            ovl.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); toggleSelect(p, card); });
-            card.appendChild(ovl);
-        }
-        card.appendChild(buildCaption(p, card));
+        if (surface === "saved")                              // overlay de multisseleção (cobre o card no modo seleção)
+            card.appendChild(el("div", { class: "igf-selovl", "data-act": "select" }, el("div", { class: "igf-selcb" })));
+        card.appendChild(buildCaption(p));
         return card;
+    }
+
+    /* HANDLERS DELEGADOS do feed — um conjunto por feed montado, no próprio container. */
+    function bindFeedEvents(feed) {
+        const cardOf = (t) => t && t.closest ? t.closest(".igf-card") : null;
+        feed.addEventListener("click", (e) => {
+            const t = e.target;
+            if (!t || !t.closest || t.closest(".igvc-bar")) return;        // player: tem a guarda dele
+            const card = cardOf(t);
+            const p = card && posts.get(card.dataset.key || "");
+            if (!p) return;
+            if (t.closest(".igf-tag")) return;                              // @menção/#hashtag → navega (não alterna o "mais")
+            const actEl = t.closest("[data-act]");
+            const name = actEl && card.contains(actEl) ? actEl.dataset.act : "";
+            if (name) {
+                if (name === "open" && (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1)) return;   // ↗ é <a>: nova aba
+                e.preventDefault(); e.stopPropagation();
+                switch (name) {
+                    case "like": likeItem(p, card, actEl); break;
+                    case "comment": case "open": openItem(p, card); break;
+                    case "share": copyLink(p, actEl); break;
+                    case "copyuser": if (p.author) copyWithFeedback(actEl, p.author, ICO_COPY, "@" + p.author + " copiado"); break;
+                    case "save": saveItem(p, card, actEl); break;
+                    case "follow": followUser(p, actEl); break;
+                    case "select": toggleSelect(p, card); break;
+                    case "capmore": toggleCaption(card); break;
+                    case "cprev": case "cnext": { const st = carouselStep.get(card); if (st) st(name === "cprev" ? -1 : 1); break; }
+                }
+                return;
+            }
+            if (t.closest(".igf-cap")) { toggleCaption(card); return; }
+            if (t.closest(".igf-video")) { e.preventDefault(); clickVideoCard(card); return; }   // vídeo: clique toca/pausa
+            const media = t.closest("[data-open]");
+            if (media) {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;   // nova aba (só nos <a>)
+                e.preventDefault(); openItem(p, card);   // home → modal in-feed; tile → clica o <a> nativo
+            }
+        });
+        // entrar/sair de um CARD (não de cada filho): pointerover/out + relatedTarget fora do card
+        feed.addEventListener("pointerover", (e) => {
+            const card = cardOf(e.target);
+            if (!card || card.contains(e.relatedTarget)) return;
+            measureCaption(card);
+            if (card.querySelector(".igf-video")) onCardEnter(card);   // prévia (com a flag) ou aquecimento
+        });
+        feed.addEventListener("pointerout", (e) => {
+            const card = cardOf(e.target);
+            if (!card || card.contains(e.relatedTarget)) return;
+            if (card.querySelector(".igf-video")) onCardLeave(card);
+        });
+        // SCROLL HORIZONTAL do mouse/trackpad (ou shift+roda) navega a galeria — 1 slide por gesto.
+        // passive:false só porque o gesto horizontal precisa do preventDefault; o vertical sai na 1ª linha.
+        let wheelAcc = 0, wheelLock = false;
+        feed.addEventListener("wheel", (e) => {
+            const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
+            if (!dx) return;
+            const card = e.target.closest && e.target.closest(".igf-carousel") && cardOf(e.target);
+            const st = card && carouselStep.get(card);
+            if (!st) return;
+            e.preventDefault(); e.stopPropagation();
+            if (wheelLock) return;
+            wheelAcc += dx;
+            if (Math.abs(wheelAcc) >= 40) {                  // limiar → 1 passo (trackpad manda muitos deltas pequenos)
+                st(wheelAcc > 0 ? 1 : -1);
+                wheelAcc = 0; wheelLock = true;
+                setTimeout(() => { wheelLock = false; }, 240);
+            }
+        }, { passive: false });
     }
     /* LEGENDA — sempre presente (vazia inclusive): a faixa tem altura fixa e é ela que garante que um card
      * sem legenda meça exatamente o mesmo que um com legenda (o texto pode chegar depois, via API).
-     * Mostra 2 linhas; se sobrar texto, "mais" ABRE a legenda inteira POR CIMA da mídia (o card não muda
+     * Mostra 1 linha; se sobrar texto, "mais" ABRE a legenda inteira POR CIMA da mídia (o card não muda
      * de altura → a grade fica parada). "Tem mais texto?" é medido no 1º hover do card: aí ele está
      * visível (com content-visibility, card fora da tela não tem layout pra medir) e é 1 leitura só. */
     /* @menções e #hashtags viram LINKS de verdade (cor de link do IG). O clique navega normalmente
@@ -2375,28 +2937,23 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             const c = part[0], body = part.slice(1);
             if ((c === "@" || c === "#") && body) {
                 const href = c === "@" ? "/" + body.replace(/\.+$/, "") + "/" : "/explore/tags/" + body.toLowerCase() + "/";
-                const a = el("a", { class: "igf-tag", href }, part);
-                a.addEventListener("click", (e) => e.stopPropagation());   // não alterna o "mais"
-                cap.appendChild(a);
+                cap.appendChild(el("a", { class: "igf-tag", href }, part));   // o handler delegado não alterna o "mais" nele
             } else cap.appendChild(document.createTextNode(part));
         }
     }
-    function buildCaption(p, card) {
+    function buildCaption(p) {
         const wrap = el("div", { class: "igf-capwrap" });
         const cap = el("div", { class: "igf-cap" });
         renderCaption(cap, p.caption || "");
-        const more = el("button", { class: "igf-capmore", type: "button" }, "mais");
-        const toggle = () => {
-            if (!card.dataset.capmore) return;
-            const open = card.classList.toggle("igf-capopen");
-            more.textContent = open ? "menos" : "mais";
-            if (!open) cap.scrollTop = 0;
-        };
-        cap.addEventListener("click", toggle);
-        more.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); toggle(); });
-        card.addEventListener("mouseenter", () => measureCaption(card));
-        wrap.append(cap, more);
+        wrap.append(cap, el("button", { class: "igf-capmore", type: "button", "data-act": "capmore" }, "mais"));
         return wrap;
+    }
+    function toggleCaption(card) {
+        if (!card.dataset.capmore) return;
+        const open = card.classList.toggle("igf-capopen");
+        const more = card.querySelector(".igf-capmore"), cap = card.querySelector(".igf-cap");
+        if (more) more.textContent = open ? "menos" : "mais";
+        if (!open && cap) cap.scrollTop = 0;
     }
     // 1 medição por card (cacheada). Re-medida quando a legenda chega depois: updateCardsMeta limpa o flag.
     function measureCaption(card) {
@@ -2457,6 +3014,35 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     function queueSyncFeed() { if (syncFeedQ) return; syncFeedQ = true; raf(() => { syncFeedQ = false; syncOwnFeed(); }); }
     // harvest da lista do IG → renderiza os cards novos (append-only, sem re-layout)
     let lastHarvestSig = "";
+    /* CARD DIRETO DA API (home): os posts da timeline lidos do payload (inline do HTML ou graphql)
+     * viram card sem esperar o <article> do IG — no boot isso é o que tira o skeleton. Mesma chave
+     * canônica do harvest (/p/CODE): quando o <article> chega, o harvest só reconhece o post. */
+    let apiFeedUsed = 0;            // ponteiro em apiFeedCodes até onde já virou card
+    function postFromApi(code) {
+        const r = igMedia.get(code);
+        if (!r) return null;
+        const media = r.imageUrl || r.thumbUrl;
+        if (!media && !r.videoUrl) return null;
+        return {
+            key: "/p/" + code, code, href: (r.reel ? "/reel/" : "/p/") + code + "/", author: r.author || "",
+            avatar: r.avatar || "", media: media || "", srcset: "", sizes: "", isVideo: !!r.isVideo,
+            caption: (r.caption || "").slice(0, 1500), likes: r.likes || "", comments: r.comments || "",
+            authorPk: r.authorPk || "", following: r.following, follow: r.following === false,
+        };
+    }
+    function onApiFeed() {
+        if (surface !== "home" || mountedSurface !== "home" || !feedEl || !prefs.masonry) return;
+        let added = false;
+        for (; apiFeedUsed < apiFeedCodes.length; apiFeedUsed++) {
+            const code = apiFeedCodes[apiFeedUsed], key = "/p/" + code;
+            if (posts.has(key)) continue;
+            const p = postFromApi(code);
+            if (!p) continue;
+            liveCodes.add(code);
+            posts.set(key, p); order.push(key); added = true;
+        }
+        if (added) renderNew();
+    }
     function syncOwnFeed() {
         if (!feedEl || !igSrc) return;
         // BAILOUT: assinatura da janela montada (contagem + 1º/último permalink). O srcMO + o scan
@@ -2470,8 +3056,13 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         if (rendered.size > 0 && sig === lastHarvestSig && rendered.size === order.length) { if (!loading) queuePick(); return; }
         lastHarvestSig = sig;
         for (const a of arts) harvestOne(a);
-        // append dos INÉDITOS a partir de um ÍNDICE (era um varrer `order` inteiro por sync, O(N) com N
-        // crescendo a sessão toda) e num DocumentFragment (uma inserção só = um layout, não N).
+        renderNew();
+    }
+    // append dos INÉDITOS a partir de um ÍNDICE (era um varrer `order` inteiro por sync, O(N) com N
+    // crescendo a sessão toda) e num DocumentFragment (uma inserção só = um layout, não N).
+    // Fonte: o harvest da lista nativa OU o payload da API (onApiFeed) — o que chegar primeiro.
+    function renderNew() {
+        if (!feedEl) return;
         if (renderedUpTo < order.length) {
             const frag = document.createDocumentFragment();
             const fresh = [];
@@ -2487,6 +3078,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
                 feedEl.appendChild(frag);
                 for (const card of fresh) {
                     observeVideoCard(card);                                  // vídeo → rastreia visibilidade (toca no hover)
+                    observeFar(card);                                        // longe da tela → descarrega a mídia
                     // grid: falta tudo (header/legenda). home: só entra na fila se a legenda não veio do <article>.
                     const needsMeta = metaSurface() || !card.querySelector(".igf-cap").textContent;
                     if (needsMeta && !card.dataset.metaDone) metaPending.add(card);
@@ -2496,7 +3088,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         if (rendered.size) {
             unmountSkeleton();
             if (nativeHideTimer) { clearTimeout(nativeHideTimer); nativeHideTimer = null; }
-            if (igSrc) igSrc.classList.add("igf-src");
+            if (igSrc && !igSrc.classList.contains("igf-src")) { igSrc.classList.add("igf-src"); pauseNativeVideos(); }
         }   // 1º card real → tira o skeleton + esconde a grade nativa (grid: só agora, pra não dar tela preta)
         else if (surface !== "home" && igSrc) igSrc.classList.remove("igf-src");           // GRID vazio → mostra a grade NATIVA (nunca deixa só o spinner numa tela vazia)
         updateCardsMeta();      // preenche autor/avatar/legenda dos cards que renderizaram antes do igMedia
@@ -2529,16 +3121,18 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         for (const card of metaPending) {
             if (!card.isConnected) { metaPending.delete(card); continue; }
             const rec = igMedia.get(card.dataset.code);
-            if (!rec) continue;                                 // a API ainda não trouxe este post
             const p = posts.get(card.dataset.key); if (!p) { metaPending.delete(card); continue; }
             if (home) {
-                // home: o <article> já deu header/contadores — daqui só aproveito a LEGENDA. Se a API
-                // respondeu e o post não tem legenda, sai do pendente (senão o Set nunca esvazia).
-                if (rec.caption) { p.caption = rec.caption; setCaption(card, rec.caption); }
-                card.dataset.metaDone = "1";
-                metaPending.delete(card);
+                // home: o <article> já deu header/contadores — daqui só a LEGENDA: da API, senão do <h1>
+                // do artigo nativo (o IG costuma renderizá-lo depois do harvest). Sai do pendente quando
+                // achou a legenda ou quando a API respondeu sem ela (post sem legenda).
+                let cap = rec && rec.caption;
+                if (!cap) { const art = nativeArticle(card.dataset.key), h = art && art.querySelector("h1"); cap = h ? (h.textContent || "").trim() : ""; }
+                if (cap) { p.caption = cap.slice(0, 1500); setCaption(card, p.caption); }
+                if (cap || rec) { card.dataset.metaDone = "1"; metaPending.delete(card); }
                 continue;
             }
+            if (!rec) continue;                                 // a API ainda não trouxe este post
             if (!rec.author && !rec.caption) continue;
             if (rec.author) p.author = rec.author;
             if (rec.avatar) p.avatar = rec.avatar;
@@ -2566,15 +3160,14 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             const src = igSrc;
             if (!src) return resolve(false);
             let done = false;
-            const finish = (grew) => { if (done) return; done = true; try { obs.disconnect(); } catch (_) { /**/ } clearInterval(iv); clearTimeout(to); resolve(grew); };
+            const finish = (grew) => { if (done) return; done = true; try { obs.disconnect(); } catch (_) { /**/ } clearTimeout(to); resolve(grew); };
             const check = () => {
                 if (igSrc !== src) return finish(false);          // trocou de superfície no meio → para
                 for (const a of itemsIn(src)) harvestOne(a);      // harvest baila barato em key já vista
                 if (order.length > beforeOrder) finish(true);
             };
-            const obs = new MutationObserver(check);
+            const obs = new MutationObserver(check);   // post novo = mutação na lista; o teto é o timeout (sem polling)
             try { obs.observe(src, { childList: true, subtree: true }); } catch (_) { /**/ }
-            const iv = setInterval(check, 100);
             const to = setTimeout(() => finish(false), maxMs);
             check();
         });
@@ -2625,15 +3218,21 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         feedEl.classList.toggle("igf-nocounts", !prefs.showCounts);
     }
     // tema REAL do IG (independe do OS): luminância do fundo (--ig-background, fallback bg do body).
+    // No document-start nada disso existe ainda (fundo transparente = "rgba(0, 0, 0, 0)", que lia como
+    // ESCURO e pintava o 1º frame do tema claro de preto) → até o IG definir o fundo, vale o tema do SO.
+    const osDark = () => { try { return matchMedia("(prefers-color-scheme: dark)").matches; } catch { return false; } };
     function isDarkTheme() {
         try {
             const v = getComputedStyle(document.documentElement).getPropertyValue("--ig-background").trim();
             let rgb = null;
             if (v) { const m = v.split(",").map((s) => parseFloat(s)); if (m.length >= 3 && m.every((x) => !isNaN(x))) rgb = m; }
-            if (!rgb) { const bg = getComputedStyle(document.body || document.documentElement).backgroundColor; const m = bg && bg.match(/[\d.]+/g); if (m && m.length >= 3) rgb = m.map(Number); }
-            if (!rgb) return true;
+            if (!rgb && document.body) {
+                const m = (getComputedStyle(document.body).backgroundColor || "").match(/[\d.]+/g);
+                if (m && m.length >= 3 && !(m.length >= 4 && +m[3] === 0)) rgb = m.map(Number);   // alpha 0 = sem fundo ainda
+            }
+            if (!rgb) return osDark();
             return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) < 128;
-        } catch { return true; }
+        } catch { return osDark(); }
     }
     let lastDark = null;
     function applyTheme() {   // toggla html.igf-dark (guard "mudou?" → não reescreve a cada scan)
@@ -2641,6 +3240,29 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         if (dark === lastDark) return;
         lastDark = dark;
         document.documentElement.classList.toggle("igf-dark", dark);
+    }
+    // cria o NOSSO feed (+ loader) dentro de `parent`: o cwrap da superfície, ou o shell do boot da home
+    function createFeed(parent) {
+        feedEl = el("div", { class: "igf-feed" });
+        bindFeedEvents(feedEl);
+        applyFeedClasses();                      // sombra/densidade/legenda/contadores desde o 1º paint
+        parent.appendChild(feedEl);              // meu feed depois das stories
+        apiFeedUsed = boot ? 0 : apiFeedCodes.length;   // boot: o payload inline já lido vira card; depois, só o que chegar
+        if (surface === "saved") { savedToolbar = buildSavedToolbar(); parent.insertBefore(savedToolbar, feedEl); }   // toolbar de multisseleção ACIMA do mosaico
+        loaderEl = el("div", { class: "igf-loader" + (feedExhausted ? " igf-done" : "") }, el("div", { class: "igf-spin" }), el("span", {}, "Carregando mais…"));
+        parent.appendChild(loaderEl);             // spinner no fim (escondido se o grid já esgotou) — feedback + sentinela do carregar-mais
+        rendered.clear(); renderedUpTo = 0; metaPending.clear(); feedNcols = 0; feedColw = 0;   // feed novo (React pode ter removido) → re-renderiza tudo
+        scheduleInlineJSON();                    // parse server-rendered fora do caminho crítico do primeiro paint
+        // (o header/legenda que chegam DEPOIS vêm pelo queueMetaUpdate do ingestText — sem poll aqui)
+        layoutFeed();                            // colunas + altura do card ANTES do skeleton (ele usa --igf-cardh)
+        mountSkeleton();                         // cards fantasmas no lugar dos posts enquanto o 1º lote não chega
+        if (typeof IntersectionObserver !== "undefined") {
+            if (loaderIO) loaderIO.disconnect();
+            // lookahead: era 4500px na home — com content-visibility os cards fora da tela custam quase nada,
+            // mas CARREGAR mais páginas continua caro (o IG re-renderiza a lista nativa). ~2 telas basta.
+            loaderIO = new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) loadMore(); }, { rootMargin: surface === "home" ? "1800px" : "1200px" });
+            loaderIO.observe(loaderEl);          // perto do fim (ou feed curto no início) → puxa páginas
+        }
     }
     function mountOwnFeed(list, cwrap) {
         // Never hide an ancestor of the own feed: a bad column match must leave the native fallback visible.
@@ -2658,41 +3280,21 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             // O skeleton cobre a janela imediatamente, mas uma falha de harvest não pode deixar a
             // home preta para sempre. Se nenhum card entrou, devolve a lista nativa como fallback;
             // quando os dados chegarem, syncOwnFeed esconde-a novamente no mesmo frame.
-            if (firstMount) {
-                if (nativeHideTimer) clearTimeout(nativeHideTimer);
+            if ((firstMount || !rendered.size) && !nativeHideTimer) {
                 nativeHideTimer = setTimeout(() => {
                     nativeHideTimer = null;
                     if (feedEl && !rendered.size && igSrc) { igSrc.classList.remove("igf-src"); unmountSkeleton(); }
                 }, 2500);
             }
         }
-        if (firstMount) {
-            feedEl = el("div", { class: "igf-feed" });
-            applyFeedClasses();                      // sombra/densidade/legenda/contadores desde o 1º paint
-            cwrap.appendChild(feedEl);               // meu feed depois das stories
-            if (surface === "saved") { savedToolbar = buildSavedToolbar(); cwrap.insertBefore(savedToolbar, feedEl); }   // toolbar de multisseleção ACIMA do mosaico
-            loaderEl = el("div", { class: "igf-loader" + (feedExhausted ? " igf-done" : "") }); loaderEl.innerHTML = SPIN_HTML;
-            cwrap.appendChild(loaderEl);             // spinner no fim (escondido se o grid já esgotou) — feedback + sentinela do carregar-mais
-            rendered.clear(); renderedUpTo = 0; metaPending.clear(); feedNcols = 0; feedColw = 0;   // feed novo (React pode ter removido) → re-renderiza tudo
-            scheduleInlineJSON();                    // parse server-rendered fora do caminho crítico do primeiro paint
-            // F5: o igMedia (autor/legenda) pode chegar DEPOIS que a página assentou (sem mais mutações p/ re-disparar).
-            // Poll por alguns segundos preenchendo o header/legenda dos cards conforme a API chega.
-            [600, 1500, 3000, 5000, 8000].forEach((t) => setTimeout(() => { if (feedEl) updateCardsMeta(); }, t));
-            layoutFeed();                            // colunas + altura do card ANTES do skeleton (ele usa --igf-cardh)
-            mountSkeleton();                         // cards fantasmas no lugar dos posts enquanto o 1º lote não chega
-            if (typeof IntersectionObserver !== "undefined") {
-                if (loaderIO) loaderIO.disconnect();
-                // lookahead: era 4500px na home — com content-visibility os cards fora da tela custam quase nada,
-                // mas CARREGAR mais páginas continua caro (o IG re-renderiza a lista nativa). ~2 telas basta.
-                loaderIO = new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) loadMore(); }, { rootMargin: surface === "home" ? "1800px" : "1200px" });
-                loaderIO.observe(loaderEl);          // perto do fim (ou feed curto no início) → puxa páginas
-            }
-        } else if (feedEl.parentElement !== cwrap) {
-            // o React re-renderizou o cwrap (grade nova) e ÓRFÃO o nosso feed → MOVE p/ o cwrap atual (mantém os
-            // cards, sem recriar). Sem isto, o feed velho ficava num lugar e a grade nova aparecia visível ao lado.
+        if (firstMount) createFeed(cwrap);
+        else if (feedEl.parentElement !== cwrap) {
+            // o React re-renderizou o cwrap (grade nova) e ÓRFÃO o nosso feed — ou o feed nasceu no SHELL do
+            // boot — → MOVE p/ o cwrap atual (mantém os cards, sem recriar)
             cwrap.appendChild(feedEl);
             if (loaderEl) cwrap.appendChild(loaderEl);
         }
+        if (boot) endBoot();                         // a lista nativa já está fora de vista → o <main> pode aparecer
         if (typeof MutationObserver !== "undefined" && srcMOTarget !== igSrc) {   // re-aponta o observer quando a grade muda (React re-render)
             if (!srcMO) srcMO = new MutationObserver(queueSyncFeed); else srcMO.disconnect();
             srcMO.observe(igSrc, { childList: true, subtree: true });
@@ -2721,9 +3323,9 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             }, { passive: true });
         }
         // O IG autoplaya os vídeos da lista off-screen: decode invisível (lag) e, pior, DOWNLOAD de
-        // vídeo que ninguém vai ver. O polling de 1s deixava cada um bufferizar até um segundo —
-        // agora pauso no próprio evento `play` (capture), antes de começar a baixar. O intervalo
-        // fica só como rede de segurança, e bem mais espaçado.
+        // vídeo que ninguém vai ver. Pauso no próprio evento `play` (capture), antes de começar a
+        // baixar — e uma varredura só, na montagem, pros que já tocavam antes do .igf-src entrar.
+        // (O setInterval de 3s "de segurança" saiu: todo play novo passa pelo listener.)
         if (!nativePlayBound) {
             nativePlayBound = true;
             document.addEventListener("play", (e) => {
@@ -2734,7 +3336,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
                 }
             }, true);
         }
-        if (!nativePauseTimer && typeof setInterval === "function") nativePauseTimer = setInterval(pauseNativeVideos, 3000);
+        if (igSrc.classList.contains("igf-src")) pauseNativeVideos();
         queueSyncFeed();                              // primeiro lote entra no próximo frame, após o skeleton pintar
     }
     function pauseNativeVideos() {
@@ -2748,8 +3350,9 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         if (srcMO) { srcMO.disconnect(); srcMO = null; } srcMOTarget = null;
         if (loaderIO) { loaderIO.disconnect(); loaderIO = null; }
         if (videoIO) { videoIO.disconnect(); videoIO = null; }
-        if (nativePauseTimer) { clearInterval(nativePauseTimer); nativePauseTimer = null; }
-        visVids.clear(); hoverCard = null; videoState.clear(); feedSoundOn = false;
+        if (farIO) { farIO.disconnect(); farIO = null; }
+        clearTimeout(hoverT); hoverNext = null;
+        visVids.clear(); playCard = null; previewCard = null; videoState.clear(); liveCodes.clear();
         if (igSrc) { igSrc.classList.remove("igf-src"); igSrc = null; }
         if (feedEl) { feedEl.remove(); feedEl = null; }
         if (loaderEl) { loaderEl.remove(); loaderEl = null; }
@@ -2768,7 +3371,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     }
     // a tray de stories (atributo semântico estável do IG)
     function storiesTray(col) {
-        return col.querySelector('[data-pagelet="story_tray"]') || col.querySelector('[aria-label*="Stories" i]');
+        return col.querySelector('[data-pagelet="story_tray"]') || col.querySelector(SEL.stories);
     }
 
     // --igm-navw = largura REAL do nav (o offset do conteúdo). Era 72px fixo: com o nav expandido (sem o
@@ -2786,37 +3389,42 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     }
 
     let chromeApplied = false;   // alguma classe .igm-* viva no DOM → o unmasonry tem o que limpar
+    let pinnedNav = null;        // a caixa do nav que pinamos (referência direta, sem varrer o documento)
     function applyNavPin() {
         if (!prefs.masonry || !prefs.pinNav) {   // flag off → garante que nenhum nav fica pinado
-            for (const e of document.querySelectorAll(".igm-navpin")) e.classList.remove("igm-navpin");
+            if (pinnedNav) { pinnedNav.classList.remove("igm-navpin"); pinnedNav = null; }
             return;
         }
-        if (document.querySelector(".igm-navpin")) return;
+        if (pinnedNav && pinnedNav.isConnected && pinnedNav.classList.contains("igm-navpin")) return;
         const box = leftNavWidthBox();
-        if (box) { box.classList.add("igm-navpin"); chromeApplied = true; }
+        if (box) { box.classList.add("igm-navpin"); pinnedNav = box; chromeApplied = true; }
     }
     function applyFeed() {
         const list = feedArticleList();
-        if (!list) return;
+        if (!list) { if (boot) bootTray(); return; }
         const split = feedColumnSplit(list);
         if (!split) return;   // sem a estrutura conhecida → não monto o feed próprio (evita bagunça)
         // scaffolding: da lista até o col tudo full-width (.igm-wide, tira o cap de 630), MENOS o
         // wrapper-comum (.igm-content, capado) → stories + meu feed centram juntos = alinhados.
         const cwrap = contentWrapper(split.col, list);
-        chromeApplied = true;
+        chromeApplied = true; mountedChrome = cwrap;
+        const marks = [];
         for (let n = list.parentElement, i = 0; n && n.tagName !== "MAIN" && i < 16; n = n.parentElement, i++) {
-            n.classList.add(n === cwrap ? "igm-content" : "igm-wide");
+            const cls = n === cwrap ? "igm-content" : "igm-wide";
+            n.classList.add(cls); marks.push([n, cls]);
             if (n === split.col) break;
         }
         // offset só se o feed começa SOB o nav (overlay); senão dobraria o respiro
-        const navBox = document.querySelector(".igm-navpin") || leftNavWidthBox();
+        const navBox = (pinnedNav && pinnedNav.isConnected) ? pinnedNav : leftNavWidthBox();
         const navW = navBox ? (navBox.getBoundingClientRect().width || 72) : 0;
         syncNavWidth(navBox, navW);
         const colLeft = split.col.getBoundingClientRect().left;
         split.col.classList.toggle("igm-col", navW > 0 && colLeft < navW - 4);
         const tray = storiesTray(split.col);
-        if (tray) tray.classList.add("igm-stories");
-        for (const r of split.rails) r.classList.toggle("igm-norail", !!prefs.hideRail);   // flag: esconder coluna direita
+        if (tray) { tray.classList.add("igm-stories"); trayEl = tray; }
+        for (const r of split.rails) { r.classList.toggle("igm-norail", !!prefs.hideRail); if (prefs.hideRail) marks.push([r, "igm-norail"]); }   // flag: esconder coluna direita
+        if (tray) marks.push([tray, "igm-stories"]);
+        setChromeMarks(marks, split.col.parentElement);
         mountOwnFeed(list, cwrap);   // esconde a lista nativa + renderiza MEU feed em masonry
     }
     // ===== EXPLORE / PROFILE: grade de tiles → mosaico próprio =====
@@ -2842,8 +3450,8 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     }
     /* botão de COPIAR o username, colado no nome do perfil. Acha o nó FOLHA cujo texto é exatamente
      * o usuário da URL (o IG muda a tag conforme o layout/experimento, então não dá pra fixar h1/h2).
-     * Idempotente: o React re-renderiza o header o tempo todo e isto roda a cada scan. */
-    const ICO_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+     * Idempotente: o React re-renderiza o header; isto roda no trabalho de rota (ver needsRouteWork). */
+    const ICO_COPY = { a: OUTLINE, k: [["rect", { x: "9", y: "9", width: "11", height: "11", rx: "2" }], ["path", { d: "M5 15V5a2 2 0 0 1 2-2h10" }]] };
     function profileUser() {
         const segs = location.pathname.split("/").filter(Boolean);
         return segs.length && !RESERVED.has(segs[0]) ? segs[0] : "";
@@ -2852,25 +3460,16 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         const user = profileUser();
         if (!user) return;
         const header = document.querySelector("main header");
-        if (!header || header.querySelector(".igp-copy")) return;
+        if (!header) return;
+        const had = header.querySelector(".igp-copy");
+        if (had) { copyBtn = had; return; }
         let nameEl = null;
         for (const n of header.querySelectorAll("h1, h2, span, a, div")) {
             if (!n.children.length && (n.textContent || "").trim() === user) { nameEl = n; break; }
         }
         if (!nameEl || !nameEl.parentElement) return;
-        const btn = el("button", { class: "igp-copy", type: "button", title: "Copiar @" + user, html: ICO_COPY });
-        btn.addEventListener("click", (e) => {
-            e.preventDefault(); e.stopPropagation();
-            const done = () => {
-                btn.innerHTML = ICO.check; btn.classList.add("igf-copied");
-                setTimeout(() => { btn.innerHTML = ICO_COPY; btn.classList.remove("igf-copied"); }, 1400);
-                toast("@" + user + " copiado");
-            };
-            try {
-                if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(user).then(done).catch(() => fallbackCopy(user, done));
-                else fallbackCopy(user, done);
-            } catch (_) { fallbackCopy(user, done); }
-        });
+        const btn = el("button", { class: "igp-copy", type: "button", title: "Copiar @" + user, icon: ICO_COPY });
+        btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); copyWithFeedback(btn, user, ICO_COPY, "@" + user + " copiado"); });
         // colocar o botão NA MESMA LINHA do nome: sobe até a caixa flex-row que abriga o username (a
         // mesma do "···") e insere logo depois do bloco do nome. Só INSERE — mover nó do React é pedir
         // erro de reconciliação; se não achar a caixa, cai no irmão imediato.
@@ -2882,6 +3481,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         }
         if (box && hop < 3) child.insertAdjacentElement("afterend", btn);
         else nameEl.insertAdjacentElement("afterend", btn);
+        copyBtn = btn;
     }
     function applyGrid() {
         const grid = gridContainer();
@@ -2897,10 +3497,14 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         const navW = navBox ? (navBox.getBoundingClientRect().width || 72) : 0;
         syncNavWidth(navBox, navW);
         const underNav = navW > 0 && main && main.getBoundingClientRect().left < navW - 4;
-        for (let n = grid; n && n !== col; n = n.parentElement) n.classList.add("igm-wide");   // tira os caps internos do IG
+        const marks = [];
+        for (let n = grid; n && n !== col; n = n.parentElement) { n.classList.add("igm-wide"); marks.push([n, "igm-wide"]); }   // tira os caps internos do IG
         // a COLUNA inteira (header + grid) ganha a MESMA largura/centragem do feed da home (--igm-maxw)
         col.classList.add("igm-content", "igm-gridcol");
+        mountedChrome = col;
         if (underNav) col.classList.add("igm-gridnav");   // main nasce sob o nav fixo → desloca p/ centrar em (viewport − nav), igual home
+        marks.push([col, "igm-content"]);
+        setChromeMarks(marks, null);
         mountOwnFeed(grid, cwrap);   // grid vira .igf-src (off-screen, vivo) + renderiza nosso mosaico
     }
     /* SKELETON de carregamento — DENTRO da página (v3.14). Era um overlay `position:fixed` cobrindo
@@ -2923,21 +3527,20 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         for (const s of feedEl.querySelectorAll(".igf-skel")) s.remove();
     }
     function syncMasonry() {
-        applyTheme();    // mantém html.igf-dark em dia com o tema atual do IG (claro/escuro)
         const surf = targetSurface();
         if (surf !== mountedSurface) { unmasonry(); lastHarvestSig = ""; mountedSurface = surf; }   // trocou de superfície → limpa tudo (sig inclusive)
-        applyNavPin();   // gating próprio (masonry && pinNav) — só home
-        if (isProfile() || isSaved()) enhanceProfileHeader();   // copiar @ vale mesmo com o grid do perfil off
+        applyNavPin();   // gating próprio (masonry && pinNav)
         if (surf === "home") { surface = "home"; applyFeed(); }
         else if (surf === "explore" || surf === "profile" || surf === "saved") { surface = surf; applyGrid(); }
         else unmasonry();
     }
     function unmasonry() {
+        if (boot) endBoot();
         unmountSkeleton();
         // sem nada aplicado, não há o que limpar — sem este flag os 5 querySelectorAll full-doc rodavam
         // a CADA burst de mutação em reels/stories (as superfícies mais churnentas do IG), sempre vazios
         if (!chromeApplied) return;
-        chromeApplied = false;
+        chromeApplied = false; mountedChrome = null; trayEl = null; setChromeMarks([], null);
         teardownOwnFeed();   // tira o off-screen da lista nativa + remove meu feed
         for (const e of document.querySelectorAll(".igm-wide")) e.classList.remove("igm-wide");
         for (const e of document.querySelectorAll(".igm-content")) e.classList.remove("igm-content");
@@ -2946,53 +3549,254 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         for (const e of document.querySelectorAll(".igm-col")) e.classList.remove("igm-col");
         for (const e of document.querySelectorAll(".igm-stories")) e.classList.remove("igm-stories");
         for (const e of document.querySelectorAll(".igm-norail")) e.classList.remove("igm-norail");
+        for (const e of document.querySelectorAll(".igf-keep")) e.classList.remove("igf-keep");
+    }
+
+    /* BOOT DA HOME (mosaico ligado): do document-start até o nosso feed montar.
+     *   • html.igf-boot: o CSS esconde o <main> inteiro (skeletons/lista nativos, coluna direita) desde o
+     *     1º paint — só a tray de stories e o NOSSO feed ficam visíveis (visibility volta nos descendentes).
+     *   • SHELL: tray fantasma + cards skeleton num host fixo, na mesma grade/largura do feed final.
+     *   • a tray real entra no topo assim que o IG a põe no DOM (bootTray): marca a coluna e leva o feed
+     *     pro wrapper dela — independente de o IG já ter renderizado algum <article>.
+     *   • os cards vêm do payload (onApiFeed) antes dos <article>; o harvest segue como fallback.
+     *   • nada montou em BOOT_MAX_MS → desiste e devolve o feed nativo do IG. */
+    const BOOT_MAX_MS = 8000;
+    let boot = false, bootHost = null, bootMO = null, bootTimer = null;
+    const TRAY_SEL = '[data-pagelet="story_tray"]';
+    function startBoot() {
+        if (!isHome() || !prefs.masonry) return;
+        boot = true; surface = "home"; mountedSurface = "home"; chromeApplied = true;
+        document.documentElement.classList.add("igf-boot");
+        bootTimer = setTimeout(() => {
+            if (!boot) return;
+            unmasonry();                 // sem feed montado: tira o shell/marcas → o IG nativo aparece
+            mountedSurface = null;       // a rota ainda pode montar o mosaico se os posts chegarem depois
+        }, BOOT_MAX_MS);
+        // o parser ainda está escrevendo o documento: o MO no <html> vê o <body> nascer, cada <script>
+        // de JSON inline (e cada pedaço de texto dele) e a tray de stories — sem esperar o DOMContentLoaded
+        bootMO = new MutationObserver(onBootMutations);
+        bootMO.observe(document.documentElement, { childList: true, subtree: true });
+        ingestInlineJSON();
+        mountShell();
+    }
+    function mountShell() {
+        if (!boot || bootHost || feedEl || !document.body) return;
+        bootHost = el("div", { class: "igf-bootshell" });
+        const wrap = el("div", { class: "igf-bootwrap" }, el("div", { class: "igf-boottray" }));
+        bootHost.appendChild(wrap);
+        document.body.appendChild(bootHost);
+        createFeed(wrap);
+        onApiFeed();                     // payload lido antes do <body> existir → cards já no 1º paint do shell
+    }
+    const isJsonScript = (n) => n.tagName === "SCRIPT" && n.type === "application/json";
+    const LOGIN_SEL = 'input[type="password"]';   // home deslogada = tela de login → nada de shell por cima dela
+    function onBootMutations(recs) {
+        let tray = false, login = false;
+        for (const r of recs) {
+            if (r.target.nodeType === 1 && isJsonScript(r.target)) { ingestInlineScript(r.target); continue; }   // texto do script chegando
+            const add = r.addedNodes;
+            for (let i = 0; i < add.length; i++) {
+                const n = add[i];
+                if (n.nodeType !== 1) continue;
+                if (isJsonScript(n)) ingestInlineScript(n);
+                else if (n.firstElementChild || n.tagName === "INPUT" || n.tagName === "DIV") {
+                    if (!tray && (n.matches(TRAY_SEL) || n.querySelector(TRAY_SEL))) tray = true;
+                    if (!login && (n.matches(LOGIN_SEL) || n.querySelector(LOGIN_SEL))) login = true;
+                }
+            }
+        }
+        if (login) { unmasonry(); mountedSurface = null; return; }
+        if (!bootHost && !feedEl) mountShell();
+        if (tray) bootTray();
+    }
+    function bootTray() {
+        if (!boot || !feedEl || (trayEl && trayEl.isConnected && feedEl.parentElement === mountedChrome)) return;
+        const main = document.querySelector("main");
+        const tray = main && storiesTray(main);
+        if (!tray) return;
+        const split = feedColumnSplit(tray);
+        if (!split) return;
+        const cwrap = contentWrapper(split.col, tray);
+        if (!cwrap || cwrap === split.col || !split.col.contains(cwrap)) return;
+        for (let n = tray.parentElement, i = 0; n && n.tagName !== "MAIN" && i < 16; n = n.parentElement, i++) {
+            n.classList.add(n === cwrap ? "igm-content" : "igm-wide");
+            if (n === split.col) break;
+        }
+        const navBox = (pinnedNav && pinnedNav.isConnected) ? pinnedNav : leftNavWidthBox();
+        const navW = navBox ? (navBox.getBoundingClientRect().width || 72) : 0;
+        syncNavWidth(navBox, navW);
+        split.col.classList.toggle("igm-col", navW > 0 && split.col.getBoundingClientRect().left < navW - 4);
+        for (const r of split.rails) r.classList.toggle("igm-norail", !!prefs.hideRail);
+        tray.classList.add("igm-stories"); trayEl = tray;
+        let branch = tray;               // o ramo da tray dentro do wrapper fica visível; o resto é do IG (skeleton/lista)
+        while (branch.parentElement && branch.parentElement !== cwrap) branch = branch.parentElement;
+        branch.classList.add("igf-keep");
+        mountedChrome = cwrap;
+        cwrap.appendChild(feedEl);
+        if (loaderEl) cwrap.appendChild(loaderEl);
+        if (bootHost) { bootHost.remove(); bootHost = null; }
+        relayoutFeed();
+    }
+    function endBoot() {
+        boot = false;
+        document.documentElement.classList.remove("igf-boot");
+        if (bootMO) { bootMO.disconnect(); bootMO = null; }
+        if (bootTimer) { clearTimeout(bootTimer); bootTimer = null; }
+        if (bootHost) { bootHost.remove(); bootHost = null; }
     }
 
     /* ------------------------------------------------------------------ *
-     * Scan + observação (debounced) + SPA. Sem polling permanente.
+     * ROTA + observação. Quem dispara trabalho de página inteira (montar a superfície, tema,
+     * header do perfil, dock) é a ROTA: o patch do history + popstate. O MutationObserver só faz
+     * trabalho barato:
+     *   • lê os addedNodes atrás de <video> novos (nada de querySelectorAll("video") no documento);
+     *   • se a superfície da rota ainda não montou, ou o React a desmontou, agenda a montagem — com
+     *     ela saudável, uma mutação custa alguns isConnected (needsRouteWork).
+     * Ele fica no <body>, não no <main>: o post aberto em modal e os stories renderizam em portais
+     * fora do <main>, e o player precisa achar esses <video> também. O feed próprio tem o observer
+     * dele, escopado na lista nativa (srcMO).
      * ------------------------------------------------------------------ */
-    let retryPending = false;
-    const retryCount = new WeakMap();   // tentativas de attach por <video> sem layout (cap anti-polling)
-    function scheduleRetry() {
-        if (retryPending) return;
-        retryPending = true;
-        setTimeout(() => { retryPending = false; scan(); }, 400);   // vídeo sem layout ainda
+    let mountedChrome = null;   // nó que ganhou .igm-content (home: cwrap; grid: coluna) — o React re-renderiza = some
+    let trayEl = null, copyBtn = null;
+    let routeTries = 0, extrasTries = 0, routeMounted = false;
+    const ROUTE_MAX = 80;       // montagens tentadas por rota antes de desistir (página sem a estrutura esperada)
+    const EXTRAS_MAX = 20;      // idem pros extras (pino do nav, tray de stories, copiar @) — podem nem existir
+    /* "CHROME" = as classes .igm-* que pusemos em nós DO IG. O React re-renderiza esses nós (troca o
+     * className, recria o wrapper) e uma rail pode montar DEPOIS da nossa montagem. O scan antigo
+     * re-assegurava tudo a cada rajada; aqui guardamos o que marcamos (≈10 nós) e a contagem de filhos da
+     * "row" da coluna, e a saúde confere isso — barato, e qualquer perda dispara o re-apply na hora. */
+    let chromeMarks = [], chromeRow = null, chromeRowKids = 0;
+    function setChromeMarks(marks, row) { chromeMarks = marks; chromeRow = row; chromeRowKids = row ? row.childElementCount : 0; }
+    function chromeIntact() {
+        for (const [n, cls] of chromeMarks) if (!n.isConnected || !n.classList.contains(cls)) return false;
+        return !chromeRow || (chromeRow.isConnected && chromeRow.childElementCount === chromeRowKids);   // rail nova = filho novo na row
     }
+    function coreHealthy() {
+        const surf = targetSurface();
+        if (surf !== mountedSurface) return false;
+        if (!surf) return true;
+        return !!(feedEl && feedEl.isConnected && igSrc && igSrc.isConnected &&
+            mountedChrome && mountedChrome.isConnected && mountedChrome.classList.contains("igm-content") && chromeIntact());
+    }
+    function needsRouteWork() {
+        // quebrou DEPOIS de montar (React re-renderizou) → sempre conserta; nunca montou → até ROUTE_MAX
+        if (!coreHealthy() && (routeMounted || routeTries < ROUTE_MAX)) return true;
+        if (extrasTries >= EXTRAS_MAX) return false;
+        if (prefs.masonry && prefs.pinNav && !(pinnedNav && pinnedNav.isConnected)) return true;
+        if (mountedSurface === "home" && !(trayEl && trayEl.isConnected)) return true;
+        if ((isProfile() || isSaved()) && !(copyBtn && copyBtn.isConnected)) return true;
+        return false;
+    }
+    function routeWork() {
+        if (routeQ) { clearTimeout(routeQ); routeQ = null; }
+        if (coreHealthy()) extrasTries++; else routeTries++;
+        applyTheme();
+        syncMasonry();                                          // monta/re-assegura a superfície + pino do nav
+        if (feedEl && feedEl.isConnected) routeMounted = true;
+        if (isProfile() || isSaved()) enhanceProfileHeader();   // copiar @ vale mesmo com o grid do perfil off
+        schedulePanel();                                        // FAB do painel, fora do primeiro paint
+    }
+    // throttle (não debounce): numa rajada contínua de mutações o debounce adiava a montagem indefinidamente
+    let routeQ = null;
+    function routeSoon() { if (routeQ) return; routeQ = setTimeout(() => { routeQ = null; routeWork(); }, 180); }
 
-    function scan() {
-        // poda mortos / reconstrói barras que o React removeu
+    /* ---- <video>: descoberta pelos addedNodes, attach em lote por frame ---- */
+    const pendingVideos = new Set();
+    let videoQ = false, prunePending = false;
+    function collectVideos(n) {
+        if (!n || n.nodeType !== 1) return;
+        if (n.tagName === "VIDEO") { pendingVideos.add(n); return; }
+        if (!n.firstElementChild) return;
+        const vs = n.getElementsByTagName("video");
+        for (let i = 0; i < vs.length; i++) pendingVideos.add(vs[i]);
+    }
+    function queueVideoWork() { if (videoQ) return; videoQ = true; raf(flushVideos); }
+    // vídeo ainda sem caixa (preload 0×0, comum em reels/stories): em vez de re-agendar scan, espera
+    // ele GANHAR tamanho (ResizeObserver) e só então anexa o player.
+    let sizeRO = null;
+    const sizeWatched = new Set();
+    function unwatchSize(v) { sizeWatched.delete(v); try { sizeRO && sizeRO.unobserve(v); } catch (_) { /**/ } }
+    function watchSize(v) {
+        if (typeof ResizeObserver === "undefined" || sizeWatched.has(v)) return;
+        if (!sizeRO) sizeRO = new ResizeObserver((ents) => {
+            for (const e of ents) {
+                const v = e.target;
+                if (!v.isConnected) { unwatchSize(v); continue; }
+                const r = e.contentRect;
+                if (r.width >= MIN_SIZE && r.height >= MIN_SIZE) { unwatchSize(v); pendingVideos.add(v); queueVideoWork(); }
+            }
+        });
+        sizeWatched.add(v);
+        sizeRO.observe(v);
+    }
+    // poda mortos / reconstrói barras que o React removeu (só quando houve remoção no DOM)
+    function pruneVideos() {
         for (const v of [...live]) {
             const c = controllers.get(v);
-            if (!v.isConnected) { c && c.destroy(); continue; }
-            if (c && c.bar && !c.bar.isConnected) { c.destroy(); }   // será re-attachado abaixo
+            if (!v.isConnected) { if (c) c.destroy(); continue; }
+            if (c && c.bar && !c.bar.isConnected) { c.destroy(); pendingVideos.add(v); }   // re-attach logo abaixo
         }
-        // Monta/oculta o fornecedor nativo antes de medir vídeos. No primeiro scan isso evita
-        // construir controles para dezenas de vídeos que serão imediatamente movidos para fora
-        // da tela pelo .igf-src; também deixa o skeleton ser o primeiro conteúdo pintado.
-        syncMasonry();
-        for (const v of document.querySelectorAll("video")) {
-            if (bound.has(v)) continue;
+        for (const v of [...sizeWatched]) if (!v.isConnected) unwatchSize(v);
+    }
+    function flushVideos() {
+        videoQ = false;
+        if (prunePending) { prunePending = false; pruneVideos(); }
+        if (!pendingVideos.size) return;
+        // a superfície da rota ainda não montou → monta ANTES: os vídeos da lista nativa vão pro
+        // .igf-src e não ganham um player que seria escondido no mesmo instante
+        const surf = targetSurface();
+        if (surf && surf !== mountedSurface) routeWork();
+        const batch = [...pendingVideos];
+        pendingVideos.clear();
+        for (const v of batch) {
+            if (bound.has(v) || !v.isConnected) continue;
             const r = v.getBoundingClientRect();
-            if (r.width < MIN_SIZE || r.height < MIN_SIZE) {
-                // CAP por vídeo: preload 0x0 PERSISTENTE (comum em reels/stories) re-agendava o scan
-                // a cada 400ms p/ sempre — vira polling permanente. Se ele ganhar tamanho depois,
-                // a própria mutação do React dispara o scanSoon e o attach acontece por evento.
-                const n = (retryCount.get(v) || 0) + 1; retryCount.set(v, n);
-                if (n <= 5) scheduleRetry();
-                continue;
-            }
+            if (r.width < MIN_SIZE || r.height < MIN_SIZE) { watchSize(v); continue; }
             attach(v);
         }
-        schedulePanel();  // FAB do painel sobrevive aos re-renders do IG (SPA), fora do primeiro paint
-        if (prefs.hideMessages) tagMessagesDock();   // re-marca o dock de mensagens (React re-renderiza)
     }
-    const scanSoon = debounce(scan, 180);
 
-    const mo = new MutationObserver(scanSoon);
-    mo.observe(document.documentElement, { childList: true, subtree: true });
+    function onMutations(recs) {
+        for (const r of recs) {
+            const add = r.addedNodes;
+            for (let i = 0; i < add.length; i++) collectVideos(add[i]);
+            if (r.removedNodes.length && live.size) prunePending = true;
+        }
+        if (pendingVideos.size || prunePending) queueVideoWork();
+        if (needsRouteWork()) routeSoon();
+        if (!document.getElementById("igs-fab")) schedulePanel();          // o FAB sobrevive a re-render do IG
+        if (prefs.hideMessages && dockEl && !dockEl.isConnected) { dockEl = null; scheduleDockTag(); }
+    }
+    const mo = new MutationObserver(onMutations);
+    function startObserving() {
+        if (!document.body) return false;
+        mo.observe(document.body, { childList: true, subtree: true });
+        collectVideos(document.body); queueVideoWork();
+        return true;
+    }
+    if (!startObserving()) {   // document-start: ainda sem <body> → espera ele nascer (só filhos diretos do <html>)
+        const bodyMO = new MutationObserver(() => { if (startObserving()) { bodyMO.disconnect(); routeSoon(); } });
+        bodyMO.observe(document.documentElement, { childList: true });
+    }
 
-    // SPA: patch no history + popstate → re-scan (IG troca de tela sem reload)
-    function onNav() { scanSoon(); setTimeout(scan, 450); }
+    // tema: o IG troca de claro/escuro por classe no <html> (e o SO pelo media query) — não por scan
+    let themeQ = false;
+    function applyThemeSoon() { if (themeQ) return; themeQ = true; raf(() => { themeQ = false; applyTheme(); }); }
+    new MutationObserver(applyThemeSoon).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyThemeSoon); } catch (_) { /**/ }
+
+    // SPA: patch no history + popstate → trabalho de rota (IG troca de tela sem reload)
+    let lastPath = location.pathname;
+    function onNav() {
+        if (location.pathname !== lastPath) {
+            lastPath = location.pathname;
+            navBoxCache = null; routeTries = 0; extrasTries = 0; routeMounted = false;   // caches e limites são POR ROTA
+            if (boot && !isHome()) unmasonry();      // saiu da home antes do feed montar → sem shell
+            scheduleDockTag();
+        }
+        routeSoon();
+        setTimeout(() => { if (needsRouteWork()) routeWork(); }, 450);   // o IG costuma renderizar a tela nova logo depois do push
+    }
     for (const m of ["pushState", "replaceState"]) {
         const orig = history[m];
         history[m] = function () { const r = orig.apply(this, arguments); onNav(); return r; };
@@ -3005,6 +3809,8 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
      *   salva e re-aplica. As flags do feed re-aplicam via applySettings; as
      *   do vídeo (autoUnmute/stories/keyboard) são lidas ao vivo pelo player.
      * ------------------------------------------------------------------ */
+    let settingsQ = false;
+    function applySettingsSoon() { if (settingsQ) return; settingsQ = true; raf(() => { settingsQ = false; applySettings(); }); }
     // Reaplica o que é dirigido por CSS var / classes / re-montagem do feed (toggles de vídeo são lidos ao vivo).
     function applySettings() {
         const de = document.documentElement;
@@ -3012,28 +3818,37 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         de.classList.toggle("igf-totop-on", !!prefs.backToTop);    // habilita o botão voltar-ao-topo
         de.style.setProperty("--igm-maxw", (prefs.feedWidth || 1320) + "px");
         GAP = prefs.density === "compact" ? 14 : 24;   // densidade → gap entre cards (layout em JS)
-        if (prefs.hideMessages) tagMessagesDock();     // marca o dock p/ o CSS escondê-lo
+        scheduleDockTag();                             // marca o dock p/ o CSS escondê-lo (tentativas limitadas)
         syncMasonry();          // monta/atualiza o feed (mountOwnFeed aplica as classes no 1º paint)
         applyFeedClasses();     // garante sombra/densidade/legenda/contadores com o feed já montado
         relayoutFeed();         // densidade/legenda mudam as faixas → recalcula colunas + a dica de altura
     }
     // marca o DOCK DE MENSAGENS (balão flutuante) p/ o CSS escondê-lo. Acha por link /direct/ ou ícone/texto
     // perto do rodapé-direito e sobe até o ancestral FIXO (o container do dock).
+    // Roda por ROTA (e quando a flag liga), com poucas tentativas espaçadas — antes rodava a cada scan
+    // enquanto não achasse, com querySelectorAll + getComputedStyle no documento inteiro.
+    let dockEl = null, dockTimers = [];
+    function scheduleDockTag() {
+        for (const t of dockTimers) clearTimeout(t);
+        dockTimers = [];
+        if (!prefs.hideMessages || (dockEl && dockEl.isConnected)) return;
+        for (const ms of [0, 700, 2000, 4500]) dockTimers.push(setTimeout(() => { if (prefs.hideMessages) tagMessagesDock(); }, ms));
+    }
     function tagMessagesDock() {
-        if (document.querySelector(".igf-msgdock")) return;   // já marcado (ainda vivo)
+        if (dockEl && dockEl.isConnected) return;             // já marcado (ainda vivo)
         const vw = window.innerWidth || 1200, vh = window.innerHeight || 800;
         const nearDock = (r) => r.width && r.bottom > vh - 280 && r.right > vw - 760;
         let hit = null;
-        for (const a of document.querySelectorAll('a[href*="/direct/"], svg[aria-label*="essage" i], svg[aria-label*="ensage" i], svg[aria-label*="essenger" i]')) {
+        for (const a of document.querySelectorAll(SEL.messages)) {
             if (nearDock(a.getBoundingClientRect())) { hit = a; break; }
         }
         if (!hit) for (const e of document.querySelectorAll('div[role="button"]')) {   // fallback: texto "Messages"/"Mensagens"
             const t = (e.textContent || "").trim();
-            if ((t === "Messages" || t === "Mensagens") && nearDock(e.getBoundingClientRect())) { hit = e; break; }
+            if (LABELS.messages.includes(t) && nearDock(e.getBoundingClientRect())) { hit = e; break; }
         }
         if (!hit) return;
         for (let n = hit, i = 0; n && n !== document.body && i < 9; n = n.parentElement, i++) {
-            if (getComputedStyle(n).position === "fixed") { n.classList.add("igf-msgdock"); return; }
+            if (getComputedStyle(n).position === "fixed") { n.classList.add("igf-msgdock"); dockEl = n; for (const t of dockTimers) clearTimeout(t); dockTimers = []; return; }
         }
     }
     let totopBound = false;
@@ -3045,27 +3860,29 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             if (s !== cur) { cur = s; document.documentElement.classList.toggle("igf-scrolled", s); }
         }, { passive: true });
     }
-    const TOTOP_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l-8 8h5v8h6v-8h5z"/></svg>';
-    // Ícones do rail de categorias — ordem = ordem de GROUPS (Feed, Grid, Mosaico, Vídeo, Interface).
+    const TOTOP_SVG = { k: [["path", { d: "M12 4l-8 8h5v8h6v-8h5z" }]] };
+    // Ícones do rail de categorias — ordem = ordem de GROUPS (Feed, Grid, Cards, Vídeo, Interface).
     const PANEL_ICONS = [
         "M12 3l9 8h-3v9h-4v-6H10v6H6v-9H3l9-8z",                                                              // Feed (home)
         "M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z",                                         // Grid
-        "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5zm2 0v14h6V5H5zm8 0v14h6V5h-6z",  // Mosaico (colunas)
+        "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5zm2 0v14h6V5H5zm8 0v14h6V5h-6z",  // Cards (colunas)
         "M8 5v14l11-7z",                                                                                       // Vídeo (play)
         "M3 17h6v-2H3v2zm0-5h10v-2H3v2zm0-7v2h14V5H3zm18 12v-2h-6v2h6zm0-5v-2H11v2h10zm-6-7v2h6V5h-6z",         // Interface (tune)
     ];
+    const CLOSE_SVG = { k: [["path", { d: "M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z" }]] };
     function buildPanel() {
         if (document.getElementById("igs-fab")) return;
-        const fab = el("button", { id: "igs-fab", type: "button", title: "Ajustes do Instagram", html: ICONS.gear });
-        const toTop = el("button", { id: "igs-totop", type: "button", title: "Voltar ao topo", html: TOTOP_SVG });
+        const fab = el("button", { id: "igs-fab", type: "button", title: "Ajustes do Instagram", icon: ICONS.gear });
+        const toTop = el("button", { id: "igs-totop", type: "button", title: "Voltar ao topo", icon: TOTOP_SVG });
         toTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
         const panel = el("div", { id: "igs-panel", role: "dialog", "aria-label": "Ajustes do Instagram" });
 
         // cabeçalho
-        const close = el("button", { class: "igs-x", type: "button", title: "Fechar", onClick: () => panel.classList.remove("open") }, "✕");
+        const close = el("button", { class: "igs-x", type: "button", title: "Fechar", "aria-label": "Fechar", icon: CLOSE_SVG, onClick: () => panel.classList.remove("open") });
         panel.append(el("div", { class: "igs-head" },
-            el("span", { class: "igs-logo", html: ICONS.gear }),
-            el("b", {}, "Instagram"), close));
+            el("span", { class: "igs-logo", icon: ICONS.gear }),
+            el("div", { class: "igs-titles" }, el("b", {}, "Ajustes do Instagram"), el("small", {}, (typeof GM_info !== "undefined" && GM_info.script ? "v" + GM_info.script.version : "Userscript"))),
+            close));
 
         // busca (filtra todas as categorias)
         const search = el("input", {
@@ -3073,7 +3890,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             onKeydown: (e) => e.stopPropagation(), onKeyup: (e) => e.stopPropagation(),
         });
         panel.append(el("div", { class: "igs-search" },
-            el("div", {}, el("span", { html: '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>' }), search)));
+            el("div", {}, el("span", { icon: { k: [["path", { d: "M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z" }]] } }), search)));
 
         const rail = el("div", { class: "igs-rail" });
         const content = el("div", { class: "igs-content" });
@@ -3088,28 +3905,32 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         GROUPS.forEach((grp, gi) => {
             const sec = el("div", { class: "igs-sec" });
             sec.append(el("div", { class: "igs-sec-title" }, grp.title));
+            const card = el("div", { class: "igs-card" });
+            sec.append(card);
             for (const item of grp.items) {
                 const lbl = item.label.toLowerCase();
                 if (item.type === "slider") {
                     const valEl = el("span", { class: "val" }, prefs[item.key] + (item.unit || ""));
                     const input = el("input", {
                         type: "range", min: String(item.min), max: String(item.max), step: String(item.step || 1), value: String(prefs[item.key]),
-                        onInput: (e) => { prefs[item.key] = +e.target.value; valEl.textContent = e.target.value + (item.unit || ""); savePrefs(); applySettings(); refreshDimming(); },
+                        // arrastar dispara input a cada pixel: o número segue na hora, mas aplicar fica em 1×/frame
+                        // e salvar no debounce (antes era savePrefs + applySettings inteiros por evento)
+                        onInput: (e) => { prefs[item.key] = +e.target.value; valEl.textContent = e.target.value + (item.unit || ""); savePrefsSoon(); applySettingsSoon(); },
                     });
-                    sec.append(el("div", { class: "igs-slider", "data-dep": item.dep, "data-label": lbl },
+                    card.append(el("div", { class: "igs-slider", "data-dep": item.dep, "data-label": lbl },
                         el("div", { class: "igs-lab" }, el("span", {}, item.label), valEl), input,
                         item.hint ? el("small", { class: "igs-hint" }, item.hint) : null));
                 } else if (item.type === "select") {
                     const sel = el("select", { onChange: (e) => { prefs[item.key] = e.target.value; savePrefs(); applySettings(); refreshDimming(); } },
                         ...item.options.map((o) => el("option", Object.assign({ value: o.value }, String(prefs[item.key]) === o.value ? { selected: "" } : {}), o.label)));
-                    sec.append(el("div", { class: "igs-row", "data-label": lbl },
+                    card.append(el("div", { class: "igs-row", "data-label": lbl },
                         el("span", { class: "igs-rowlbl" }, el("span", {}, item.label), item.hint ? el("small", { class: "igs-hint" }, item.hint) : null), sel));
                 } else {
                     const input = el("input", Object.assign({
                         type: "checkbox",
                         onChange: (e) => { prefs[item.key] = e.target.checked; savePrefs(); applySettings(); refreshDimming(); },
                     }, prefs[item.key] ? { checked: "" } : {}));
-                    sec.append(el("label", { class: "igs-row", "data-dep": item.dep, "data-label": lbl },
+                    card.append(el("label", { class: "igs-row", "data-dep": item.dep, "data-label": lbl },
                         el("span", { class: "igs-rowlbl" },
                             el("span", {}, item.label),
                             item.hint ? el("small", { class: "igs-hint" }, item.hint) : null),
@@ -3120,7 +3941,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
             sections.push(sec);
 
             const tab = el("button", { class: "igs-tab", type: "button", title: grp.title,
-                html: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${PANEL_ICONS[gi] || PANEL_ICONS[0]}"/></svg>` });
+                icon: mIcon(PANEL_ICONS[gi] || PANEL_ICONS[0]) }, el("span", {}, grp.title));
             tab.addEventListener("click", () => { search.value = ""; showTab(gi); });
             rail.append(tab); tabs.push(tab);
         });
@@ -3128,12 +3949,17 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         content.append(empty);
         panel.append(el("div", { class: "igs-body" }, rail, content));
 
+        // um card some quando a busca esconde todas as linhas dele
+        const syncCards = (sec) => sec.querySelectorAll(".igs-card").forEach((c) => {
+            c.style.display = [...c.children].some((r) => r.style.display !== "none") ? "" : "none";
+        });
+
         function showTab(i) {
-            active = i; panel.classList.remove("searching"); empty.style.display = "none";
+            active = i; empty.style.display = "none";
             sections.forEach((sec, idx) => {
                 sec.style.display = idx === i ? "block" : "none";
                 sec.querySelectorAll("[data-label]").forEach((r) => (r.style.display = ""));
-                const t = sec.querySelector(".igs-sec-title"); if (t) t.style.display = "";
+                syncCards(sec);
             });
             tabs.forEach((tb, idx) => tb.classList.toggle("active", idx === i));
             content.scrollTop = 0;
@@ -3150,7 +3976,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
                     r.style.display = m ? "" : "none"; if (m) { vis = true; any = true; }
                 });
                 sec.style.display = vis ? "block" : "none";
-                const t = sec.querySelector(".igs-sec-title"); if (t) t.style.display = vis ? "" : "none";
+                syncCards(sec);
             });
             empty.style.display = any ? "none" : "block";
         });
@@ -3158,15 +3984,30 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         panel.append(el("div", { class: "igs-foot" },
             el("button", { class: "igs-reset", type: "button", onClick: () => {
                 prefs = Object.assign({}, DEFAULTS); savePrefs(); panel.remove(); fab.remove(); toTop.remove(); buildPanel(); applySettings();
+                const np = document.getElementById("igs-panel"); if (np) np.classList.add("open");   // segue aberto, já com os padrões
             } }, "Restaurar padrões"),
-            el("span", { class: "igs-ver" }, (typeof GM_info !== "undefined" && GM_info.script ? "v" + GM_info.script.version : ""))));
+            el("small", {}, "Salvo automaticamente")));
 
         fab.addEventListener("click", () => { panel.classList.toggle("open"); refreshDimming(); });
-        document.addEventListener("click", (e) => { if (!panel.contains(e.target) && e.target !== fab && !fab.contains(e.target)) panel.classList.remove("open"); });
+        bindPanelOutsideClick();
         (document.body || document.documentElement).append(fab, panel, toTop);
         bindBackToTop();
         showTab(0);
         refreshDimming();
+    }
+    // clique fora fecha o painel. UM listener por página: o "Restaurar padrões" reconstrói o painel e,
+    // com o listener dentro do buildPanel, cada reset deixava mais um preso ao document (como no twitter).
+    // Acha painel/FAB pelo id na hora → vale para o painel atual, seja qual for.
+    let panelOutsideBound = false;
+    function bindPanelOutsideClick() {
+        if (panelOutsideBound) return;
+        panelOutsideBound = true;
+        document.addEventListener("click", (e) => {
+            const panel = document.getElementById("igs-panel"), fab = document.getElementById("igs-fab");
+            if (!panel || !panel.classList.contains("open") || !e.target.isConnected) return;
+            if (panel.contains(e.target) || (fab && fab.contains(e.target))) return;
+            panel.classList.remove("open");
+        });
     }
     function ensurePanel() { if (!document.getElementById("igs-fab") && document.body) buildPanel(); }
     let panelTask = null;
@@ -3181,7 +4022,7 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
         if (initialWorkTask !== null) return;
         const run = () => {
             initialWorkTask = null;
-            scan();
+            routeWork();
         };
         // O mosaico e o skeleton precisam nascer antes da primeira oportunidade de paint do IG.
         // Trabalho secundário (painel, JSON inline) continua nos agendadores próprios.
@@ -3195,7 +4036,9 @@ html.igf-totop-on.igf-scrolled #igs-totop{ display:flex; }
     document.documentElement.classList.toggle("igf-no-msg", !!prefs.hideMessages);   // flags de interface desde o 1º paint
     document.documentElement.classList.toggle("igf-totop-on", !!prefs.backToTop);
     applyTheme();   // html.igf-dark já no 1º paint (paleta correta dos cards)
+    startBoot();    // home + mosaico: shell + skeleton desde o 1º paint
     scheduleInitialWork();
-    window.addEventListener("DOMContentLoaded", scheduleInitialWork);
-    window.addEventListener("load", () => { scheduleInitialWork(); setTimeout(scan, 1200); });
+    scheduleDockTag();
+    window.addEventListener("DOMContentLoaded", () => { applyTheme(); scheduleInitialWork(); });
+    window.addEventListener("load", () => { applyTheme(); scheduleInitialWork(); setTimeout(() => { if (needsRouteWork()) routeWork(); }, 1200); });
 })();
