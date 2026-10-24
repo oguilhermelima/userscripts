@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Twitch — Top Nav, Live Tab & Clips/VOD Playlist
 // @namespace    twitch-channel-rework
-// @version      1.6.1
+// @version      2.0.0
 // @author       oguilhermelima
-// @description  Streamer top navigation plus a YouTube-style Clips and VOD theater with filtering, sorting, and native playback controls.
+// @description  Moves Twitch's top bar into the sidebar and adds a channel tab bar plus a YouTube-style Clips and VOD player with filters, sorting and full clip history.
 // @match        https://www.twitch.tv/*
 // @run-at       document-start
 // @grant        GM_addStyle
@@ -44,12 +44,12 @@
     const ACCENT = "#a970ff";
     const PAGE_SIZE = 100;          // teto da API
     const MAX_PAGES = 40;           // 4000 clipes — trava de segurança pra canais gigantes
-    const INTEGRITY_WAIT_MS = 9000; // quanto esperar a página nos dar o header antes do plano B
     const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
     const CACHE_PREFIX = "tvx:v1:";
 
     const W = (typeof unsafeWindow !== "undefined") ? unsafeWindow : window;
     const HTML = document.documentElement;
+    HTML.dataset.tvxShell = "1"; // já no document-start: a topbar nunca chega a aparecer
 
     // Primeiro segmento da URL que NÃO é um canal.
     const RESERVED = new Set([
@@ -301,10 +301,11 @@
         return d && d.user;
     }
 
-    async function fetchClipPage(login, { period = "ALL_TIME", after = null } = {}) {
+    async function fetchClipPage(login, { period = "ALL_TIME", after = null, startAt = null, endAt = null } = {}) {
         const args = [`first: ${PAGE_SIZE}`];
         if (after) args.push(`after: "${q(after)}"`);
-        args.push(`criteria: { period: ${period}, sort: VIEWS_DESC }`);
+        const range = startAt ? `, startAt: "${startAt}", endAt: "${endAt}"` : "";
+        args.push(`criteria: { period: ${period}, sort: VIEWS_DESC${range} }`);
         const d = await gql(
             `query { user(login: "${q(login)}") { clips(${args.join(", ")}) {
                 edges { cursor node { ${CLIP_FIELDS} } }
@@ -501,47 +502,80 @@
         const pack = pool.kind === "clips" ? packClip : packVideo;
         // teto pra não travar o navegador serializando 4000 itens a cada update
         store.set(`${pool.kind}:${pool.login.toLowerCase()}`, {
-            a: pool.items.slice(0, 2500).map(pack), done: pool.done, partial: pool.partial,
+            a: pool.items.slice(0, 8000).map(pack), done: pool.done, partial: pool.partial,
         });
     }, 1500);
 
+    // Paginar (after:) exige o Client-Integrity da página e para em ~1000 clipes. Mas a busca
+    // aceita startAt/endAt sem credencial nenhuma: dividimos o histórico em janelas de tempo
+    // e, sempre que uma janela volta cheia (hasNextPage), partimos ela ao meio. Cada janela
+    // que volta incompleta já é TODOS os clipes daquele intervalo. Mais recentes primeiro, e
+    // sem teto: a lista agrega enquanto carrega, e ordem/filtros valem sobre o que já chegou.
+    const CLIPS_EPOCH = Date.parse("2016-05-01T00:00:00Z"); // clipes não existem antes disso
+    const CLIP_LANES = 4;      // janelas em paralelo
+
+    // Rolar a lista em "mais vistos"/"mais recentes" pede só o próximo trecho; buscar texto,
+    // filtrar ou ordenar de outro jeito precisa do catálogo inteiro pra ser honesto.
+    function clipsWanted(pool) {
+        if (state.pool !== pool || !state.filters) return false; // saiu da aba: pausa
+        const f = state.filters, d = defaultFilters();
+        const lazySort = f.sort === "views-desc" || f.sort === "date-desc";
+        const plain = !f.text && !f.from && !f.to && !f.featuredOnly
+            && ["minViews", "maxViews", "minDur", "maxDur"].every((k) => f[k] === d[k])
+            && !f.curators.size && !f.games.size && !f.langs.size;
+        if (!lazySort || !plain) return true;
+        return filtered.length - rendered < 80; // perto do fim do que já está na tela
+    }
+
     async function loadClips(pool) {
         if (pool.loading || pool.done) return;
-        pool.loading = true; pool.error = null; pool.emit();
+        pool.loading = true; pool.fetching = true; pool.error = null; pool.partial = false; pool.emit();
         try {
-            const first = await fetchClipPage(pool.login, { period: "ALL_TIME" });
-            pool.add(first.items); pool.emit();
+            // o topo geral chega primeiro: a lista já é útil enquanto o resto carrega
+            pool.add((await fetchClipPage(pool.login, { period: "ALL_TIME" })).items); pool.emit();
 
-            if (!first.hasNext) { pool.done = true; pool.loading = false; pool.emit(); saveToCache(pool); return; }
-
-            // Paginar exige o Client-Integrity da própria página. Esperamos um pouco por ele.
-            const gotIntegrity = await Promise.race([integrityReady, sleep(INTEGRITY_WAIT_MS).then(() => false)]);
-
-            if (gotIntegrity) {
-                let cursor = first.cursor, pages = 1;
-                while (cursor && pages < MAX_PAGES) {
-                    let page;
-                    try { page = await fetchClipPage(pool.login, { period: "ALL_TIME", after: cursor }); }
-                    catch (e) { if (e.code === "IntegrityCheckFailed") { pool.partial = true; break; } throw e; }
-                    const added = pool.add(page.items);
-                    pages++; cursor = page.hasNext ? page.cursor : null;
-                    pool.emit(); saveToCache(pool);
-                    if (!added) break; // API repetindo página: para em vez de girar em falso
+            // Link com clipe: começa pelas semanas em volta dele, não pelo presente
+            const now = Date.now() + 60000;
+            const stack = [[CLIPS_EPOCH, now]];
+            const slug = new URLSearchParams(location.search).get("clip") || (state.route && state.route.clipSlug);
+            const focus = slug ? await fetchSingleClip(slug).catch(() => null) : null;
+            const at = focus && Date.parse(focus.createdAt);
+            if (at > CLIPS_EPOCH && at < now) {
+                pool.add([focus]);
+                const a = Math.max(CLIPS_EPOCH, at - 14 * 86400000), b = Math.min(now, at + 14 * 86400000);
+                stack.length = 0;
+                if (a > CLIPS_EPOCH) stack.push([CLIPS_EPOCH, a]);
+                if (b < now) stack.push([b, now]);
+                stack.push([a, b]); // topo da pilha: vem primeiro
+            }
+            const iso = (t) => new Date(t).toISOString().replace(/\.\d+Z$/, "Z");
+            while (stack.length) {
+                // sob demanda: só busca mais quando a lista precisa (fim do scroll, busca, filtro)
+                if (!clipsWanted(pool)) {
+                    pool.fetching = false; pool.emit();
+                    while (!clipsWanted(pool)) await sleep(400);
                 }
-                if (cursor) pool.partial = true;
-            } else {
-                // Plano B: sem integrity só dá 100 por período, mas os baldes se sobrepõem pouco.
-                pool.partial = true;
-                for (const period of ["LAST_MONTH", "LAST_WEEK", "LAST_DAY"]) {
-                    try { pool.add((await fetchClipPage(pool.login, { period })).items); pool.emit(); }
-                    catch { /* um período falhar não invalida os outros */ }
-                }
+                pool.fetching = true;
+                const batch = stack.splice(-CLIP_LANES).reverse();
+                const pages = await Promise.all(batch.map(([a, b]) =>
+                    fetchClipPage(pool.login, { startAt: iso(a), endAt: iso(b) }).catch(() => null)));
+                pages.forEach((page, i) => {
+                    if (!page) return;
+                    pool.add(page.items);
+                    const [a, b] = batch[i];
+                    // janela cheia e ainda divisível: as duas metades, a mais recente no topo da pilha
+                    if (page.hasNext) {
+                        if (b - a > 120000) { const m = Math.floor((a + b) / 2); stack.push([a, m], [m, b]); }
+                        // >100 clipes em 2 minutos: fica o topo deles
+                    }
+                });
+                pool.emit(); saveToCache(pool);
             }
             pool.done = true;
         } catch (e) {
             pool.error = e.message || String(e);
         } finally {
-            pool.loading = false; pool.emit(); saveToCache(pool);
+            pool.loading = false; pool.fetching = false; pool.emit(); saveToCache(pool);
         }
     }
 
@@ -593,6 +627,7 @@
         vod: "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6H4zm6 2.5 6 3.5-6 3.5v-7z",
         live: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 5a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z",
         search: "M11 4a7 7 0 1 0 4.2 12.6l3.6 3.6 1.4-1.4-3.6-3.6A7 7 0 0 0 11 4Zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z",
+        searchNav: "M10.5 2a8.5 8.5 0 1 0 5.2 15.2l4.6 4.6 1.4-1.4-4.6-4.6A8.5 8.5 0 0 0 10.5 2Zm0 2a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Z",
         close: "M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7l1.4-1.4L10.6 10.6l6.3-6.3 1.4 1.4Z",
         down: "m12 15.6-5.2-5.2L8.2 9l3.8 3.8L15.8 9l1.4 1.4-5.2 5.2Z",
         dl: "M12 3a1 1 0 0 1 1 1v8.59l2.3-2.3a1 1 0 0 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1zm-7 15a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z",
@@ -604,6 +639,12 @@
         day: "M7 2v2h10V2h2v2h2a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h2V2h2Zm13 7H4v11h16V9Z",
         list: "M3 4h18v16H3V4Zm2 2v12h9V6H5Zm11 0v12h3V6h-3Z",
         star: "M12 2.5l2.9 6.2 6.6.9-4.8 4.6 1.2 6.6L12 17.6 6.1 20.8l1.2-6.6L2.5 9.6l6.6-.9L12 2.5Z",
+        filter: "M3 5h18v2l-7 7v5l-4 2v-7L3 7V5Z",
+        gear: "M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7 7 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.84a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.56-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.67 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.07.63-.07.94s.03.63.07.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.5.38 1.04.7 1.63.94l.36 2.54c.05.24.25.42.49.42h3.84c.24 0 .45-.18.49-.42l.36-2.54c.59-.24 1.13-.56 1.63-.94l2.39.96c.22.08.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2Z",
+        heart: "M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.08C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.54L12 21.35Zm0-2.7c4.76-4.31 8-7.24 8-10.15C20 6.5 18.5 5 16.5 5c-1.54 0-3.04 1-3.57 2.36h-1.86C10.54 6 9.04 5 7.5 5 5.5 5 4 6.5 4 8.5c0 2.91 3.24 5.84 8 10.15Z",
+        browse: "M3 3h8v8H3V3Zm2 2v4h4V5H5Zm8-2h8v8h-8V3Zm2 2v4h4V5h-4ZM3 13h8v8H3v-8Zm2 2v4h4v-4H5Zm8-2h8v8h-8v-8Zm2 2v4h4v-4h-4Z",
+        starOutline: "M12 15.39 8.24 17.66l.99-4.28-3.32-2.88 4.38-.37L12 6.09l1.71 4.04 4.38.37-3.32 2.88.99 4.28M22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.45 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24Z",
+        collapseRight: "M4 11h11.2l-4.6-4.6L12 5l7 7-7 7-1.4-1.4 4.6-4.6H4v-2Zm16-6h2v14h-2V5Z",
         prev: "M6 6a1 1 0 0 1 2 0v4.35l8.5-5.31A1 1 0 0 1 18 5.9v12.2a1 1 0 0 1-1.5.86L8 13.65V18a1 1 0 1 1-2 0V6z",
         next: "M18 6a1 1 0 0 0-2 0v4.35L7.5 5.04A1 1 0 0 0 6 5.9v12.2a1 1 0 0 0 1.5.86L16 13.65V18a1 1 0 0 0 2 0V6z",
         play: "M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z",
@@ -620,7 +661,7 @@
 
     addStyle(`
         :root {
-            --tvx-accent: ${ACCENT}; --tvx-navh: 54px;
+            --tvx-accent: ${ACCENT}; --tvx-navh: 50px;
             --tvx-top: 5rem;    /* altura da nav global da Twitch */
             --tvx-left: 0px;    /* largura da sidebar de canais */
             --tvx-right: 0px;   /* largura da coluna do chat, se visível */
@@ -657,6 +698,203 @@
            Quem resolve os dois é hideTopNavAds(), que sobe até o bloco inteiro e casa por texto. */
         [data-a-target="prime-offers-icon"],
         [data-a-target="top-nav-get-bits-button"] { display: none !important; }
+
+        /* ---------- sem topbar: tudo na coluna da esquerda ----------
+           A barra superior continua no DOM (é do React, e os balões de notificação/menu se
+           ancoram nos botões dela) — só some da tela: a nav vira altura 0 e cada controle dela é
+           fixado num ponto da sidebar. syncShell mede onde (--tvx-shellw = largura atual da
+           sidebar; os ícones da conta ganham coordenadas da linha da lista que os representa). */
+        /* até a casca montar (boot rápido), topbar e sidebar ficam invisíveis: sem o "pulo" */
+        html[data-tvx-shell="1"]:not([data-tvx-ready]) :is(.top-nav, .side-nav, #tvx-nav, #tvx-wordmark, #tvx-footer) { opacity: 0 !important; }
+        html[data-tvx-shell="1"] .top-nav,
+        html[data-tvx-shell="1"] .top-nav__menu {
+            height: 0 !important; min-height: 0 !important; overflow: visible !important;
+            border: 0 !important; box-shadow: none !important; background: transparent !important;
+        }
+        /* logo: o nosso wordmark substitui o nativo (que segue no DOM e recebe o clique) */
+        html[data-tvx-shell="1"] .top-nav [data-a-target="home-link"] { position: fixed !important; left: -9999px !important; }
+        #tvx-wordmark {
+            position: fixed; top: 0; left: 0; z-index: 1001; display: flex; align-items: center;
+            width: calc(var(--tvx-shellw, 240px) - 48px); height: var(--tvx-navh); padding: 0 20px; box-sizing: border-box;
+            border: 0; background: none; cursor: pointer; color: #fff;
+        }
+        #tvx-wordmark svg { display: block; transition: opacity .15s ease; }
+        #tvx-wordmark .tvx-wm { height: 24px; width: auto; }
+        #tvx-wordmark .tvx-glitch { display: none; width: 26px; height: 28px; fill: #fff; }
+        #tvx-wordmark:hover svg { opacity: .8; }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] #tvx-wordmark { width: var(--tvx-shellw); padding: 0; justify-content: center; }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] #tvx-wordmark .tvx-wm { display: none; }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] #tvx-wordmark .tvx-glitch { display: block; }
+        /* recolher/expandir: na linha do logo, alinhado com a barra do canal; recolhida, logo abaixo dele */
+        html[data-tvx-shell="1"] .side-nav [data-a-target="side-nav-arrow"] {
+            position: fixed !important; z-index: 1002; margin: 0 !important;
+            top: calc((var(--tvx-navh) - 30px) / 2) !important; left: calc(var(--tvx-shellw) - 42px) !important;
+        }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] .side-nav [data-a-target="side-nav-arrow"] {
+            top: calc(var(--tvx-navh) + 6px) !important; left: calc((var(--tvx-shellw) - 30px) / 2) !important;
+        }
+        html[data-tvx-theatre="1"] #tvx-wordmark, html.tw-root--theatre #tvx-wordmark { display: none; }
+
+        /* busca: some da tela até o item "Buscar" abrir o modal; aberto, é a busca nativa no centro */
+        html[data-tvx-shell="1"] .top-nav__search-container {
+            position: fixed !important; left: 50% !important; top: -400px !important; visibility: hidden;
+            width: min(640px, calc(100vw - 48px)) !important; max-width: none !important; margin: 0 !important;
+            transform: translateX(-50%); z-index: 2001;
+        }
+        html[data-tvx-shell="1"][data-tvx-search="1"] .top-nav__search-container { top: 18vh !important; visibility: visible; }
+        html[data-tvx-shell="1"] .top-nav__search-container .search-box,
+        html[data-tvx-shell="1"] .top-nav__search-container [data-a-target="nav-search-box"] { width: 100% !important; max-width: none !important; }
+        html[data-tvx-search="1"] .top-nav__search-container input {
+            height: 52px !important; font-size: 16px !important; padding-left: 18px !important;
+            border: 0 !important; box-shadow: none !important; outline: none !important; border-radius: 14px !important;
+            background: #1f1f23 !important;
+        }
+        /* sem a moldura branca/roxa da Twitch: campo, lupa e sugestões viram cartões arredondados */
+        html[data-tvx-search="1"] .top-nav__search-container :is(input, button, [class*="InputWrapper"], [class*="Combo"]) {
+            box-shadow: none !important; outline: none !important;
+        }
+        html[data-tvx-search="1"] .top-nav__search-container input:focus { box-shadow: 0 0 0 2px rgba(169,112,255,.55) !important; }
+        html[data-tvx-search="1"] .top-nav__search-container :is([data-a-target="nav-search-button"], button[aria-label="Botão de busca"], button[aria-label="Search Button"]) {
+            border-radius: 14px !important; height: 52px !important; width: 52px !important; margin-left: 8px !important; background: #1f1f23 !important;
+        }
+        /* a bandeja de sugestões tem max-width 400px fixo: ocupa a largura do modal */
+        html[data-tvx-search="1"] .top-nav__search-container .search-tray { max-width: none !important; width: 100% !important; }
+        html[data-tvx-search="1"] .top-nav__search-container .search-tray :is([role="row"], [role="gridcell"], [role="row"] a, .search-item) { width: 100% !important; max-width: none !important; }
+        html[data-tvx-search="1"] .top-nav__search-container .search-tray :is(.search-item, a) { border-radius: 10px !important; }
+        html[data-tvx-search="1"] .top-nav__search-container .search-tray :is(strong, p, span) { font-size: 15px !important; line-height: 1.35 !important; }
+        html[data-tvx-search="1"] .top-nav__search-container .search-tray .search-item { min-height: 48px; }
+        html[data-tvx-search="1"] .top-nav__search-container > *,
+        html[data-tvx-search="1"] .top-nav__search-container > * > * { border-radius: 18px !important; }
+        html[data-tvx-search="1"] .top-nav__search-container [role="dialog"],
+        html[data-tvx-search="1"] .top-nav__search-container [class*="Balloon"] > div {
+            border: 0 !important; border-radius: 14px !important; margin-top: 8px !important; overflow: hidden;
+            box-shadow: 0 18px 50px rgba(0,0,0,.55) !important; background: #18181b !important;
+        }
+        #tvx-search-backdrop {
+            position: fixed; inset: 0; z-index: 998; display: none; /* abaixo da topbar (z 1000), onde mora o campo */
+            background: rgba(0,0,0,.6); backdrop-filter: blur(2px); animation: tvx-fade .15s ease;
+        }
+        html[data-tvx-search="1"] #tvx-search-backdrop { display: block; }
+        @keyframes tvx-fade { from { opacity: 0; } }
+
+        /* ícones da conta (notificações, sussurros…) viram linhas da lista. O bloco nativo fica
+           fixado em cima da linha (é ele que ancora o balão), mas transparente ao mouse: o clique
+           cai na linha, que repassa pro botão. Os balões dentro dele seguem clicáveis. */
+        html[data-tvx-shell="1"] [data-tvx-navitem][data-tvx-navitem] { /* dobrado: vence as regras do rodapé */
+            position: fixed !important; z-index: 1001; margin: 0 !important; pointer-events: none; flex: none !important;
+            left: var(--tvx-x, -9999px) !important; top: var(--tvx-y, 0px) !important;
+            width: var(--tvx-w, 0px) !important; height: 40px !important;
+        }
+        html[data-tvx-shell="1"] [data-tvx-navitem] * { pointer-events: none !important; }
+        html[data-tvx-shell="1"] [data-tvx-navitem] *:has([data-tvx-navctl]) {
+            display: block !important; width: 100% !important; height: 100% !important; margin: 0 !important; padding: 0 !important;
+        }
+        html[data-tvx-shell="1"] [data-tvx-navctl] {
+            display: block !important; width: 100% !important; height: 100% !important; margin: 0 !important;
+            opacity: 0 !important; pointer-events: auto !important; cursor: pointer !important;
+        }
+        html[data-tvx-shell="1"] :is([data-tvx-pop], [data-tvx-pop] *) { pointer-events: auto !important; }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] .tvx-navslot { padding: 0; justify-content: center; gap: 0; }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] .tvx-navslot span { display: none; }
+        .side-nav--collapsed #tvx-navlinks { display: flex !important; padding: 6px 4px !important; }
+        .side-nav--collapsed #tvx-navlinks .tvx-navlink { justify-content: center; padding: 0 !important; font-size: 0 !important; gap: 0; }
+        /* o balão nativo abre ao lado da sidebar, não por cima dela */
+        html[data-tvx-shell="1"] [data-tvx-navitem] :is([class*="Balloon"], [role="dialog"]) {
+            top: 0 !important; bottom: auto !important; left: calc(100% + 8px) !important; right: auto !important;
+        }
+        /* a linha é nossa (ícone + rótulo, igual aos links acima); o botão nativo fica invisível
+           por cima dela só pra receber o clique e ancorar o balão */
+        .tvx-navslot { position: relative; height: 40px; display: flex; align-items: center; gap: 12px;
+            padding: 0 12px; border-radius: 8px; box-sizing: border-box; transition: all .14s ease;
+            color: #dedee3; font: 600 15px/1.3 Inter, Roobert, "Helvetica Neue", system-ui, sans-serif; }
+        .tvx-navslot.tvx-hover { background: rgba(255,255,255,.07); color: var(--tvx-accent); }
+        .tvx-navslot-ico { flex: none; width: 20px; height: 20px; fill: currentColor; }
+        .tvx-navslot-ico * { fill: currentColor; }
+
+        /* rodapé da sidebar: avatar + nome (o menu da conta é o nativo, fixado aqui) */
+        #tvx-footer {
+            position: fixed; left: 0; bottom: 0; z-index: 999; display: flex; align-items: center;
+            width: var(--tvx-shellw, 240px); height: 60px; padding: 0 52px 0 8px; box-sizing: border-box;
+            background: var(--color-background-base); border-top: 1px solid rgba(255,255,255,.08);
+            pointer-events: none;
+        }
+        /* logado: avatar + nome são um botão só, que abre o menu nativo da conta */
+        #tvx-userbtn {
+            display: none; align-items: center; gap: 10px; min-width: 0; max-width: 100%; height: 44px;
+            padding: 0 10px 0 6px; border: 0; border-radius: 10px; background: transparent; cursor: pointer;
+            font: 600 14px/1.2 Inter, Roobert, "Helvetica Neue", system-ui, sans-serif; color: #efeff1;
+            pointer-events: auto; transition: background .14s ease;
+        }
+        #tvx-userbtn:hover { background: rgba(255,255,255,.07); }
+        #tvx-userbtn .tvx-userav { flex: none; width: 32px; height: 32px; border-radius: 50%; overflow: hidden; display: flex; }
+        #tvx-userbtn .tvx-userav > * { width: 100% !important; height: 100% !important; margin: 0 !important; }
+        #tvx-userbtn .tvx-userav img { object-fit: cover; }
+        #tvx-userbtn > span:not(.tvx-userav) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        html[data-tvx-named="1"] #tvx-userbtn { display: flex; }
+        /* o toggle nativo segue lá (ancora o menu), invisível e fora do caminho do mouse */
+        html[data-tvx-shell="1"][data-tvx-named="1"] [data-tvx-accountbar] { pointer-events: none; }
+        html[data-tvx-shell="1"][data-tvx-named="1"] [data-tvx-accountbar] * { pointer-events: auto; }
+        html[data-tvx-shell="1"][data-tvx-named="1"] [data-tvx-accountbar] [data-a-target="user-menu-toggle"] { opacity: 0 !important; pointer-events: none !important; }
+        html[data-tvx-shell="1"][data-tvx-named="1"] [data-tvx-accountbar] :has(> [data-a-target="user-menu-toggle"]) { pointer-events: none !important; }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] #tvx-footer { padding: 0; justify-content: center; }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] #tvx-userbtn { padding: 0 6px; }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] #tvx-userbtn > span:not(.tvx-userav) { display: none; }
+        html[data-tvx-shell="1"] [data-tvx-accountbar] {
+            position: fixed !important; left: 0 !important; right: auto !important; top: auto !important; bottom: 0 !important; z-index: 1001;
+            width: var(--tvx-shellw, 240px) !important; height: 60px !important; box-sizing: border-box; overflow: visible;
+            justify-content: flex-start !important;
+            display: flex !important; align-items: center; gap: 6px; padding: 0 8px;
+        }
+        html[data-tvx-shell="1"] [data-tvx-accountbar] > * { flex: 0 1 auto !important; width: auto !important; min-width: 0; }
+        /* os blocos que sobraram vazios no rodapé não ocupam espaço — menos os que viraram linha
+           da lista (o de notificações é filho direto da barra; os outros moram mais fundo) */
+        html[data-tvx-shell="1"] [data-tvx-accountbar] > :not(:has([data-a-target="dropdown-up"])):not([data-tvx-navitem], [data-tvx-footmore]) {
+            flex: 0 0 0 !important; width: 0 !important; min-width: 0 !important; margin: 0 !important; padding: 0 !important;
+        }
+        html[data-tvx-shell="1"] [data-tvx-accountbar] :has(> [data-a-target="dropdown-up"]) { margin: 0 !important; padding: 0 !important; }
+        html[data-tvx-shell="1"] [data-tvx-footmore] {
+            position: fixed !important; z-index: 1002; margin: 0 !important;
+            bottom: 10px !important; top: auto !important; left: calc(var(--tvx-shellw) - 50px) !important; width: 40px !important; height: 40px !important;
+        }
+        html[data-tvx-shell="1"] [data-tvx-footmore] *:has(button), html[data-tvx-shell="1"] [data-tvx-footmore] button {
+            width: 100% !important; height: 100% !important; display: flex !important; align-items: center !important; justify-content: center !important;
+        }
+        html[data-tvx-shell="1"] [data-tvx-pop] {
+            position: fixed !important; inset: auto !important; transform: none !important; margin: 0 !important;
+            left: calc(var(--tvx-shellw) + 8px) !important; top: var(--tvx-pop-y) !important; z-index: 3100 !important;
+        }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] [data-tvx-footmore],
+        html[data-tvx-theatre="1"] [data-tvx-footmore], html.tw-root--theatre [data-tvx-footmore] { display: none !important; }
+        html[data-tvx-shell="1"][data-tvx-named="1"] [data-tvx-accountbar] { justify-content: flex-start; }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] [data-tvx-accountbar] { padding: 0; justify-content: center; }
+        /* o avatar abre a fila (o nome do rodapé fica logo depois dele); recolhida, só ele */
+        html[data-tvx-shell="1"] [data-tvx-accountbar] :has(> [data-a-target="dropdown-up"]) { display: flex !important; align-items: center; gap: 6px; }
+        html[data-tvx-shell="1"] [data-tvx-accountbar] [data-a-target="dropdown-up"] { order: -1; }
+        html[data-tvx-shell="1"] [data-tvx-accountbar] :is([data-a-target="dropdown-up"], [data-a-target="dropdown-up"] > *, [data-a-target="dropdown-up"] > * > *) { margin: 0 !important; padding: 0 !important; }
+        html[data-tvx-shell="1"] [data-tvx-accountbar] [data-a-target="user-card"] { display: flex !important; gap: 6px; min-width: 0; }
+        html[data-tvx-shell="1"] [data-tvx-accountbar] [data-a-target="user-card"] > * { margin: 0 !important; padding: 0 !important; }
+        html[data-tvx-shell="1"] [data-tvx-accountbar] :is([data-a-target="login-button"], [data-a-target="signup-button"]) { padding: 0 10px !important; min-width: 0 !important; }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] [data-tvx-accountbar] [data-a-target="user-card"] { display: none !important; }
+        /* deslogado não cabe Entrar + Cadastrar: o cadastro segue no menu da conta e no banner */
+        html[data-tvx-shell="1"] [data-tvx-accountbar] [data-a-target="user-card"] > :has([data-a-target="signup-button"]) { display: none !important; }
+        /* os balões da conta abrem pra cima, dentro da tela */
+        html[data-tvx-shell="1"] [data-tvx-accountbar] [role="dialog"],
+        html[data-tvx-shell="1"] [data-tvx-accountbar] [class*="Balloon"] {
+            top: auto !important; bottom: calc(100% + 8px) !important;
+        }
+        html[data-tvx-theatre="1"] :is(#tvx-footer, [data-tvx-accountbar]),
+        html.tw-root--theatre :is(#tvx-footer, [data-tvx-accountbar]) { display: none !important; }
+        /* a sidebar começa no topo da tela e reserva o logo em cima e o rodapé embaixo */
+        html[data-tvx-shell="1"] .side-nav {
+            padding-top: var(--tvx-navh) !important; padding-bottom: 60px !important; box-sizing: border-box !important;
+            background: var(--color-background-base) !important;
+        }
+        html[data-tvx-shell="1"][data-tvx-collapsed="1"] .side-nav { padding-top: calc(var(--tvx-navh) + 42px) !important; }
+        /* "Abrir stories" vira a linha "Stories" da lista: o original some desde o primeiro quadro */
+        html[data-tvx-shell="1"] .side-nav:not(.side-nav--collapsed) :is([class*="stories" i], [data-a-target*="stories" i]) { display: none !important; }
+        /* "Mostrar mais/menos": a lista já vem inteira (expandSideNavSections) e rola sozinha */
+        [data-a-target="side-nav-show-more-button"], [data-a-target="side-nav-show-less-button"],
+        .side-nav-show-more-toggle__button { display: none !important; }
 
         /* ---------- sidebar esquerda: cabe na tela, cada seção rola sozinha ----------
            A sidebar inteira rolava numa barra só, e cada seção terminava num "Mostrar mais".
@@ -700,6 +938,7 @@
             z-index: 1000 !important;
         }
         .side-nav--collapsed .side-nav__title { display: none !important; }
+        .side-nav__title:has(#tvx-navtabs-wrap) { padding: 0 !important; margin: 0 !important; min-height: 0 !important; }
 
         /* dropdown de navegação da sidebar */
         #tvx-navtabs-wrap {
@@ -707,7 +946,7 @@
             z-index: 50 !important;
             display: flex; flex-direction: column;
             width: 100%; box-sizing: border-box;
-            padding: 0 0 8px !important; margin-top: 0;
+            padding: 8px 0 !important; margin: 0 0 6px !important;
             border-bottom: 1px solid rgba(255,255,255,.08);
             background: transparent;
             font-family: Inter, Roobert, "Helvetica Neue", system-ui, sans-serif;
@@ -733,6 +972,45 @@
             flex: 0 0 auto !important; margin-left: auto !important; transition: transform .2s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; color: #adadb8 !important;
         }
         .tvx-navdropdown-btn:hover .tvx-navdropdown-chevron { color: #efeff1 !important; }
+        .tvx-navdropdown-btn { padding-right: 44px !important; }
+        .tvx-navdropdown-btn .tvx-navdropdown-chevron { position: absolute; right: 8px; }
+        .tvx-navsearch-btn {
+            position: absolute; top: 10px; right: 38px; width: 28px; height: 28px; border: 0; border-radius: 8px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; background: transparent; color: #adadb8;
+        }
+        .tvx-navsearch-btn:hover, #tvx-navtabs-wrap[data-search="1"] .tvx-navsearch-btn { background: rgba(255,255,255,.08); color: #efeff1; }
+        .tvx-navsearch-row { display: none; padding: 6px 4px 0; }
+        #tvx-navtabs-wrap[data-search="1"] .tvx-navsearch-row { display: block; }
+        .tvx-navsearch-in {
+            width: 100%; height: 34px; box-sizing: border-box; padding: 0 12px; border: 0; border-radius: 10px; outline: none;
+            background: #1f1f23; color: #fff; font-family: inherit; font-size: 13.5px;
+        }
+        .tvx-navsearch-in:focus { box-shadow: 0 0 0 2px rgba(169,112,255,.55); }
+
+        /* canais da lista: mais respiro, foto maior, contador menor */
+        .side-nav:not(.side-nav--collapsed) .side-nav-card__link { padding-top: 7px !important; padding-bottom: 7px !important; }
+        .side-nav:not(.side-nav--collapsed) .side-nav-card__avatar,
+        .side-nav:not(.side-nav--collapsed) .side-nav-card__avatar :is(.tw-avatar, img) {
+            width: 36px !important; height: 36px !important; flex: 0 0 36px !important;
+        }
+        .side-nav:not(.side-nav--collapsed) .side-nav-card__avatar { margin-right: 2px; }
+        .side-nav-card__live-status :is(span, p) { font-size: 12px !important; }
+        .side-nav-card__live-status .tw-channel-status-indicator { width: 7px !important; height: 7px !important; }
+        #tvx-avatar-preview {
+            position: fixed; z-index: 4000; width: 240px; border-radius: 16px; overflow: hidden; pointer-events: none;
+            background: #1f1f23; box-shadow: 0 16px 48px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.08);
+            opacity: 0; transform: scale(.96); transform-origin: left center; transition: opacity .12s ease, transform .12s ease;
+            font-family: Inter, Roobert, "Helvetica Neue", system-ui, sans-serif;
+        }
+        #tvx-avatar-preview[data-on="1"] { opacity: 1; transform: none; }
+        #tvx-avatar-preview > img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #18181b; }
+        .tvx-ap-txt { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 4px; }
+        .tvx-ap-txt b { font-size: 15px; font-weight: 700; color: #fff; }
+        .tvx-ap-txt p { margin: 0; font-size: 13px; line-height: 1.4; color: #dedee3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .tvx-ap-txt p:empty, .tvx-ap-txt small:empty { display: none; }
+        .tvx-ap-txt small { font-size: 12px; color: #9a9aa6; }
+        /* o balão de título nativo fica escondido enquanto o cartão está aberto */
+        html[data-tvx-avatar-prev="1"] :is(.ReactModal__Content:has([class*="channel-tooltip"]), [class*="channel-tooltip"]) { visibility: hidden !important; }
         .tvx-navdropdown-btn[aria-expanded="true"] .tvx-navdropdown-chevron {
             transform: rotate(180deg) !important;
         }
@@ -773,17 +1051,17 @@
         .tvx-favvazio b { color: var(--tvx-accent); }
 
         /* atalhos de navegação, agora na sidebar */
-        #tvx-navlinks { display: flex; flex-direction: column; gap: 4px; padding: 8px 8px;
+        #tvx-navlinks .tvx-navlink svg { flex: none; }
+        #tvx-navlinks { display: flex; flex-direction: column; gap: 2px; padding: 8px 8px;
             border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 2px;
             font-family: Inter, Roobert, "Helvetica Neue", system-ui, sans-serif; }
-        #tvx-navlinks .tvx-navlink { display: block; width: 100%; box-sizing: border-box; text-align: left;
+        #tvx-navlinks .tvx-navlink { display: flex; align-items: center; gap: 12px; width: 100%; height: 40px; box-sizing: border-box; text-align: left;
             appearance: none; border: 0; background: transparent; cursor: pointer;
-            padding: 9px 12px; border-radius: 8px; text-decoration: none; transition: all .14s ease;
+            padding: 0 12px; border-radius: 8px; text-decoration: none; transition: all .14s ease;
             /* !important porque a Twitch tem regra de fonte mais forte pros links da sidebar */
             color: #dedee3; font-family: inherit; font-weight: 600 !important;
             font-size: 15px !important; line-height: 1.3 !important; }
         #tvx-navlinks .tvx-navlink:hover { background: rgba(255,255,255,.07); color: var(--tvx-accent); }
-        .side-nav--collapsed #tvx-navlinks { display: none !important; }
         html[data-tvx-nav="1"] .side-nav-section > *:first-child {
             position: sticky; top: 0; z-index: 2; background: var(--color-background-body);
         }
@@ -805,14 +1083,14 @@
         #tvx-favs .tvx-navsec-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
         #tvx-favs .tvx-navsec-list::-webkit-scrollbar { width: 5px; }
         #tvx-favs .tvx-navsec-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 5px; }
-        .tvx-fav { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 6px; text-decoration: none; color: #efeff1; transition: background .12s ease; }
+        .tvx-fav { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; text-decoration: none; color: #efeff1; transition: background .12s ease; }
         .tvx-fav:hover { background: rgba(255,255,255,.06); }
-        .tvx-fav img { width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto; background: #26262c; }
+        .tvx-fav img { width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto; background: #26262c; }
         .tvx-fav .tvx-fav-txt { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
         .tvx-fav .tvx-fav-txt b { font: 600 13px/1.3 inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .tvx-fav .tvx-fav-txt small { font-size: 12px; color: #adadb8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .tvx-fav .tvx-fav-live { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; font: 400 12px/1 inherit; color: #efeff1; }
-        .tvx-fav .tvx-fav-live i { width: 8px; height: 8px; border-radius: 50%; background: #eb0400; }
+        .tvx-fav .tvx-fav-live { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; line-height: 1; color: #efeff1; }
+        .tvx-fav .tvx-fav-live i { width: 7px; height: 7px; border-radius: 50%; background: #eb0400; }
         .tvx-fav[data-offline="1"] { opacity: .6; }
         .tvx-fav[data-offline="1"] .tvx-fav-live { color: #adadb8; }
         .tvx-fav[data-offline="1"] .tvx-fav-live i { background: #53535f; }
@@ -826,31 +1104,61 @@
             position: fixed; left: var(--tvx-left); top: var(--tvx-top); z-index: 850;
             right: calc(var(--tvx-listw) + var(--tvx-chatw));
             height: var(--tvx-navh); box-sizing: border-box;
-            display: none; align-items: center; justify-content: space-between; gap: 14px; padding: 0 16px;
+            display: none; align-items: stretch; justify-content: space-between; gap: 14px; padding: 0 16px 0 12px;
             background: #0e0e10; border-bottom: 1px solid rgba(255,255,255,.10);
             font-family: Inter, Roobert, "Helvetica Neue", system-ui, sans-serif; color: #efeff1;
         }
         html[data-tvx-page="channel"] #tvx-nav { display: flex; }
-        #tvx-tabs { display: flex; align-items: center; gap: 2px; flex: 1 1 auto; overflow-x: auto; scrollbar-width: none; }
+        #tvx-tabs { display: flex; align-items: stretch; gap: 24px; flex: 1 1 auto; overflow-x: auto; scrollbar-width: none; }
         #tvx-tabs::-webkit-scrollbar { display: none; }
         /* estilo das abas da própria Twitch: texto + sublinhado, sem pílula */
         .tvx-tab {
             appearance: none; border: 0; background: transparent; color: #efeff1; cursor: pointer;
-            font: 600 15px/1 inherit; padding: 8px 2px; margin: 0 12px; border-radius: 0;
+            font-family: inherit; font-size: 15px; font-weight: 700; line-height: 1; padding: 2px 0 0; margin: 0; border-radius: 0;
             white-space: nowrap; display: inline-flex; align-items: center; gap: 7px;
             position: relative; border-bottom: 2px solid transparent;
         }
-        .tvx-tab:hover { color: var(--tvx-accent); background: transparent; }
-        .tvx-tab[aria-selected="true"] { color: var(--tvx-accent); background: transparent; border-bottom-color: var(--tvx-accent); }
+        .tvx-tab:hover { color: #c9a8ff; background: transparent; }
+        .tvx-tab[aria-selected="true"] { color: #c9a8ff; background: transparent; border-bottom-color: #c9a8ff; }
         .tvx-tab[data-tab="live"] .tvx-dot { width: 8px; height: 8px; border-radius: 50%; background: #eb0400; box-shadow: 0 0 0 0 rgba(235,4,0,.6); animation: tvx-pulse 2s infinite; }
         .tvx-tab[data-tab="live"][data-offline="1"] .tvx-dot { background: #53535f; animation: none; box-shadow: none; }
         @keyframes tvx-pulse { 70% { box-shadow: 0 0 0 7px rgba(235,4,0,0); } 100% { box-shadow: 0 0 0 0 rgba(235,4,0,0); } }
         #tvx-nav .tvx-navright { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+        /* cabeçalho do chat na mesma altura e no mesmo traço da barra do canal */
+        html[data-tvx-page="channel"] .stream-chat-header {
+            height: var(--tvx-navh) !important; min-height: var(--tvx-navh) !important; box-sizing: border-box !important;
+            padding: 0 10px !important; border-bottom: 1px solid rgba(255,255,255,.10) !important;
+        }
         .tvx-chip {
             display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px;
             background: rgba(255,255,255,.08); color: #dedee3; font: 600 12px/1 inherit; white-space: nowrap;
         }
         .tvx-iconbtn { cursor: pointer; border: 0; padding: 6px; border-radius: 8px; line-height: 0; }
+        /* botões de texto da barra do canal, no formato dos botões secundários da Twitch */
+        .tvx-navbtn {
+            display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
+            border: 0; border-radius: 8px; cursor: pointer; white-space: nowrap;
+            background: rgba(255,255,255,.08); color: #efeff1; font-family: inherit; font-size: 13px; font-weight: 600; line-height: 1;
+            transition: background-color .15s ease, color .15s ease;
+        }
+        .tvx-navbtn:hover { background: rgba(255,255,255,.15); }
+        .tvx-navbtn svg { flex: none; }
+        .tvx-favbtn[aria-pressed="true"] { background: rgba(169,112,255,.18); color: #e0ccff; }
+        .tvx-favbtn.tvx-inchannel {
+            height: 32px; padding: 0 16px 0 12px; margin: 0 0 0 10px; border-radius: 9999px; align-self: center;
+            background: #2f2f35; font: 600 14px/1 Inter, "Noto Sans Arabic", Roobert, "Helvetica Neue", system-ui, sans-serif;
+        }
+        .tvx-favbtn.tvx-inchannel:hover { background: #3c3c44; }
+        .tvx-favbtn.tvx-inchannel svg { width: 20px; height: 20px; }
+        .tvx-favbtn.tvx-inchannel[aria-pressed="true"] { background: rgba(169,112,255,.22); color: #e0ccff; }
+        .tvx-favbtn[aria-pressed="true"] svg { color: var(--tvx-accent); }
+        /* chat aberto: o botão senta no cabeçalho da coluna, onde fica o recolher nativo */
+        .tvx-chatbtn.tvx-inheader {
+            position: fixed; z-index: 3002; top: calc(var(--tvx-top) + (var(--tvx-navh) - 32px) / 2); left: calc(100% - var(--tvx-right) + 10px);
+            width: 32px; height: 32px; padding: 0; justify-content: center; background: transparent; color: #efeff1;
+        }
+        .tvx-chatbtn.tvx-inheader:hover { background: rgba(255,255,255,.12); }
+        html[data-tvx-page="channel"][data-tvx-tab="live"][data-tvx-chat="1"] [data-a-target="right-column__toggle-collapse-btn"] { visibility: hidden !important; }
         .tvx-iconbtn:hover { background: rgba(255,255,255,.16); }
         .tvx-iconbtn[aria-pressed="true"] { background: rgba(169,112,255,.18); color: #d6bcff; }
 
@@ -933,25 +1241,17 @@
 
         /* ---------- modo teatro na live corrigido ---------- */
         html[data-tvx-theatre="1"] #tvx-nav,
-        html.tw-root--theatre #tvx-nav {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            height: var(--tvx-navh, 38px) !important;
-            z-index: 3001 !important;
-            display: flex !important;
-        }
+        html.tw-root--theatre #tvx-nav { display: none !important; }
         .persistent-player.persistent-player--theatre,
         .persistent-player[data-a-player-state="theatre"],
         html[data-tvx-theatre="1"] .persistent-player,
         html.tw-root--theatre .persistent-player {
             position: fixed !important;
-            top: var(--tvx-navh, 38px) !important;
+            top: 0 !important;
             left: 0 !important;
             width: calc(100% - var(--tvx-chatw)) !important;
-            height: calc(100vh - var(--tvx-navh, 38px)) !important;
-            max-height: calc(100vh - var(--tvx-navh, 38px)) !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
             z-index: 3000 !important;
             pointer-events: auto !important;
             transform: none !important;
@@ -960,8 +1260,8 @@
         .right-column--theatre,
         html[data-tvx-page="channel"][data-tvx-theatre="1"] .channel-root__right-column,
         html[data-tvx-page="channel"].tw-root--theatre .channel-root__right-column {
-            top: var(--tvx-navh, 38px) !important;
-            height: calc(100vh - var(--tvx-navh, 38px)) !important;
+            top: 0 !important;
+            height: 100vh !important;
             z-index: 3000 !important;
         }
         .channel-root__info,
@@ -1041,137 +1341,128 @@
 
         .tvx-plc-bottom {
             position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
-            background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 65%, transparent 100%);
-            padding: 24px 16px 10px; display: flex; flex-direction: column; gap: 6px;
-            transition: opacity .25s ease, transform .25s ease;
+            background: linear-gradient(to top, rgba(0,0,0,.75) 0%, rgba(0,0,0,.35) 55%, transparent 100%);
+            padding: 40px 14px 12px; display: flex; flex-direction: column; gap: 8px;
+            transition: opacity .25s ease;
         }
-        .tvx-screen[data-idle="1"]:not([data-paused="1"]) .tvx-plc-bottom {
-            opacity: 0; pointer-events: none; transform: translateY(8px);
-        }
-        .tvx-screen[data-idle="1"]:not([data-paused="1"]) {
-            cursor: none;
-        }
+        .tvx-screen[data-idle="1"]:not([data-paused="1"]):not([data-menu="1"]) .tvx-plc-bottom { opacity: 0; pointer-events: none; }
+        .tvx-screen[data-idle="1"]:not([data-paused="1"]):not([data-menu="1"]) { cursor: none; }
 
-        /* Scrubber / Barra de progresso */
+        /* barra de progresso: fina, engrossa no hover */
         .tvx-plc-prog {
-            position: relative; width: 100%; height: 16px; display: flex; align-items: center;
+            position: relative; width: 100%; height: 18px; display: flex; align-items: center; margin: 0 2px;
             cursor: pointer; user-select: none; touch-action: none;
         }
         .tvx-plc-track {
-            position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px;
-            background: rgba(255, 255, 255, 0.22); transition: height .15s ease;
+            position: absolute; left: 0; right: 0; height: 3px; border-radius: 3px;
+            background: rgba(255,255,255,.25); transition: height .12s ease;
         }
-        .tvx-plc-prog:hover .tvx-plc-track,
-        .tvx-plc-prog.is-dragging .tvx-plc-track {
-            height: 6px;
-        }
-        .tvx-plc-buf {
-            position: absolute; left: 0; top: 0; bottom: 0; width: 0%; border-radius: inherit;
-            background: rgba(255, 255, 255, 0.35); pointer-events: none;
-        }
-        .tvx-plc-fill {
-            position: absolute; left: 0; top: 0; bottom: 0; width: 0%; border-radius: inherit;
-            background: var(--tvx-accent); pointer-events: none;
-        }
+        .tvx-plc-prog:hover .tvx-plc-track, .tvx-plc-prog.is-dragging .tvx-plc-track { height: 5px; }
+        .tvx-plc-buf { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; border-radius: inherit; background: rgba(255,255,255,.4); pointer-events: none; }
+        .tvx-plc-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; border-radius: inherit; background: var(--tvx-accent); pointer-events: none; }
         .tvx-plc-knob {
-            position: absolute; left: 0%; top: 50%; transform: translate(-50%, -50%);
-            width: 12px; height: 12px; border-radius: 50%; background: #fff;
-            box-shadow: 0 0 4px rgba(0,0,0,0.5); pointer-events: none;
-            transition: transform .15s ease, opacity .15s ease; opacity: 0;
+            position: absolute; left: 0%; top: 50%; transform: translate(-50%, -50%) scale(0);
+            width: 13px; height: 13px; border-radius: 50%; background: var(--tvx-accent);
+            pointer-events: none; transition: transform .12s ease;
         }
-        .tvx-plc-prog:hover .tvx-plc-knob,
-        .tvx-plc-prog.is-dragging .tvx-plc-knob {
-            opacity: 1; transform: translate(-50%, -50%) scale(1.2);
-        }
+        .tvx-plc-prog:hover .tvx-plc-knob, .tvx-plc-prog.is-dragging .tvx-plc-knob { transform: translate(-50%, -50%) scale(1); }
         .tvx-plc-tooltip {
-            position: absolute; bottom: 20px; transform: translateX(-50%);
-            background: rgba(0,0,0,0.85); color: #fff; font-size: 11px; font-weight: 600;
-            padding: 2px 6px; border-radius: 4px; pointer-events: none; display: none;
-            white-space: nowrap;
+            position: absolute; bottom: 22px; transform: translateX(-50%);
+            background: rgba(28,28,28,.9); color: #fff; font-size: 12px; font-weight: 600;
+            padding: 4px 8px; border-radius: 6px; pointer-events: none; display: none; white-space: nowrap;
+            font-variant-numeric: tabular-nums;
         }
 
-        /* Linha de controles */
-        .tvx-plc-row {
-            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        /* controles: grupos em pílulas translúcidas (o "vidro fosco" do player do YouTube) */
+        .tvx-plc-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .tvx-plc-left, .tvx-plc-right { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }
+        .tvx-plc-pill {
+            display: flex; align-items: center; height: 44px; padding: 0 2px; border-radius: 22px;
+            background: rgba(0,0,0,.35); backdrop-filter: blur(16px);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,.10);
         }
-        .tvx-plc-left, .tvx-plc-right {
-            display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
-        }
+        .tvx-plc-round { width: 44px; padding: 0; justify-content: center; }
         .tvx-plc-btn {
-            appearance: none; border: 0; background: transparent; color: #dedee3;
-            cursor: pointer; padding: 6px; border-radius: 6px; display: inline-flex;
-            align-items: center; justify-content: center; line-height: 0;
-            transition: color .15s ease, background .15s ease;
+            position: relative; appearance: none; border: 0; background: transparent; color: #fff;
+            cursor: pointer; width: 40px; height: 40px; padding: 0; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center; line-height: 0;
+            transition: background .15s ease, opacity .15s ease;
         }
-        .tvx-plc-btn:hover {
-            color: #fff; background: rgba(255,255,255,0.12);
-        }
-        .tvx-plc-btn[aria-pressed="true"] {
-            color: var(--tvx-accent); background: rgba(169,112,255,0.2);
-        }
-        .tvx-plc-btn:disabled {
-            opacity: 0.35; cursor: default;
+        .tvx-plc-btn:hover { background: rgba(255,255,255,.14); }
+        .tvx-plc-btn:disabled { opacity: .35; cursor: default; background: transparent; }
+        .tvx-plc-play { width: 44px; height: 44px; }
+        /* ligado = selo "ON" sobre o mesmo ícone, nunca troca de cor */
+        .tvx-on { display: none; }
+        .tvx-plc-btn[aria-pressed="true"] > .tvx-on {
+            display: block; position: absolute; top: 4px; right: 2px; padding: 2px 3px; border-radius: 3px;
+            background: var(--tvx-accent); color: #16121f; font: 800 8px/1 Inter, system-ui, sans-serif; letter-spacing: .02em;
         }
         .tvx-plc-time {
-            font-size: 12.5px; font-weight: 600; color: #dedee3; margin: 0 4px;
-            white-space: nowrap; user-select: none;
+            font-size: 13px; font-weight: 600; color: #fff; padding: 0 14px 0 4px;
+            white-space: nowrap; user-select: none; font-variant-numeric: tabular-nums;
         }
 
-        /* Volume Slider */
-        .tvx-plc-vol-wrap {
-            display: inline-flex; align-items: center; gap: 2px; position: relative;
-        }
+        .tvx-plc-vol-wrap { display: inline-flex; align-items: center; }
         .tvx-plc-vol-slider {
-            appearance: none; width: 0; opacity: 0; height: 4px; border-radius: 2px;
-            background: rgba(255,255,255,0.3); outline: none; cursor: pointer;
-            transition: width .2s ease, opacity .2s ease, margin .2s ease; margin: 0;
+            appearance: none; width: 0; opacity: 0; height: 3px; border-radius: 3px;
+            background: rgba(255,255,255,.35); outline: none; cursor: pointer; margin: 0;
+            transition: width .2s ease, opacity .2s ease, margin .2s ease;
         }
-        .tvx-plc-vol-wrap:hover .tvx-plc-vol-slider,
-        .tvx-plc-vol-slider:focus {
-            width: 58px; opacity: 1; margin: 0 4px;
-        }
-        .tvx-plc-vol-slider::-webkit-slider-thumb {
-            appearance: none; width: 10px; height: 10px; border-radius: 50%;
-            background: #fff; cursor: pointer;
-        }
+        .tvx-plc-vol-wrap:hover .tvx-plc-vol-slider, .tvx-plc-vol-slider:focus { width: 64px; opacity: 1; margin: 0 8px 0 2px; }
+        .tvx-plc-vol-slider::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; cursor: pointer; }
 
-        /* Autoplay toggle */
-        .tvx-plc-auto { display: inline-flex; align-items: center; }
-        .tvx-plc-auto-pill {
-            display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
-            border-radius: 999px; background: rgba(255,255,255,.08); font-size: 12px; font-weight: 600;
-            color: #adadb8; transition: background .2s ease, color .2s ease;
+        /* interruptor do autoplay */
+        .tvx-autosw { width: 52px; border-radius: 20px; }
+        .tvx-sw { position: relative; width: 34px; height: 14px; border-radius: 7px; background: rgba(255,255,255,.3); transition: background .2s ease; }
+        .tvx-sw i {
+            position: absolute; top: 50%; left: 0; width: 20px; height: 20px; border-radius: 50%; transform: translate(-3px, -50%);
+            background: #bdbdc4; color: #2a2a2e; display: flex; align-items: center; justify-content: center;
+            transition: transform .2s ease, background .2s ease; box-shadow: 0 1px 3px rgba(0,0,0,.4);
         }
-        .tvx-plc-auto[aria-pressed="true"] .tvx-plc-auto-pill {
-            background: rgba(169,112,255,.24); color: #d6bcff;
-        }
-        .tvx-plc-auto-dot {
-            width: 7px; height: 7px; border-radius: 50%; background: #6c6c75;
-            transition: background .2s ease;
-        }
-        .tvx-plc-auto[aria-pressed="true"] .tvx-plc-auto-dot {
-            background: var(--tvx-accent);
-        }
+        .tvx-autosw[aria-pressed="true"] .tvx-sw { background: rgba(169,112,255,.55); }
+        .tvx-autosw[aria-pressed="true"] .tvx-sw i { transform: translate(17px, -50%); background: #fff; color: #16121f; }
+        .tvx-autosw .tvx-sw i svg { opacity: 0; transition: opacity .2s ease; }
+        .tvx-autosw[aria-pressed="true"] .tvx-sw i svg { opacity: 1; }
 
-        .tvx-badge-idx {
-            font-weight: 700; font-size: 12px; padding: 4px 9px; border-radius: 999px;
-            background: rgba(255,255,255,.08); color: #dedee3; white-space: nowrap;
+        /* engrenagem com selo da qualidade, e o painel que ela abre */
+        .tvx-gear-badge:empty { display: none; }
+        .tvx-gear-badge {
+            position: absolute; top: 4px; right: 0; padding: 2px 3px; border-radius: 3px;
+            background: var(--tvx-accent); color: #16121f; font: 800 8px/1 Inter, system-ui, sans-serif;
         }
-
-        /* Selects inside player */
-        .tvx-plc-sel {
-            height: 28px; padding: 0 22px 0 8px; font-size: 12px; border-radius: 6px;
-            background-color: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14);
-            color: #dedee3;
+        .tvx-gear svg { transition: transform .3s ease; }
+        .tvx-gear[aria-expanded="true"] svg { transform: rotate(45deg); }
+        .tvx-dial {
+            position: absolute; right: 14px; bottom: 90px; width: 272px; z-index: 12;
+            padding: 8px; border-radius: 14px; background: rgba(28,28,28,.92); backdrop-filter: blur(16px);
+            box-shadow: 0 12px 40px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.08);
+            display: flex; flex-direction: column; gap: 4px; color: #eee;
         }
-        .tvx-plc-sel:hover {
-            background-color: rgba(255,255,255,0.14); color: #fff;
+        .tvx-dial[hidden] { display: none; }
+        .tvx-dial-sec { padding: 8px; }
+        .tvx-dial-sec + .tvx-dial-sec { border-top: 1px solid rgba(255,255,255,.08); }
+        .tvx-dial-h { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #9a9aa6; margin-bottom: 8px; }
+        .tvx-dial-opts { display: flex; flex-direction: column; gap: 2px; }
+        .tvx-dial-opt {
+            display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border: 0; border-radius: 8px;
+            background: transparent; color: #efeff1; font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; text-align: left;
         }
+        .tvx-dial-opt small { font-size: 10px; color: #9a9aa6; font-weight: 700; }
+        .tvx-dial-opt:hover { background: rgba(255,255,255,.08); }
+        .tvx-dial-opt[aria-pressed="true"] { background: rgba(169,112,255,.2); color: #e0ccff; }
+        .tvx-dial-opt[aria-pressed="true"]::after { content: "✓"; margin-left: auto; color: var(--tvx-accent); }
+        .tvx-dial-speeds { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tvx-dial-chip {
+            height: 30px; padding: 0 11px; border: 0; border-radius: 999px; cursor: pointer;
+            background: rgba(255,255,255,.08); color: #dedee3; font-family: inherit; font-size: 12.5px; font-weight: 600;
+        }
+        .tvx-dial-chip:hover { background: rgba(255,255,255,.14); }
+        .tvx-dial-chip[aria-pressed="true"] { background: #efeff1; color: #0e0e10; }
 
         /* Barra de rodapé do VOD */
         .tvx-vod-bar {
-            flex: 0 0 44px; display: flex; align-items: center; justify-content: space-between;
-            padding: 0 16px; background: #0e0e12; border-top: 1px solid rgba(255,255,255,.08);
+            flex: 0 0 60px; display: flex; align-items: center; justify-content: space-between;
+            padding: 0 14px; background: #0e0e12; border-top: 1px solid rgba(255,255,255,.08);
             font-size: 13px; color: #efeff1; z-index: 10;
         }
 
@@ -1214,16 +1505,51 @@
             border-left: 1px solid rgba(255,255,255,.08); background: #0e0e10; overflow: hidden;
         }
         #tvx-panel[data-side="0"] .tvx-side { display: none; }
-        .tvx-side-head { flex: 0 0 auto; padding: 12px 14px 10px; border-bottom: 1px solid rgba(255,255,255,.08); }
-        .tvx-side-title { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .tvx-side-head { flex: 0 0 auto; border-bottom: 1px solid rgba(255,255,255,.08); }
+        /* cabeçalho na altura da barra do canal, como o do chat */
+        .tvx-side-title {
+            display: flex; align-items: center; gap: 8px; height: var(--tvx-navh); padding: 0 12px 0 8px;
+            box-sizing: border-box; border-bottom: 1px solid rgba(255,255,255,.10);
+        }
         .tvx-side-title b { font-size: 15px; font-weight: 700; color: #fff; }
         .tvx-side-badge {
-            font-size: 11px; font-weight: 600; color: #adadb8;
-            background: rgba(255,255,255,.08); padding: 2px 8px; border-radius: 999px;
+            font-size: 12px; font-weight: 600; color: #adadb8;
+            background: rgba(255,255,255,.08); padding: 3px 9px; border-radius: 999px;
             margin-left: auto;
         }
-        .tvx-sideclose { flex: 0 0 auto; border: 0; background: transparent; color: #adadb8; cursor: pointer; padding: 5px; border-radius: 8px; line-height: 0; }
-        .tvx-sideclose:hover { background: rgba(255,255,255,.1); color: #fff; }
+        .tvx-sideclose { flex: 0 0 auto; border: 0; background: transparent; color: #efeff1; cursor: pointer; padding: 6px; border-radius: 8px; line-height: 0; }
+        .tvx-sideclose:hover { background: rgba(255,255,255,.1); }
+        .tvx-side-tools { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+        .tvx-toolbar { display: flex; flex-direction: column; gap: 10px; }
+        .tvx-toolrow { display: flex; gap: 8px; }
+        .tvx-toolrow .tvx-sel { flex: 1 1 auto; min-width: 0; height: 36px; border-radius: 10px; }
+        .tvx-fbtn {
+            flex: none; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px;
+            border: 0; border-radius: 10px; background: rgba(255,255,255,.08); color: #efeff1; cursor: pointer;
+            font-family: inherit; font-size: 13px; font-weight: 600; transition: background .15s ease;
+        }
+        .tvx-fbtn:hover { background: rgba(255,255,255,.14); }
+        .tvx-fbtn[aria-expanded="true"] { background: rgba(169,112,255,.22); color: #e0ccff; }
+        .tvx-fbtn .tvx-badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--tvx-accent); color: #16121f; font-weight: 800; }
+        .tvx-chipsbar { position: relative; }
+        .tvx-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; scroll-behavior: smooth; }
+        .tvx-chiparrow {
+            position: absolute; top: 0; z-index: 1; width: 32px; height: 32px; border: 0; border-radius: 10px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; color: #efeff1; background: #2a2a2f;
+            box-shadow: 0 0 12px 8px #0e0e10;
+        }
+        .tvx-chiparrow:hover { background: #3a3a40; }
+        .tvx-chiparrow[hidden] { display: none; }
+        .tvx-chiparrow-l { left: 0; }
+        .tvx-chiparrow-r { right: 0; }
+        .tvx-chips::-webkit-scrollbar { display: none; }
+        .tvx-chipbtn {
+            flex: none; height: 32px; padding: 0 12px; border: 0; border-radius: 10px; cursor: pointer;
+            background: rgba(255,255,255,.08); color: #dedee3; font-family: inherit; font-size: 12.5px; font-weight: 600;
+            transition: background .15s ease, color .15s ease;
+        }
+        .tvx-chipbtn:hover { background: rgba(255,255,255,.14); color: #fff; }
+        .tvx-chipbtn[aria-pressed="true"] { background: #efeff1; color: #0e0e10; }
         .tvx-progress { height: 3px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; margin-top: 8px; }
         .tvx-progress i { display: block; height: 100%; width: 30%; background: var(--tvx-accent); animation: tvx-slide 1.2s ease-in-out infinite; }
         @keyframes tvx-slide { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
@@ -1236,17 +1562,17 @@
 
         .tvx-search { position: relative; }
         .tvx-search input {
-            width: 100%; box-sizing: border-box; height: 36px; padding: 0 32px 0 34px; border-radius: 8px;
-            border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); color: #fff;
-            font: 13.5px/1 inherit; outline: none; transition: border-color .15s ease, background .15s ease;
+            width: 100%; box-sizing: border-box; height: 40px; padding: 0 36px 0 38px; border-radius: 10px;
+            border: 0; background: #1f1f23; color: #fff;
+            font-family: inherit; font-size: 14px; outline: none; transition: box-shadow .15s ease;
         }
-        .tvx-search input:focus { border-color: var(--tvx-accent); background: rgba(255,255,255,.09); }
-        .tvx-search .tvx-si { position: absolute; left: 10px; top: 10px; color: #adadb8; pointer-events: none; }
-        .tvx-search .tvx-sx { position: absolute; right: 6px; top: 6px; border: 0; background: transparent; color: #adadb8; cursor: pointer; padding: 4px; border-radius: 6px; }
+        .tvx-search input:focus { box-shadow: 0 0 0 2px rgba(169,112,255,.55); }
+        .tvx-search .tvx-si { position: absolute; left: 12px; top: 12px; color: #adadb8; pointer-events: none; }
+        .tvx-search .tvx-sx { position: absolute; right: 8px; top: 8px; border: 0; background: transparent; color: #adadb8; cursor: pointer; padding: 4px; border-radius: 6px; }
         .tvx-search .tvx-sx:hover { background: rgba(255,255,255,.1); color: #fff; }
 
         .tvx-filters {
-            flex: 0 0 auto; max-height: 48vh; overflow-y: auto;
+            flex: 0 0 auto; max-height: 48vh; overflow-y: auto; background: #131316;
             border-bottom: 1px solid rgba(255,255,255,.08);
             scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent;
         }
@@ -1254,10 +1580,14 @@
         .tvx-filters::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 3px; }
         .tvx-filters::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.32); }
 
-        .tvx-fgroup { border-bottom: 1px solid rgba(255,255,255,.06); }
+        /* gaveta de filtros: seções com respiro, títulos claros e campos maiores */
+        .tvx-filters { padding: 6px 0; }
+        .tvx-fgroup { margin: 0 10px; border-radius: 12px; }
+        .tvx-fgroup + .tvx-fgroup { margin-top: 4px; }
+        .tvx-fgroup[open] { background: rgba(255,255,255,.035); }
         .tvx-fgroup > summary {
-            list-style: none; cursor: pointer; padding: 10px 14px;
-            font: 600 13px/1.2 inherit; color: #dedee3;
+            list-style: none; cursor: pointer; padding: 12px 12px; border-radius: 12px;
+            font-family: inherit; font-size: 14px; font-weight: 600; color: #dedee3;
             display: flex; align-items: center; gap: 8px;
             transition: background .15s ease, color .15s ease; user-select: none;
         }
@@ -1265,21 +1595,21 @@
         .tvx-fgroup > summary::after {
             content: ""; display: inline-block; width: 6px; height: 6px;
             border-right: 2px solid #8a8a95; border-bottom: 2px solid #8a8a95;
-            transform: rotate(-45deg); transition: transform .2s ease;
+            transform: rotate(45deg) translate(-2px, -2px); transition: transform .2s ease;
             margin-left: auto;
         }
-        .tvx-fgroup[open] > summary::after { transform: rotate(45deg); }
-        .tvx-fgroup > summary:hover { background: rgba(255,255,255,.04); color: #fff; }
+        .tvx-fgroup[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
+        .tvx-fgroup > summary:hover { background: rgba(255,255,255,.05); color: #fff; }
         .tvx-fgroup[open] > summary { color: #fff; }
         .tvx-fgroup > summary .tvx-badge { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: var(--tvx-accent); color: #16121f; font-weight: 800; }
-        .tvx-fbody { padding: 6px 14px 12px; display: flex; flex-direction: column; gap: 8px; }
-        .tvx-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+        .tvx-fbody { padding: 2px 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+        .tvx-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; }
         .tvx-row label { font-size: 12px; color: #adadb8; min-width: 28px; }
         .tvx-in {
-            flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 32px; padding: 0 9px; border-radius: 8px;
-            border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); color: #fff; font: 13px/1 inherit; outline: none;
+            flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 36px; padding: 0 10px; border-radius: 10px;
+            border: 0; background: #1f1f23; color: #fff; font-family: inherit; font-size: 13px; outline: none;
         }
-        .tvx-in:focus { border-color: var(--tvx-accent); }
+        .tvx-in:focus { box-shadow: 0 0 0 2px rgba(169,112,255,.55); }
         .tvx-in::-webkit-calendar-picker-indicator { filter: invert(.75); cursor: pointer; }
 
         .tvx-presets-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; }
@@ -1287,47 +1617,49 @@
         .tvx-pill-full { width: 100%; text-align: center; margin-top: 2px; }
 
         .tvx-pill {
-            border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); color: #dedee3;
-            border-radius: 8px; padding: 6px 11px; font: 600 12px/1 inherit; cursor: pointer;
-            transition: all .15s ease;
+            border: 0; background: rgba(255,255,255,.08); color: #dedee3; height: 32px;
+            border-radius: 999px; padding: 0 14px; font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+            transition: background .15s ease, color .15s ease;
         }
-        .tvx-pill:hover { background: rgba(255,255,255,.11); color: #fff; }
-        .tvx-pill[aria-pressed="true"] { background: var(--tvx-accent); border-color: var(--tvx-accent); color: #16121f; font-weight: 700; }
+        .tvx-pill:hover { background: rgba(255,255,255,.14); color: #fff; }
+        .tvx-pill[aria-pressed="true"] { background: #efeff1; color: #0e0e10; }
 
-        .tvx-date-row { display: flex; align-items: center; gap: 8px; width: 100%; }
-        .tvx-date-field { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; }
-        .tvx-date-field label { font-size: 12px; color: #adadb8; flex: 0 0 auto; }
-        .tvx-date-field .tvx-in { flex: 1 1 0; min-width: 0; width: 100%; padding: 0 6px; font-size: 12px; }
+        /* campos com rótulo em cima, lado a lado */
+        .tvx-date-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+        .tvx-date-field { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+        .tvx-date-field label, .tvx-dual-label { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #8a8a95; }
+        .tvx-date-field .tvx-in { width: 100%; padding: 0 8px; font-size: 12.5px; }
 
-        .tvx-dual-row { display: flex; flex-direction: column; gap: 4px; width: 100%; }
-        .tvx-dual-label { font-size: 12px; font-weight: 600; color: #adadb8; }
+        .tvx-dual-row { display: flex; flex-direction: column; gap: 6px; width: 100%; }
         .tvx-dual-inputs { display: flex; align-items: center; gap: 6px; width: 100%; }
         .tvx-dual-inputs .tvx-in { flex: 1 1 0; min-width: 0; }
 
         .tvx-facet {
-            max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px;
+            max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px;
             scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent;
         }
         .tvx-facet::-webkit-scrollbar { width: 5px; }
         .tvx-facet::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 3px; }
         .tvx-facet::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.32); }
-        .tvx-fitem { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; cursor: pointer; font-size: 13px; color: #dedee3; }
+        .tvx-facet-wrap { display: flex; flex-direction: column; gap: 8px; }
+        .tvx-facet-q { flex: none; height: 34px; }
+        .tvx-fitem { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; color: #dedee3; }
         .tvx-fitem:hover { background: rgba(255,255,255,.06); color: #fff; }
         .tvx-fitem input { accent-color: var(--tvx-accent); margin: 0; }
         .tvx-fitem span { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .tvx-fitem em { font-style: normal; font-size: 11px; color: #8a8a95; font-weight: 600; }
 
-        .tvx-list { flex: 1 1 auto; overflow-y: auto; padding: 6px; }
-        .tvx-item { display: grid; grid-template-columns: 148px minmax(0,1fr); gap: 10px; padding: 6px; border-radius: 10px; cursor: pointer; }
+        .tvx-list { flex: 1 1 auto; overflow-y: auto; padding: 8px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+        .tvx-item { display: grid; grid-template-columns: 140px minmax(0,1fr); gap: 12px; padding: 8px; border-radius: 12px; cursor: pointer; transition: background .12s ease; }
         .tvx-item:hover { background: rgba(255,255,255,.07); }
-        .tvx-item[aria-current="true"] { background: rgba(169,112,255,.16); box-shadow: inset 2px 0 0 var(--tvx-accent); }
-        .tvx-thumb { position: relative; aspect-ratio: 16/9; border-radius: 7px; overflow: hidden; background: #18181b; }
+        .tvx-item[aria-current="true"] { background: rgba(169,112,255,.16); }
+        .tvx-thumb { position: relative; aspect-ratio: 16/9; border-radius: 8px; overflow: hidden; background: #18181b; }
         .tvx-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
         .tvx-thumb b { position: absolute; right: 4px; bottom: 4px; background: rgba(0,0,0,.8); border-radius: 4px; padding: 1px 5px; font: 700 11px/1.5 inherit; }
         .tvx-thumb .tvx-star { position: absolute; left: 4px; top: 4px; background: var(--tvx-accent); color: #16121f; border-radius: 4px; padding: 1px 5px; font: 800 10px/1.6 inherit; }
         .tvx-itxt { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-        .tvx-itxt strong { font: 600 13px/1.35 inherit; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        .tvx-itxt small { font-size: 11.5px; color: #adadb8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tvx-itxt strong { font-family: inherit; font-size: 13.5px; font-weight: 700; line-height: 1.35; color: #efeff1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .tvx-itxt small { font-size: 12px; color: #9a9aa6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .tvx-sentinel { height: 1px; }
         .tvx-note { padding: 14px; color: #adadb8; font-size: 13px; line-height: 1.5; }
         .tvx-note b { color: #efeff1; }
@@ -1392,15 +1724,16 @@
         if (nav) return nav;
         tabsWrap = el("div", { id: "tvx-tabs" });
 
-        // só ícone: o rótulo vira title/aria-label, que é onde ele é útil sem ocupar a barra
-        chatBtn = el("button", { class: "tvx-chip tvx-iconbtn tvx-chatbtn", type: "button", html: svg(ICON.chat, 16) });
+        // Chat: pílula "Chat" na barra enquanto fechado; aberto, vira o botão de recolher no
+        // cabeçalho da coluna do chat, no lugar do nativo (syncLayoutVars troca o visual).
+        chatBtn = el("button", { class: "tvx-navbtn tvx-chatbtn", type: "button" });
         chatBtn.addEventListener("click", toggleChat);
 
         // mesmo tratamento do chat: um ícone na barra, sem botão de texto no player
-        listBtn = el("button", { class: "tvx-chip tvx-iconbtn tvx-listbtn", type: "button", html: svg(ICON.list, 16) });
+        listBtn = el("button", { class: "tvx-navbtn tvx-listbtn", type: "button" });
         listBtn.addEventListener("click", () => setSidebarOpen(!prefs.sidebarOpen));
 
-        favBtn = el("button", { class: "tvx-chip tvx-iconbtn tvx-favbtn", type: "button", html: svg(ICON.star, 16) });
+        favBtn = el("button", { class: "tvx-navbtn tvx-favbtn", type: "button" });
         favBtn.addEventListener("click", () => toggleFav(state.route && state.route.login));
 
         nav = el("nav", { id: "tvx-nav" }, tabsWrap,
@@ -1439,9 +1772,20 @@
         const on = isFav(login);
         favBtn.style.display = login ? "" : "none";
         favBtn.setAttribute("aria-pressed", String(on));
-        const l = on ? "Remover dos favoritos" : "Adicionar aos favoritos";
-        favBtn.title = l;
-        favBtn.setAttribute("aria-label", l);
+        const sig = on ? "on" : "off";
+        if (favBtn.dataset.sig !== sig) {
+            favBtn.dataset.sig = sig;
+            favBtn.innerHTML = svg(on ? ICON.star : ICON.starOutline, 16) + `<span>${on ? "Favorito" : "Favoritar"}</span>`;
+        }
+        favBtn.title = on ? "Remover dos favoritos" : "Adicionar aos favoritos da sidebar";
+        // mora no cabeçalho do canal, logo depois do bloco do "Seguir" (que o React re-renderiza:
+        // por isso conferimos a posição a cada tick)
+        const follow = document.querySelector('[data-target="channel-header-right"] :is([data-a-target="follow-button"], [data-a-target="unfollow-button"])');
+        const row = follow && follow.closest('[data-target="channel-header-right"]');
+        let block = follow;
+        while (block && block.parentElement !== row) block = block.parentElement;
+        if (block && favBtn.previousElementSibling !== block) block.after(favBtn);
+        favBtn.classList.toggle("tvx-inchannel", !!block);
     }
 
     function renderIdent() {}
@@ -1549,17 +1893,27 @@
         HTML.style.setProperty("--tvx-listw", listOpen ? "var(--tvx-sidew)" : "0px");
 
         if (listBtn) {
-            listBtn.style.display = (state.tab === "clips" || state.tab === "videos") ? "" : "none";
-            listBtn.setAttribute("aria-pressed", String(!!prefs.sidebarOpen));
-            const l = prefs.sidebarOpen ? "Esconder a lista" : "Mostrar a lista";
-            listBtn.title = l;
-            listBtn.setAttribute("aria-label", l);
+            // aberta, o botão de recolher mora no cabeçalho da lista (como o do chat)
+            listBtn.style.display = (state.tab === "clips" || state.tab === "videos") && !prefs.sidebarOpen ? "" : "none";
+            const word = state.tab === "videos" ? "Vídeos" : "Clipes";
+            if (listBtn.dataset.word !== word) { listBtn.dataset.word = word; listBtn.innerHTML = svg(ICON.list, 16) + `<span>${word}</span>`; }
+            listBtn.title = "Mostrar a lista";
         }
         if (chatBtn) {
             const open = rightW > 0;
             chatBtn.style.display = state.tab === "live" ? "" : "none";
             chatBtn.setAttribute("aria-pressed", String(open));
-            const label = open ? "Ocultar chat" : "Mostrar chat";
+            const inHeader = open && state.tab === "live";
+            chatBtn.classList.toggle("tvx-inheader", inHeader);
+            // dentro da #tvx-nav (z 850) ele ficaria atrás da coluna do chat: no cabeçalho, mora no body
+            const home = inHeader ? document.body : nav && nav.querySelector(".tvx-navright");
+            if (home && chatBtn.parentNode !== home) home.appendChild(chatBtn);
+            const sig = open ? "open" : "closed";
+            if (chatBtn.dataset.sig !== sig) {
+                chatBtn.dataset.sig = sig;
+                chatBtn.innerHTML = open ? svg(ICON.collapseRight, 20) : svg(ICON.chat, 16) + "<span>Chat</span>";
+            }
+            const label = open ? "Recolher chat" : "Mostrar chat";
             chatBtn.title = label;
             chatBtn.setAttribute("aria-label", label);
         }
@@ -1943,7 +2297,21 @@
                 setNavDropdownOpen(!isNavDropdownOpen);
             });
 
-            navTabsWrapEl = el("div", { id: "tvx-navtabs-wrap" }, navDropdownTriggerEl, navDropdownMenuEl);
+            // busca dentro da lista ativa (seguidos, favoritos…), ao lado da setinha
+            const searchIn = el("input", { class: "tvx-navsearch-in", type: "search", placeholder: "Buscar canal…" });
+            const searchBtn = el("button", { class: "tvx-navsearch-btn", type: "button", title: "Buscar na lista", html: svg(ICON.search, 16) });
+            const closeSearch = () => { searchIn.value = ""; navTabsWrapEl.dataset.search = "0"; applySideSearch(); };
+            searchBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (navTabsWrapEl.dataset.search === "1") { closeSearch(); return; }
+                navTabsWrapEl.dataset.search = "1";
+                searchIn.focus();
+            });
+            searchIn.addEventListener("input", applySideSearch);
+            searchIn.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); closeSearch(); } });
+            navSearchInEl = searchIn;
+            navTabsWrapEl = el("div", { id: "tvx-navtabs-wrap" }, navDropdownTriggerEl, searchBtn,
+                el("div", { class: "tvx-navsearch-row" }, searchIn), navDropdownMenuEl);
         }
         // Transforma o container nativo .side-nav__title no nosso dropdown, ou insere antes da primeira seção
         const titleContainer = host.querySelector(".side-nav__title") || parent.querySelector(".side-nav__title");
@@ -1992,10 +2360,9 @@
                     || /stories/i.test(child.textContent || "")
                     || (child.style.marginTop && child.style.marginTop.includes("0.7rem"));
                 if (isStories) {
-                    set(child, "margin-top", "1rem");
-                    set(child, "margin-bottom", "1rem");
-                    set(child, "position", "relative");
-                    set(child, "z-index", "1");
+                    // sai do topo da lista e vira a linha "Stories" (que clica neste, escondido)
+                    set(child, "display", "none");
+                    storiesEl = child;
                 }
             }
         }
@@ -2004,6 +2371,87 @@
         // do que manter o empilhamento nativo por mais um ciclo.
         if (navTabsWrapEl.getBoundingClientRect().width < 8) { cleanupSidebarState(); return; }
         applyNavTab();
+        if (navSearchInEl && navSearchInEl.value) applySideSearch();
+    }
+
+    let navSearchInEl = null, storiesEl = null, storiesRowEl = null;
+
+    function syncStoriesRow() {
+        if (!navLinksEl) return;
+        const live = !!(storiesEl && storiesEl.isConnected);
+        let seen = false;
+        try {
+            if (live) localStorage.setItem("tvx-has-stories", "1");
+            seen = localStorage.getItem("tvx-has-stories") === "1" && !!shellUserName();
+        } catch { /* sem storage */ }
+        if (!live && !seen) { if (storiesRowEl) storiesRowEl.remove(); return; }
+        if (!storiesRowEl) {
+            storiesRowEl = el("button", { class: "tvx-navlink tvx-storiesrow", type: "button",
+                html: '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 2a8 8 0 1 1-8 8 8 8 0 0 1 8-8Zm-1.5 4.5v7l5.5-3.5Z"/></svg>' }, "Stories");
+            storiesRowEl.addEventListener("click", () => {
+                const target = storiesEl && (storiesEl.querySelector("button, a, [role='button']") || storiesEl);
+                if (target) target.click();
+            });
+        }
+        if (storiesRowEl.parentNode !== navLinksEl || storiesRowEl.nextSibling) navLinksEl.appendChild(storiesRowEl);
+    }
+    // esconde os canais da lista que não batem com a busca; roda também a cada tick, porque a
+    // Twitch re-renderiza a lista (e as linhas novas chegam visíveis)
+    // Passar o mouse na foto de um canal da sidebar abre um cartão só, ao lado da sidebar: a
+    // foto grande + nome, título da live, categoria e espectadores. O balão de título da
+    // Twitch some enquanto ele está aberto (o título vem dele: o card não traz no DOM).
+    let avatarPreviewEl = null, previewTimer = 0;
+    document.addEventListener("mouseover", (e) => {
+        // a linha inteira abre o cartão, não só a foto
+        const card = e.target && e.target.closest && e.target.closest(".side-nav .side-nav-card, .side-nav .tvx-fav");
+        const img = card && card.querySelector(".side-nav-card__avatar img, .tvx-fav > img");
+        if (!img || (avatarPreviewEl && avatarPreviewEl.dataset.on === "1" && avatarPreviewEl.__card === card)) return;
+        if (!avatarPreviewEl) {
+            avatarPreviewEl = el("div", { id: "tvx-avatar-preview" },
+                el("img", { alt: "" }),
+                el("div", { class: "tvx-ap-txt" }, el("b"), el("p"), el("small")));
+            document.body.appendChild(avatarPreviewEl);
+        }
+        const [pic, txt] = avatarPreviewEl.children;
+        const [nameEl, titleEl, metaEl] = txt.children;
+        pic.src = (img.currentSrc || img.src).replace(/-\d+x\d+(\.\w+)(\?.*)?$/, "-300x300$1");
+        const q = (sel) => (card && card.querySelector(sel)?.textContent || "").trim();
+        nameEl.textContent = q('[data-a-target="side-nav-title"], .tvx-fav-txt b');
+        const game = q(".side-nav-card__metadata, .tvx-fav-txt small");
+        const viewers = q('[data-a-target="side-nav-live-status"] span, .tvx-fav-live');
+        metaEl.textContent = [game, viewers && !/offline/i.test(viewers) ? `${viewers} espectadores` : ""].filter(Boolean).join(" · ");
+        titleEl.textContent = card && card.classList.contains("tvx-fav") ? (card.getAttribute("title") || "") : "";
+        // o título da Twitch chega num balão próprio, um instante depois do hover
+        clearInterval(previewTimer);
+        let tries = 0;
+        previewTimer = setInterval(() => {
+            const tip = document.querySelector('[class*="channel-tooltip"]');
+            const t = tip && tip.textContent.trim();
+            if (t && t !== titleEl.textContent) titleEl.textContent = t;
+            if (++tries > 20) clearInterval(previewTimer);
+        }, 60);
+        const r = img.getBoundingClientRect();
+        avatarPreviewEl.style.left = `${Math.round(Math.max(r.right, parseFloat(getComputedStyle(HTML).getPropertyValue("--tvx-shellw")) || 240) + 12)}px`;
+        avatarPreviewEl.style.top = `${Math.round(Math.min(Math.max(8, r.top + r.height / 2 - 120), innerHeight - 300))}px`;
+        avatarPreviewEl.dataset.on = "1";
+        avatarPreviewEl.__card = card;
+        HTML.dataset.tvxAvatarPrev = "1";
+        card.addEventListener("mouseleave", () => {
+            if (avatarPreviewEl.__card !== card) return;
+            avatarPreviewEl.dataset.on = "0"; avatarPreviewEl.__card = null; HTML.dataset.tvxAvatarPrev = "0"; clearInterval(previewTimer);
+        }, { once: true });
+    }, true);
+
+    function applySideSearch() {
+        const term = (navSearchInEl && navSearchInEl.value || "").trim().toLowerCase();
+        for (const card of document.querySelectorAll(".side-nav-section .side-nav-card, #tvx-favs .tvx-fav")) {
+            const row = card.classList.contains("tvx-fav") ? card : card.parentElement;
+            const name = (card.querySelector('[data-a-target="side-nav-title"], .tvx-fav-txt b')?.textContent || "").toLowerCase();
+            const game = (card.querySelector(".side-nav-card__metadata, .tvx-fav-txt small")?.textContent || "").toLowerCase();
+            const hide = !!term && !name.includes(term) && !game.includes(term);
+            if (hide) row.style.setProperty("display", "none", "important");
+            else if (row.style.display === "none") row.style.removeProperty("display");
+        }
     }
 
     function applyNavTab() {
@@ -2054,8 +2502,8 @@
         for (const sec of document.querySelectorAll(".side-nav-section")) {
             // Ao expandir, o próprio botão vira "Mostrar menos" — casar só com "mais" deixava
             // esse rótulo pendurado no fim da lista pra sempre.
-            const btn = [...sec.querySelectorAll("button")]
-                .find((b) => /mostrar (mais|menos)|show (more|less)|ver mais/i.test(b.textContent || ""));
+            const btn = [...sec.querySelectorAll('button, a, [role="button"]')]
+                .find((b) => /^\s*(mostrar (mais|menos)|show (more|less)|ver mais)\s*$/i.test(b.textContent || ""));
             if (!btn) continue;
             const maisPraCarregar = /mais|more/i.test(btn.textContent || "");
             const n = showMoreClicks.get(sec) || 0;
@@ -2104,7 +2552,7 @@
             .map((t) => topnav.querySelector(`[data-a-target="${t}"]`)).filter(Boolean);
         const maisBtn = topnav.querySelector('[data-a-target="ellipsis-button"]');
         if (!origem.length && !maisBtn) return;
-        for (const a of [...origem, ...(maisBtn ? [maisBtn] : [])]) {
+        for (const a of origem) {
             let w = a;
             for (let i = 0; i < 3; i++) {
                 const p = w.parentElement;
@@ -2120,22 +2568,19 @@
         const sig = `${origem.map((a) => a.textContent.trim()).join("|")}|${maisBtn ? "+mais" : ""}`;
         if (navLinksEl.dataset.sig !== sig) {
             navLinksEl.dataset.sig = sig;
-            navLinksEl.textContent = "";
+            for (const n of [...navLinksEl.children]) if (!n.classList.contains("tvx-navslot")) n.remove();
+            const busca = el("button", { class: "tvx-navlink", type: "button", html: svg(ICON.searchNav, 20) }, "Buscar");
+            busca.addEventListener("click", () => setSearchOpen(true));
+            navLinksEl.prepend(busca);
             for (const a of origem) {
+                const followed = a.getAttribute("data-a-target") === "following-link";
                 navLinksEl.append(el("a", {
                     class: "tvx-navlink", href: a.getAttribute("href") || "/",
+                    html: svg(followed ? ICON.heart : ICON.browse, 20),
                 }, a.textContent.trim()));
             }
-            // O "⋮" da barra superior é um menu, não um link: nossa entrada delega o clique
-            // nele, então o balão continua sendo o da Twitch, com o conteúdo dela.
-            if (maisBtn) {
-                const mais = el("button", { class: "tvx-navlink", type: "button" }, "Mais");
-                mais.addEventListener("click", () => {
-                    const b = topnav.querySelector('[data-a-target="ellipsis-button"]');
-                    if (b) b.click();
-                });
-                navLinksEl.append(mais);
-            }
+            // o "⋮" e os ícones da conta são linhas fixadas por syncShell, sempre depois destes
+            for (const n of navLinksEl.querySelectorAll(".tvx-navslot")) navLinksEl.appendChild(n);
         }
         const host = document.querySelector(".side-nav__scrollable_content");
         if (host && navLinksEl.parentNode !== host) host.insertBefore(navLinksEl, host.firstChild);
@@ -2147,6 +2592,279 @@
                 if (!h.closest(".side-nav-section")) h.style.setProperty("display", "none", "important");
             }
         }
+    }
+
+    // ---- sem topbar: marca, busca e conta na sidebar --------------------------
+    // Nada é movido no DOM (o React remontaria); só marcamos com data-* os blocos que o CSS
+    // fixa na sidebar. data-* e não classe: o React reescreve className a cada render.
+    const WORDMARK = "m 0,0 -13.646,13.645 -25.35,0 0,17.55 -21.451,0 0,-79.94 21.451,0 0,40.947 17.545,0 0,-40.947 21.451,0 L 0,0 Z m -68.241,13.645 -33.146,0 L -115.036,0 l 0,-35.094 13.649,-13.651 33.146,0 0,21.445 -25.35,0 0,19.502 25.35,0 0,21.443 z m -54.594,0 -17.545,0 0,17.55 -21.451,0 0,-66.289 13.649,-13.651 25.347,0 0,21.445 -17.545,0 0,19.502 17.545,0 0,21.443 z m -46.795,17.55 -21.445,0 0,-9.752 21.445,0 0,9.752 z m 0,-17.55 -21.445,0 0,-62.389 21.445,0 0,62.389 z m -29.244,0 -21.447,0 0,-40.945 -7.797,0 0,40.945 -21.448,0 0,-40.945 -7.796,0 0,40.945 -21.451,0 0,-62.39 66.293,0 13.646,13.651 0,48.739 z m -87.738,0 -17.546,0 0,17.55 -21.447,0 0,-66.289 13.648,-13.651 25.345,0 0,21.445 -17.546,0 0,19.502 17.546,0 0,21.443 z M 7.793,3.9 l 0,-58.491 -29.244,-19.499 -19.496,0 0,9.752 -13.648,-9.752 -17.545,0 0,9.752 -9.746,-9.752 -31.197,0 -9.752,9.752 -1.952,-9.752 -27.292,0 -11.161,9.752 -0.625,-9.752 -30.935,0 -1.094,9.752 -8.374,-9.752 -47.25,0 -9.75,3.9 0,-3.9 -25.344,0 -29.247,17.552 -17.546,17.539 0,77.991 37.047,0 17.545,-17.549 79.939,0 0,17.549 66.29,0 0,-17.549 17.548,0 0,-9.746 9.752,9.746 19.493,0 17.55,17.549 37.044,0 0,-17.549 21.448,0 L 7.793,3.9 Z";
+    let wordmarkEl = null, footerEl = null, searchBackdropEl = null;
+    const navSlots = new Map(); // botão nativo da conta → linha "vaga" na nossa lista
+    // Os botões da conta (notificações, threads, gritos) só nascem 2-3s depois do resto. As
+    // linhas da última visita ficam guardadas e aparecem já no primeiro quadro; quando o botão
+    // real chega, ele assume a linha de mesmo rótulo — nada pula.
+    const SLOT_CACHE_KEY = "tvx-navslots-v1";
+    const cachedSlots = new Map(); // rótulo → linha ainda sem botão
+    let cachedSlotsShown = false, liveSlotsSince = 0;
+
+    // rótulo da linha: o aria-label da Twitch, com o nome que a interface em pt-BR usa
+    function slotLabel(raw) {
+        const t = raw.charAt(0).toUpperCase() + raw.slice(1);
+        return /^threads?$/i.test(t) ? "Sussurros" : t;
+    }
+
+    function showCachedSlots() {
+        if (cachedSlotsShown || !navLinksEl || !shellUserName()) return;
+        cachedSlotsShown = true;
+        let list = [];
+        try { list = JSON.parse(localStorage.getItem(SLOT_CACHE_KEY) || "[]"); } catch { /* sem cache */ }
+        for (const item of list) {
+            const label = slotLabel(item.label || ""), icon = item.icon;
+            if (!label || cachedSlots.has(label)) continue;
+            const slot = el("div", { class: "tvx-navslot", html: icon || "" }, el("span", {}, label));
+            cachedSlots.set(label, slot);
+            navLinksEl.appendChild(slot);
+        }
+    }
+
+    function saveSlotCache() {
+        const list = [...navSlots.values()].filter((sl) => sl.isConnected)
+            .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+            .map((sl) => ({ label: sl.dataset.label, icon: sl.querySelector("svg")?.outerHTML || "" }));
+        const json = JSON.stringify(list);
+        try { if (localStorage.getItem(SLOT_CACHE_KEY) !== json) localStorage.setItem(SLOT_CACHE_KEY, json); } catch { /* cheio/bloqueado */ }
+    }
+
+    function setSearchOpen(open) {
+        if (open === (HTML.dataset.tvxSearch === "1")) return;
+        HTML.dataset.tvxSearch = open ? "1" : "0";
+        if (open) setTimeout(() => document.querySelector('.top-nav__search-container input')?.focus(), 30);
+        else document.activeElement?.blur?.();
+    }
+
+    function shellUserName() {
+        try {
+            const user = JSON.parse(W.localStorage.getItem("twilight-user") || "null");
+            if (user && (user.displayName || user.login)) return user.displayName || user.login;
+        } catch { /* segue pro cookie */ }
+        const m = document.cookie.match(/(?:^|;\s*)(?:name|login)=([^;]+)/);
+        return m ? decodeURIComponent(m[1]) : "";
+    }
+
+    function syncShell() {
+        const topnav = document.querySelector('.top-nav, [data-a-target="top-nav-container"]');
+        const side = document.querySelector(".side-nav");
+        if (!topnav || !side || !document.body) return;
+        HTML.dataset.tvxShell = "1";
+        HTML.dataset.tvxCollapsed = side.classList.contains("side-nav--collapsed") ? "1" : "0";
+        HTML.style.setProperty("--tvx-shellw", `${Math.round(side.getBoundingClientRect().width) || 240}px`);
+
+        // logo: wordmark clássico, leva pra home pelo link nativo (navegação sem recarregar)
+        if (!wordmarkEl) {
+            wordmarkEl = el("button", { id: "tvx-wordmark", type: "button", "aria-label": "Twitch — página inicial",
+                html: `<svg class="tvx-wm" viewBox="0 0 454.93 150.78" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" transform="matrix(1.3333333,0,0,-1.3333333,-180.53426,805.80838) translate(468.8057,565.3643)" d="${WORDMARK}"/></svg>` });
+            wordmarkEl.addEventListener("click", () => document.querySelector('[data-a-target="home-link"]')?.click());
+        }
+        if (!wordmarkEl.isConnected) document.body.appendChild(wordmarkEl);
+        if (!wordmarkEl.querySelector(".tvx-glitch")) {
+            const glitch = document.querySelector('[data-a-target="home-link"] svg');
+            if (glitch) {
+                const g = glitch.cloneNode(true);
+                g.setAttribute("class", "tvx-glitch");
+                g.removeAttribute("width"); g.removeAttribute("height");
+                wordmarkEl.appendChild(g);
+            }
+        }
+
+        // busca em modal: fundo nosso, campo nativo (sugestões e Enter seguem sendo da Twitch)
+        if (!searchBackdropEl) {
+            searchBackdropEl = el("div", { id: "tvx-search-backdrop" });
+            searchBackdropEl.addEventListener("mousedown", () => setSearchOpen(false));
+            document.addEventListener("keydown", (e) => {
+                if (e.key === "Escape" && HTML.dataset.tvxSearch === "1") { e.stopPropagation(); setSearchOpen(false); }
+            }, true);
+        }
+        if (!searchBackdropEl.isConnected) document.body.appendChild(searchBackdropEl);
+
+        // rodapé: avatar nativo + nome da conta (da sessão que a própria Twitch guarda)
+        if (!footerEl) {
+            const btn = el("button", { id: "tvx-userbtn", type: "button" }, el("span", { class: "tvx-userav" }), el("span"));
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                document.querySelector('[data-tvx-accountbar] [data-a-target="user-menu-toggle"]')?.click();
+            });
+            footerEl = el("div", { id: "tvx-footer" }, btn);
+        }
+        if (!footerEl.isConnected) document.body.appendChild(footerEl);
+        const name = shellUserName();
+        const nameEl = footerEl.querySelector("#tvx-userbtn > span:last-child");
+        if (nameEl.textContent !== name) nameEl.textContent = name;
+        HTML.dataset.tvxNamed = name ? "1" : "0";
+        // cópia do avatar nativo: o original muda de lugar ao abrir o menu, a cópia não
+        const nativeAv = document.querySelector('[data-a-target="user-menu-toggle"] :is(img, figure, svg)');
+        const avKey = nativeAv ? (nativeAv.getAttribute("src") || nativeAv.tagName) : "";
+        const avEl = footerEl.querySelector(".tvx-userav");
+        if (nativeAv && avEl.dataset.key !== avKey) {
+            avEl.dataset.key = avKey;
+            avEl.replaceChildren(nativeAv.cloneNode(true));
+        }
+
+        showCachedSlots();
+        const menu = topnav.querySelector(".top-nav__menu") || topnav.firstElementChild;
+        const account = menu && menu.lastElementChild;
+        if (!account) return;
+        if (!account.hasAttribute("data-tvx-accountbar")) account.setAttribute("data-tvx-accountbar", "");
+
+
+        // ícones da conta → linhas da lista (Seguindo/Navegar/Mais/…)
+        const skip = new Set(["user-menu-toggle", "login-button", "signup-button"]);
+        // fixed só ancora na tela se nenhum ancestral tiver transform/filter (a Twitch anima alguns)
+        const unpin = (e) => {
+            for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) {
+                if (a.dataset.tvxUnpinned) break;
+                a.dataset.tvxUnpinned = "1";
+                for (const k of ["transform", "filter", "contain", "will-change", "backdrop-filter"]) a.style.setProperty(k, k === "will-change" ? "auto" : "none", "important");
+            }
+        };
+        // o "⋮" mora no rodapé, à direita do usuário
+        const ellipsis = topnav.querySelector('[data-a-target="ellipsis-button"]');
+        if (ellipsis) {
+            let wrap = ellipsis;
+            for (let i = 0; i < 4; i++) {
+                const p = wrap.parentElement;
+                if (!p || p === menu || p.querySelectorAll("button, a").length > 1) break;
+                wrap = p;
+            }
+            if (!wrap.hasAttribute("data-tvx-footmore")) {
+                wrap.setAttribute("data-tvx-footmore", "");
+                wrap.addEventListener("click", () => pinSidebarPopoverSoon(0, true));
+            }
+            unpin(wrap);
+        }
+        const toggle = account.querySelector('[data-a-target="user-menu-toggle"]');
+        const controls = [...account.querySelectorAll("button[aria-label], a[aria-label]")].filter((c) =>
+            !skip.has(c.getAttribute("data-a-target") || "") && !c.dataset.tvxAd &&
+            !(toggle && (c.contains(toggle) || toggle.contains(c) || c.closest('[data-a-target="dropdown-up"]'))) &&
+            !c.closest('[style*="display: none"]') && (navSlots.has(c) || c.getClientRects().length > 0));
+        for (const [ctl, slot] of navSlots) {
+            if (!ctl.isConnected || !controls.includes(ctl)) { slot.remove(); navSlots.delete(ctl); }
+        }
+        for (const ctl of controls) {
+            let wrap = ctl;
+            for (let i = 0; i < 4; i++) {
+                const p = wrap.parentElement;
+                if (!p || p === account || p === menu || p.querySelectorAll("button, a").length > 1) break;
+                wrap = p;
+            }
+            if (!wrap.hasAttribute("data-tvx-navitem")) wrap.setAttribute("data-tvx-navitem", "");
+            unpin(wrap);
+            let slot = navSlots.get(ctl);
+            const label = ctl.dataset.tvxLabel || (ctl.getAttribute("aria-label") || "").replace(/^(abrir|open|fechar|close)\s+/i, "").replace(/\s*\(.*\)$/, "").trim();
+            ctl.dataset.tvxLabel = label;
+            if (!label) continue;
+            if (!slot) {
+                const cap = slotLabel(label);
+                slot = cachedSlots.get(cap);
+                if (slot) { cachedSlots.delete(cap); slot.dataset.label = ""; }
+                else slot = el("div", { class: "tvx-navslot" });
+                navSlots.set(ctl, slot);
+            }
+            slot.__wrap = wrap;
+            const text = slotLabel(label);
+            if (slot.dataset.label !== text) {
+                slot.dataset.label = text;
+                slot.textContent = "";
+                const icon = ctl.querySelector("svg");
+                const ico = icon ? icon.cloneNode(true) : document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                ico.setAttribute("class", "tvx-navslot-ico");
+                ico.removeAttribute("width"); ico.removeAttribute("height");
+                slot.append(ico, el("span", {}, text));
+            }
+            if (!ctl.hasAttribute("data-tvx-navctl")) {
+                // o botão nativo fica por cima da linha inteira, invisível: o clique é o real
+                // (abrir, fechar, "clique fora" — tudo como a Twitch espera). A linha só desenha.
+                ctl.setAttribute("data-tvx-navctl", "");
+                ctl.addEventListener("mouseenter", () => navSlots.get(ctl)?.classList.add("tvx-hover"));
+                ctl.addEventListener("mouseleave", () => navSlots.get(ctl)?.classList.remove("tvx-hover"));
+                ctl.addEventListener("click", () => {
+                    const sl = navSlots.get(ctl);
+                    if (sl) pinSidebarPopoverSoon(sl.getBoundingClientRect().top, false, null, sl.__wrap);
+                });
+            }
+            if (navLinksEl && slot.parentNode !== navLinksEl) navLinksEl.appendChild(slot);
+            const r = slot.getBoundingClientRect();
+            wrap.style.setProperty("--tvx-x", `${Math.round(r.left)}px`);
+            wrap.style.setProperty("--tvx-y", `${Math.round(r.top)}px`);
+            wrap.style.setProperty("--tvx-w", `${Math.round(r.width)}px`);
+        }
+        syncStoriesRow();
+        if (navSlots.size) {
+            if (!liveSlotsSince) liveSlotsSince = Date.now();
+            saveSlotCache();
+            if (cachedSlots.size && Date.now() - liveSlotsSince > 6000) {
+                for (const sl of cachedSlots.values()) sl.remove();
+                cachedSlots.clear();
+            }
+        }
+    }
+    // Os balões dos itens da sidebar (notificações, sussurros, "⋮") abrem por baixo do botão,
+    // cobrindo a lista. Não sabemos onde a Twitch os renderiza (dentro do botão ou num portal),
+    // então achamos pelo que está na tela: o maior bloco sobre a sidebar logo abaixo do item
+    // clicado que não seja a própria sidebar. Ele ganha data-tvx-pop e o CSS o fixa à direita
+    // da sidebar — com !important, então o posicionador da Twitch não o devolve.
+    function pinSidebarPopover(anchorTop, fromFoot, wrap) {
+        const limitW = innerWidth * 0.7;
+        const pin = (box) => {
+            const h = box.getBoundingClientRect().height;
+            const top = fromFoot ? innerHeight - h - 10 : Math.max(8, Math.min(anchorTop, innerHeight - h - 8));
+            box.setAttribute("data-tvx-pop", "");
+            box.style.setProperty("--tvx-pop-y", `${Math.round(top)}px`);
+            return box;
+        };
+        // balão dentro do próprio item: o maior descendente que não contém o botão
+        if (wrap) {
+            const ctl = wrap.querySelector("[data-tvx-navctl]");
+            const boxes = [...wrap.querySelectorAll("*")].filter((e) => {
+                if (ctl && (e === ctl || e.contains(ctl) || ctl.contains(e))) return false;
+                const r = e.getBoundingClientRect();
+                return r.width > 150 && r.height > 60;
+            });
+            const outer = boxes.find((e) => !boxes.some((o) => o !== e && o.contains(e)));
+            if (outer) return pin(outer);
+        }
+        const probeY = fromFoot ? innerHeight - 90 : Math.min(innerHeight - 20, anchorTop + 70);
+        const side = document.querySelector(".side-nav");
+        const ours = (e) => !!e.closest(".side-nav, #tvx-footer, #tvx-wordmark, #tvx-navlinks, [data-tvx-pop]") ||
+            e.matches("[data-tvx-accountbar], [data-tvx-navitem], [data-tvx-footmore]") ||
+            !!e.querySelector("[data-tvx-navctl], [data-a-target='user-menu-toggle']") ||
+            (side && (e.contains(side) || e.contains(navLinksEl)));
+        for (const x of [20, 120, 220]) {
+            for (const hit of document.elementsFromPoint(x, probeY)) {
+                if (hit === document.documentElement || hit === document.body || ours(hit)) continue;
+                const r0 = hit.getBoundingClientRect();
+                if (r0.width < 200 || r0.width > limitW || r0.height < 100) continue;
+                let box = hit;
+                for (let p = box.parentElement; p && p !== document.body; p = p.parentElement) {
+                    if (ours(p)) break;
+                    const r = p.getBoundingClientRect();
+                    if (r.width > limitW || r.height < box.getBoundingClientRect().height - 2) break;
+                    box = p;
+                }
+                return pin(box);
+            }
+        }
+        return null;
+    }
+    // o balão demora alguns quadros pra montar: tenta por ~1s depois do clique
+    function pinSidebarPopoverSoon(anchorTop, fromFoot, onPin, wrap) {
+        const t0 = performance.now();
+        const tick = () => {
+            const box = pinSidebarPopover(anchorTop, fromFoot, wrap);
+            if (box) { if (onPin) onPin(box); return; }
+            if (performance.now() - t0 > 1200) return;
+            requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
     }
 
     // ---- propaganda da barra superior -------------------------------------
@@ -2388,8 +3106,6 @@
         if (updateUrl) {
             try {
                 const url = new URL(location.href);
-                const idx = filtered.findIndex((x) => x.id === item.id);
-                const indexParam = idx >= 0 ? idx + 1 : 1;
                 if (item.kind === "clip") {
                     url.searchParams.set("clip", item.slug);
                     url.searchParams.delete("id");
@@ -2397,7 +3113,7 @@
                     url.searchParams.set("id", item.id);
                     url.searchParams.delete("clip");
                 }
-                url.searchParams.set("index", String(indexParam));
+                url.searchParams.delete("index"); // o id/slug já identifica o item; posição muda com filtro
                 history.replaceState(history.state, "", url.toString());
                 lastHref = location.href;
             } catch { /* erro em URL não impede playback */ }
@@ -2422,6 +3138,20 @@
         return item.qualities.find((v) => v.quality === want)
             || item.qualities.slice().sort((a, b) => (+b.quality) - (+a.quality))[0];
     }
+
+    // Interruptor de autoplay no formato do YouTube: trilho + bolinha com um "play" dentro
+    function autoplaySwitch() {
+        const b = el("button", {
+            class: "tvx-plc-btn tvx-autosw", type: "button", "aria-pressed": String(prefs.autoplay),
+            title: "Autoplay: tocar o próximo ao terminar",
+        }, el("span", { class: "tvx-sw" }, el("i", { html: svg(ICON.play, 10) })));
+        b.addEventListener("click", () => {
+            prefs.autoplay = !prefs.autoplay; savePrefs();
+            b.setAttribute("aria-pressed", String(prefs.autoplay));
+        });
+        return b;
+    }
+    const plcPill = (...kids) => el("div", { class: "tvx-plc-pill" }, ...kids);
 
     async function renderScreen() {
         const item = state.current;
@@ -2450,22 +3180,7 @@
             nextBtn.disabled = !nextItem(1);
             nextBtn.addEventListener("click", () => play(nextItem(1)));
 
-            const idx = filtered.findIndex((x) => x.id === item.id);
-            const idxText = idx >= 0 ? `#${idx + 1} de ${filtered.length}` : `#1 de ${filtered.length || 1}`;
-            const badge = el("span", { class: "tvx-badge-idx" }, idxText);
-
-            const autoBtn = el("button", {
-                class: "tvx-plc-btn tvx-plc-auto", type: "button",
-                "aria-pressed": String(prefs.autoplay),
-                title: "Autoplay pro próximo item",
-            }, el("span", { class: "tvx-plc-auto-pill" },
-                el("i", { class: "tvx-plc-auto-dot" }),
-                el("span", {}, "Autoplay")
-            ));
-            autoBtn.addEventListener("click", () => {
-                prefs.autoplay = !prefs.autoplay; savePrefs();
-                autoBtn.setAttribute("aria-pressed", String(prefs.autoplay));
-            });
+            const autoBtn = autoplaySwitch();
 
             const fsBtn = el("button", { class: "tvx-plc-btn", type: "button", "data-action": "fullscreen", title: "Tela cheia (F)", html: svg(ICON.fullscreen, 20) });
             fsBtn.addEventListener("click", () => {
@@ -2480,8 +3195,8 @@
             });
 
             const vodBar = el("div", { class: "tvx-vod-bar" },
-                el("div", { class: "tvx-plc-left" }, prevBtn, nextBtn, badge),
-                el("div", { class: "tvx-plc-right" }, autoBtn, fsBtn)
+                el("div", { class: "tvx-plc-left" }, plcPill(prevBtn, nextBtn)),
+                el("div", { class: "tvx-plc-right" }, plcPill(autoBtn, fsBtn))
             );
 
             screenEl.append(iframe, vodBar);
@@ -2615,7 +3330,7 @@
         });
 
         // Left Controls: Play/Pause (22px) | Anterior (20px) | Próximo (20px) | Volume + Slider (20px) | Tempo | Badge
-        const playBtn = el("button", { class: "tvx-plc-btn", type: "button", title: "Play/Pause (Space/K)", html: svg(ICON.play, 22) });
+        const playBtn = el("button", { class: "tvx-plc-btn tvx-plc-play", type: "button", title: "Play/Pause (Space/K)", html: svg(ICON.play, 24) });
         playBtn.addEventListener("click", () => {
             if (video.paused) video.play().catch(() => {}); else video.pause();
         });
@@ -2678,53 +3393,65 @@
 
         const timeEl = el("span", { class: "tvx-plc-time" }, "0:00 / 0:00");
 
-        const idx = filtered.findIndex((x) => x.id === item.id);
-        const idxText = idx >= 0 ? `#${idx + 1} de ${filtered.length}` : `#1 de ${filtered.length || 1}`;
-        const badge = el("span", { class: "tvx-badge-idx" }, idxText);
-
+        // grupos em pílulas translúcidas, como o player do YouTube
         const leftGroup = el("div", { class: "tvx-plc-left" },
-            playBtn, prevBtn, nextBtn, volWrap, timeEl, badge
+            el("div", { class: "tvx-plc-pill tvx-plc-round" }, playBtn),
+            plcPill(prevBtn, nextBtn),
+            plcPill(volWrap, timeEl),
         );
 
         // Right Controls: Qualidade | Velocidade | Loop (20px) | Autoplay (toggle) | Download (20px) | Fullscreen (20px)
         const rightGroup = el("div", { class: "tvx-plc-right" });
 
-        if (item.qualities && item.qualities.length) {
-            const qs = el("select", { class: "tvx-sel tvx-plc-sel", title: "Qualidade" });
-            for (const v of item.qualities.slice().sort((a, b) => (+b.quality) - (+a.quality))) {
-                qs.append(el("option", { value: v.quality, selected: v.quality === String(prefs.quality) ? "" : null },
-                    `${v.quality}p${v.fps ? ` ${Math.round(v.fps)}fps` : ""}`));
-            }
-            qs.value = (pickQuality(item) || {}).quality || qs.value;
-            qs.addEventListener("change", () => {
-                prefs.quality = qs.value; savePrefs();
-                const t = video.currentTime;
-                const wasPaused = video.paused;
-                renderScreen().then(() => {
-                    if (videoEl) {
-                        videoEl.currentTime = t;
-                        if (!wasPaused) videoEl.play().catch(() => {});
-                    }
-                });
-            });
-            rightGroup.append(qs);
-        }
-
-        const sp = el("select", { class: "tvx-sel tvx-plc-sel", title: "Velocidade" });
-        for (const r of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) {
-            sp.append(el("option", { value: String(r), selected: r === prefs.speed ? "" : null }, `${r}×`));
-        }
-        sp.addEventListener("change", () => {
-            prefs.speed = parseFloat(sp.value); savePrefs();
-            if (videoEl) videoEl.playbackRate = prefs.speed;
+        // Qualidade e velocidade num painel só, aberto pela engrenagem (que mostra a qualidade)
+        const dial = el("div", { class: "tvx-dial", hidden: "" });
+        const gearBadge = el("span", { class: "tvx-gear-badge" });
+        const gearBtn = el("button", { class: "tvx-plc-btn tvx-gear", type: "button", title: "Configurações", html: svg(ICON.gear, 22) }, gearBadge);
+        const setDial = (open) => {
+            dial.hidden = !open;
+            gearBtn.setAttribute("aria-expanded", String(open));
+            screenEl.dataset.menu = open ? "1" : "0";
+        };
+        gearBtn.addEventListener("click", (e) => { e.stopPropagation(); setDial(dial.hidden); });
+        screenEl.addEventListener("mousedown", (e) => {
+            if (!dial.hidden && !dial.contains(e.target) && !gearBtn.contains(e.target)) setDial(false);
         });
-        rightGroup.append(sp);
+        const changeQuality = (q) => {
+            prefs.quality = q; savePrefs();
+            const t = video.currentTime, wasPaused = video.paused;
+            renderScreen().then(() => {
+                if (videoEl) { videoEl.currentTime = t; if (!wasPaused) videoEl.play().catch(() => {}); }
+            });
+        };
+        const current = (pickQuality(item) || {}).quality;
+        if (current) gearBadge.textContent = +current >= 1080 ? "HD" : `${current}p`;
+        if (item.qualities && item.qualities.length) {
+            const list = el("div", { class: "tvx-dial-opts" });
+            for (const v of item.qualities.slice().sort((a, b) => (+b.quality) - (+a.quality))) {
+                const o = el("button", { class: "tvx-dial-opt", type: "button", "aria-pressed": String(v.quality === current) },
+                    `${v.quality}p`, v.fps && Math.round(v.fps) > 30 ? el("small", {}, `${Math.round(v.fps)}`) : null);
+                o.addEventListener("click", () => { setDial(false); if (v.quality !== current) changeQuality(v.quality); });
+                list.append(o);
+            }
+            dial.append(el("div", { class: "tvx-dial-sec" }, el("div", { class: "tvx-dial-h" }, "Qualidade"), list));
+        }
+        const speeds = el("div", { class: "tvx-dial-speeds" });
+        for (const r of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) {
+            const o = el("button", { class: "tvx-dial-chip", type: "button", "aria-pressed": String(r === prefs.speed) }, r === 1 ? "Normal" : `${r}×`);
+            o.addEventListener("click", () => {
+                prefs.speed = r; savePrefs();
+                if (videoEl) videoEl.playbackRate = r;
+                for (const x of speeds.children) x.setAttribute("aria-pressed", String(x === o));
+            });
+            speeds.append(o);
+        }
+        dial.append(el("div", { class: "tvx-dial-sec" }, el("div", { class: "tvx-dial-h" }, "Velocidade"), speeds));
 
         const loopBtn = el("button", {
             class: "tvx-plc-btn", type: "button", "data-action": "loop",
             "aria-pressed": String(prefs.loop),
             title: prefs.loop ? "Desativar repetição (Shift+L ou R)" : "Repetir (Shift+L ou R)",
-            html: svg(ICON.loop, 20),
+            html: svg(ICON.loop, 22) + '<span class="tvx-on">ON</span>',
         });
         loopBtn.addEventListener("click", () => {
             prefs.loop = !prefs.loop; savePrefs();
@@ -2734,22 +3461,10 @@
         });
         rightGroup.append(loopBtn);
 
-        const autoBtn = el("button", {
-            class: "tvx-plc-btn tvx-plc-auto", type: "button",
-            "aria-pressed": String(prefs.autoplay),
-            title: "Autoplay pro próximo clipe",
-        }, el("span", { class: "tvx-plc-auto-pill" },
-            el("i", { class: "tvx-plc-auto-dot" }),
-            el("span", {}, "Autoplay")
-        ));
-        autoBtn.addEventListener("click", () => {
-            prefs.autoplay = !prefs.autoplay; savePrefs();
-            autoBtn.setAttribute("aria-pressed", String(prefs.autoplay));
-        });
-        rightGroup.append(autoBtn);
+        rightGroup.append(autoplaySwitch());
 
         if (item.qualities && item.qualities.length) {
-            const dl = el("button", { class: "tvx-plc-btn", type: "button", title: "Baixar clipe", html: svg(ICON.dl, 20) });
+            const dl = el("button", { class: "tvx-plc-btn", type: "button", title: "Baixar clipe", html: svg(ICON.dl, 22) });
             dl.addEventListener("click", async (e) => {
                 e.preventDefault();
                 const token = await fetchPlaybackToken(item.slug).catch(() => null);
@@ -2769,12 +3484,12 @@
             rightGroup.append(dl);
         }
 
-        const fsBtn = el("button", { class: "tvx-plc-btn", type: "button", "data-action": "fullscreen", title: "Tela cheia (F)", html: svg(ICON.fullscreen, 20) });
+        const fsBtn = el("button", { class: "tvx-plc-btn", type: "button", "data-action": "fullscreen", title: "Tela cheia (F)", html: svg(ICON.fullscreen, 22) });
         fsBtn.addEventListener("click", toggleFullscreen);
-        rightGroup.append(fsBtn);
+        rightGroup.append(gearBtn, fsBtn);
 
-        const controlsRow = el("div", { class: "tvx-plc-row" }, leftGroup, rightGroup);
-        const bottomBar = el("div", { class: "tvx-plc-bottom" }, prog, controlsRow);
+        const controlsRow = el("div", { class: "tvx-plc-row" }, leftGroup, el("div", { class: "tvx-plc-right" }, plcPill(...rightGroup.childNodes)));
+        const bottomBar = el("div", { class: "tvx-plc-bottom" }, prog, controlsRow, dial);
 
         screenEl.append(host, flashBtn, bottomBar);
 
@@ -3077,16 +3792,20 @@
         const pool = state.pool, f = state.filters;
         if (!pool || !f) return;
         filtered = pool.items.filter((it) => matches(it, f, null)).sort(SORTERS[f.sort] || SORTERS["views-desc"]);
+        // chegou lote novo no meio do scroll: redesenha a mesma quantidade, senão a lista
+        // encolhe e o scroll volta pro começo
+        const keep = resetScroll ? 0 : rendered;
+        const top = listEl.scrollTop;
         rendered = 0;
         listEl.textContent = "";
         listEl.append(sentinel);
-        if (resetScroll) listEl.scrollTop = 0;
-        renderMore();
+        renderMore(Math.max(40, keep));
+        listEl.scrollTop = resetScroll ? 0 : top;
         updateHead();
         renderPlayerBar();
     }
 
-    function renderMore() {
+    function renderMore(count = 40) {
         if (!filtered.length) {
             if (!rendered && !listEl.querySelector(".tvx-note")) {
                 listEl.insertBefore(el("div", { class: "tvx-note" },
@@ -3094,7 +3813,7 @@
             }
             return;
         }
-        const stop = Math.min(filtered.length, rendered + 40);
+        const stop = Math.min(filtered.length, rendered + count);
         const frag = document.createDocumentFragment();
         for (; rendered < stop; rendered++) frag.append(itemRow(filtered[rendered]));
         listEl.insertBefore(frag, sentinel);
@@ -3113,7 +3832,7 @@
             el("div", { class: "tvx-itxt" },
                 el("strong", {}, item.title),
                 el("small", { title: dtLong.format(new Date(item.createdAt)) },
-                    `${fmtViews(item.views)} views · ${dtShort.format(new Date(item.createdAt))} · ${ago(item.createdAt)}`),
+                    `${fmtViews(item.views)} views · ${ago(item.createdAt)}`),
                 el("small", {}, item.kind === "clip" ? `por ${item.curator}` : item.curator),
                 item.game ? el("small", {}, item.game) : null,
             ),
@@ -3132,7 +3851,9 @@
 
     // O cabeçalho é montado UMA vez por pool. Reconstruí-lo a cada tecla tirava o foco do campo
     // de busca no meio da digitação — updateHead() só mexe nos números e nos avisos.
-    let countEl, statusEl;
+    let countEl, statusEl, toolbarEl;
+    let filtersOpen = false; // o painel "Filtros" (o resto além de ordem e período)
+    let chipsScroll = 0;
 
     function buildHead() {
         const pool = state.pool, f = state.filters;
@@ -3140,13 +3861,14 @@
         headEl.textContent = "";
 
         countEl = el("span", { class: "tvx-side-badge" });
+        // mesmo botão (e mesmo lugar) que o de recolher o chat
         const closeSide = el("button", {
-            class: "tvx-sideclose", type: "button", title: "Fechar a lista",
-            "aria-label": "Fechar a lista", html: svg(ICON.close, 14),
+            class: "tvx-sideclose", type: "button", title: "Esconder a lista",
+            "aria-label": "Esconder a lista", html: svg(ICON.collapseRight, 20),
         });
         closeSide.addEventListener("click", () => setSidebarOpen(false));
         headEl.append(el("div", { class: "tvx-side-title" },
-            el("b", {}, pool.kind === "clips" ? "Clipes" : "Vídeos"), countEl, closeSide));
+            closeSide, el("b", {}, pool.kind === "clips" ? "Clipes" : "Vídeos"), countEl));
 
         searchInput = el("input", { type: "search", placeholder: "Buscar título, autor, categoria…  (/)", value: f.text });
         searchInput.addEventListener("input", debounce(() => {
@@ -3158,23 +3880,24 @@
             searchInput.value = "";
             applyAndRender(true); renderFilters();
         });
-        headEl.append(el("div", { class: "tvx-search" },
-            el("span", { class: "tvx-si", html: svg(ICON.search, 16) }), searchInput, clear));
-
+        toolbarEl = el("div", { class: "tvx-toolbar" });
         statusEl = el("div", {});
-        headEl.append(statusEl);
+        headEl.append(el("div", { class: "tvx-side-tools" },
+            el("div", { class: "tvx-search" }, el("span", { class: "tvx-si", html: svg(ICON.search, 16) }), searchInput, clear),
+            toolbarEl, statusEl));
         updateHead();
     }
 
     function updateHead() {
         const pool = state.pool;
         if (!pool || !countEl || !statusEl) return;
-        countEl.textContent = `${nfFull.format(filtered.length)} de ${nfFull.format(pool.items.length)}`;
+        countEl.hidden = true;
         statusEl.textContent = "";
-        if (pool.loading) statusEl.append(el("div", { class: "tvx-progress" }, el("i", {})));
-        else if (pool.partial) {
+        // clipes carregam sob demanda: "loading" dura a sessão toda; a barra é só da busca em curso
+        if (pool.kind === "clips" ? pool.fetching : pool.loading) statusEl.append(el("div", { class: "tvx-progress" }, el("i", {})));
+        else if (pool.partial && pool.kind !== "clips") {
             statusEl.append(el("div", { class: "tvx-partial-card" },
-                "Lista parcial — a Twitch exige uma credencial de integridade pra paginar. Recarregue a página com esta aba aberta pro script capturá-la e puxar o resto."));
+                pool.kind === "clips" ? "" : "Lista parcial — a Twitch exige uma credencial de integridade pra paginar. Recarregue a página com esta aba aberta pro script capturá-la e puxar o resto."));
         }
         if (pool.error) statusEl.append(el("div", { class: "tvx-partial-card", style: { borderColor: "rgba(235,4,0,0.4)", background: "rgba(235,4,0,0.1)" } }, `Erro: ${pool.error}`));
     }
@@ -3187,21 +3910,33 @@
         return d;
     }
 
+    const facetQueries = {}; // busca de cada faceta: sobrevive ao redesenho da gaveta
+
     function facetList(items, f, facet, keyOf, selection) {
         const box = el("div", { class: "tvx-facet" });
-        const counts = facetCounts(items, f, facet, keyOf);
-        if (!counts.length) box.append(el("div", { class: "tvx-note", style: { padding: "4px 0", fontSize: "12px" } }, "—"));
-        for (const [key, n] of counts.slice(0, 400)) {
+        // marcados sempre no topo; o resto segue por contagem
+        const counts = facetCounts(items, f, facet, keyOf)
+            .sort((a, b) => (selection.has(b[0]) - selection.has(a[0])));
+        const q = el("input", { class: "tvx-in tvx-facet-q", type: "search", placeholder: "Buscar…", value: facetQueries[facet] || "" });
+        const draw = () => {
+            const term = (facetQueries[facet] || "").trim().toLowerCase();
+            box.textContent = "";
+            const shown = term ? counts.filter(([key]) => selection.has(key) || String(key || "").toLowerCase().includes(term)) : counts;
+            if (!shown.length) box.append(el("div", { class: "tvx-note", style: { padding: "4px 0", fontSize: "12px" } }, "Nada encontrado."));
+            for (const [key, n] of shown.slice(0, 400)) box.append(facetItem(key, n));
+        };
+        q.addEventListener("input", () => { facetQueries[facet] = q.value; draw(); });
+        const facetItem = (key, n) => {
             const cb = el("input", { type: "checkbox" });
             cb.checked = selection.has(key);
             cb.addEventListener("change", () => {
                 if (cb.checked) selection.add(key); else selection.delete(key);
                 applyAndRender(true); renderFilters();
             });
-            const lab = el("label", { class: "tvx-fitem" }, cb, el("span", { title: key }, key || "—"), el("em", {}, nfCompact.format(n)));
-            box.append(lab);
-        }
-        return box;
+            return el("label", { class: "tvx-fitem" }, cb, el("span", { title: key }, key || "—"), el("em", {}, nfCompact.format(n)));
+        };
+        draw();
+        return el("div", { class: "tvx-facet-wrap" }, counts.length > 8 ? q : null, box);
     }
 
     function renderFilters() {
@@ -3211,48 +3946,64 @@
         for (const d of filtersEl.querySelectorAll("details")) openState[d.dataset.k] = d.open;
         filtersEl.textContent = "";
 
-        // ---- ordenação + destaque
-        const sortSel = el("select", { class: "tvx-sel", style: { width: "100%" } });
+        // ---- barra fixa: ordem + botão "Filtros" + períodos
+        const sortSel = el("select", { class: "tvx-sel" });
         for (const [v, label] of SORTS) sortSel.append(el("option", { value: v, selected: v === f.sort ? "" : null }, label));
         sortSel.addEventListener("change", () => { f.sort = sortSel.value; applyAndRender(true); });
-        const feat = el("button", { class: "tvx-pill", type: "button", "aria-pressed": String(f.featuredOnly), style: { width: "100%", textAlign: "center" } }, "★ Só destaques");
-        feat.addEventListener("click", () => { f.featuredOnly = !f.featuredOnly; applyAndRender(true); renderFilters(); });
-        const g0 = group("Ordenar", 0, true, el("div", { class: "tvx-row" }, sortSel), el("div", { class: "tvx-row" }, feat));
-        g0.dataset.k = "sort";
-        filtersEl.append(g0);
-
-        // ---- datas
-        const from = el("input", { class: "tvx-in", type: "date", value: f.from });
-        const to = el("input", { class: "tvx-in", type: "date", value: f.to });
-        const onDate = () => { f.from = from.value; f.to = to.value; f.preset = ""; applyAndRender(true); renderFilters(); };
-        from.addEventListener("change", onDate); to.addEventListener("change", onDate);
-        const presetsGrid = el("div", { class: "tvx-presets-grid" });
+        const active = (f.featuredOnly ? 1 : 0) + (!f.preset && (f.from || f.to) ? 1 : 0) + (f.preset === "current-day" ? 1 : 0)
+            + ["minViews", "maxViews", "minDur", "maxDur"].filter((k) => f[k] !== "").length
+            + f.curators.size + f.games.size + f.langs.size + f.types.size;
+        const fbtn = el("button", { class: "tvx-fbtn", type: "button", "aria-expanded": String(filtersOpen), html: svg(ICON.filter, 16) },
+            "Filtros", active ? el("span", { class: "tvx-badge" }, String(active)) : null);
+        fbtn.addEventListener("click", () => { filtersOpen = !filtersOpen; renderFilters(); });
+        const chips = el("div", { class: "tvx-chips" });
         for (const p of PRESETS) {
-            const b = el("button", { class: "tvx-pill", type: "button", "aria-pressed": String(f.preset === p.key) }, p.label);
+            const b = el("button", { class: "tvx-chipbtn", type: "button", "aria-pressed": String(f.preset === p.key && !(p.key === "" && (f.from || f.to))) }, p.label);
             b.addEventListener("click", () => {
                 f.preset = p.key;
                 if (!p.days) { f.from = ""; f.to = ""; }
                 else { f.from = ymd(new Date(Date.now() - p.days * 86400000).toISOString()); f.to = ""; }
                 applyAndRender(true); renderFilters();
             });
-            presetsGrid.append(b);
+            chips.append(b);
         }
+        // períodos rolam na horizontal; as setas só aparecem quando há o que rolar naquele lado
+        const arrow = (dir) => {
+            const a = el("button", { class: `tvx-chiparrow tvx-chiparrow-${dir < 0 ? "l" : "r"}`, type: "button", "aria-label": dir < 0 ? "Anteriores" : "Próximos",
+                html: `<svg width="16" height="16" viewBox="0 0 24 24"><path fill="currentColor" d="${dir < 0 ? "M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z" : "M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"}"/></svg>` });
+            a.addEventListener("click", () => chips.scrollBy({ left: dir * 140, behavior: "smooth" }));
+            return a;
+        };
+        const left = arrow(-1), right = arrow(1);
+        const syncArrows = () => {
+            left.hidden = chips.scrollLeft <= 2;
+            right.hidden = chips.scrollLeft + chips.clientWidth >= chips.scrollWidth - 2;
+        };
+        // a gaveta é redesenhada a cada lote que chega: a posição da rolagem sobrevive
+        chips.addEventListener("scroll", () => { chipsScroll = chips.scrollLeft; syncArrows(); }, { passive: true });
+        requestAnimationFrame(() => { chips.style.scrollBehavior = "auto"; chips.scrollLeft = chipsScroll; chips.style.scrollBehavior = ""; syncArrows(); });
+        if (toolbarEl) toolbarEl.replaceChildren(el("div", { class: "tvx-toolrow" }, sortSel, fbtn), el("div", { class: "tvx-chipsbar" }, left, chips, right));
+        filtersEl.hidden = !filtersOpen;
+
+        // ---- gaveta: destaque e dia
+        const feat = pool.kind === "clips" ? el("button", { class: "tvx-pill", type: "button", "aria-pressed": String(f.featuredOnly) }, "★ Só destaques") : null;
+        if (feat) feat.addEventListener("click", () => { f.featuredOnly = !f.featuredOnly; applyAndRender(true); renderFilters(); });
+
+        const from = el("input", { class: "tvx-in", type: "date", value: f.from });
+        const to = el("input", { class: "tvx-in", type: "date", value: f.to });
+        const onDate = () => { f.from = from.value; f.to = to.value; f.preset = ""; applyAndRender(true); renderFilters(); };
+        from.addEventListener("change", onDate); to.addEventListener("change", onDate);
         let curDayBtn = null;
         if (state.current && state.current.createdAt) {
             const curDay = ymd(state.current.createdAt);
             const isCurDayOn = f.from === curDay && f.to === curDay;
             curDayBtn = el("button", {
-                class: "tvx-pill tvx-pill-full",
-                type: "button",
-                "aria-pressed": String(isCurDayOn),
-                title: `Filtrar pelos clipes de ${dtShort.format(new Date(state.current.createdAt))}`,
-            }, "📅 Clipes deste dia");
+                class: "tvx-pill", type: "button", "aria-pressed": String(isCurDayOn),
+                title: `Só os itens de ${dtShort.format(new Date(state.current.createdAt))}`,
+            }, pool.kind === "clips" ? "Clipes deste dia" : "Vídeos deste dia");
             curDayBtn.addEventListener("click", () => {
-                if (isCurDayOn) {
-                    f.from = ""; f.to = ""; f.preset = "";
-                } else {
-                    f.from = curDay; f.to = curDay; f.preset = "current-day";
-                }
+                if (isCurDayOn) { f.from = ""; f.to = ""; f.preset = ""; }
+                else { f.from = curDay; f.to = curDay; f.preset = "current-day"; }
                 applyAndRender(true); renderFilters();
             });
         }
@@ -3261,8 +4012,8 @@
             el("div", { class: "tvx-date-field" }, el("label", {}, "Até"), to),
         );
         const dateCount = (f.from ? 1 : 0) + (f.to ? 1 : 0);
-        // aberto por padrão: é o filtro mais usado, e escondê-lo custava um clique toda vez
-        const g1 = group("Período", dateCount, openState.date !== false, presetsGrid, curDayBtn, dateRow);
+        const g1 = group("Datas", dateCount, openState.date !== false,
+            (feat || curDayBtn) ? el("div", { class: "tvx-row" }, feat, curDayBtn) : null, dateRow);
         g1.dataset.k = "date";
         filtersEl.append(g1);
 
@@ -3282,7 +4033,7 @@
                 )
             ),
             el("div", { class: "tvx-dual-row" },
-                el("div", { class: "tvx-dual-label" }, "Duração (segundos)"),
+                el("div", { class: "tvx-dual-label" }, "Duração (s)"),
                 el("div", { class: "tvx-dual-inputs" },
                     mkNum(f.minDur, "Mín", (v) => (f.minDur = v)),
                     mkNum(f.maxDur, "Máx", (v) => (f.maxDur = v))
@@ -3339,6 +4090,7 @@
     }
 
     async function onRoute() {
+        setSearchOpen(false); // buscou e navegou: o modal fecha
         const route = parseRoute();
         const prev = state.route;
         state.route = route;
@@ -3424,11 +4176,35 @@
         }
     }
 
+    // A topbar e a sidebar chegam aos poucos; o tick de 1s deixava ver cada passo da mudança.
+    // Até a casca estar completa, rodamos os passos a cada 40ms e só então mostramos as duas.
+    function bootShell() {
+        const t0 = performance.now();
+        const step = () => {
+            hideTopNavAds();
+            relocateNavControls();
+            syncShell();
+            tabifySideNav();
+            syncLayoutVars(); // a barra do canal se posiciona pela largura da sidebar
+            const done = document.querySelector("[data-tvx-accountbar]") && document.querySelector("#tvx-navlinks")?.isConnected
+                && (document.querySelector("#tvx-navtabs-wrap")?.isConnected || document.querySelector(".side-nav--collapsed"))
+                && parseFloat(HTML.style.getPropertyValue("--tvx-left")) > 0;
+            if (done || performance.now() - t0 > 6000) {
+                requestAnimationFrame(() => { syncShell(); syncLayoutVars(); HTML.dataset.tvxReady = "1"; });
+                return;
+            }
+            setTimeout(step, 40);
+        };
+        step();
+    }
+
     function boot() {
         if (!document.body) { setTimeout(boot, 20); return; }
+        bootShell();
         lastHref = location.href;
         hideTopNavAds();
         relocateNavControls();
+        syncShell();
         mountFavs();
         refreshFavs();
         observeSideNav();
@@ -3462,6 +4238,7 @@
             if (btn) {
                 syncFor(900);
                 requestAnimationFrame(() => {
+                    syncShell();
                     if (document.querySelector(".side-nav--collapsed")) cleanupSidebarState();
                     else tabifySideNav();
                 });
@@ -3490,7 +4267,9 @@
         // custa nada; um MutationObserver na subtree do body pagaria o preço do chat inteiro.
         setInterval(() => {
             hideTopNavAds();   // a barra superior existe em toda página, não só nas de canal
+            renderFavButton(); // o cabeçalho do canal re-renderiza e leva o botão junto
             relocateNavControls();
+            syncShell();
             observeSideNav();
             mountFavs();       // idem: a sidebar é global, não só das páginas de canal
             expandSideNavSections();

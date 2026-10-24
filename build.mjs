@@ -85,7 +85,7 @@ const descriptions = {
   immich: "YouTube-style video player for self-hosted Immich: original quality, speed and audio boost, seek keys, reorganised bars and an album sidebar.",
   instagram: "Native video controls, unified mosaic feed, responsive grids, lightbox viewer, and saved-post tools for Instagram.",
   reddit: "Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs.",
-  twitch: "Streamer top navigation plus a YouTube-style Clips and VOD theater with filtering, sorting, and native playback controls.",
+  twitch: "Moves Twitch's top bar into the sidebar and adds a channel tab bar plus a YouTube-style Clips and VOD player with filters, sorting and full clip history.",
   twitter: "X/Twitter control panel for a wider layout, decluttered sidebars, live preferences, and sensitive-content handling.",
   youtube: "YouTube Enhancer: full-screen theater with chat and up-next sidebars, black-bar crop, loop, audio boost and speed in the player, a live-now section for your subscriptions, plus opt-in quality, filters and Shorts settings.",
 };
