@@ -542,6 +542,18 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igvc-pop button:hover{ background:rgba(255,255,255,.12); }
 .igvc-pop button.igvc-on{ color:var(--igf-accent); font-weight:700; }
 
+/* barra dos CARDS (uma só, no card ativo): mesma anatomia, mais limpa — alvos de 34px, trilha fina
+   que engorda pouco, área de pega da trilha maior que o traço, degradê mais longo atrás da fileira */
+.igvc-bar.igvc-card::before{ height:88px; background:linear-gradient(to top, rgba(0,0,0,.62), rgba(0,0,0,0)); }
+.igvc-bar.igvc-card .igvc-track{ background:rgba(255,255,255,.26); }
+.igvc-bar.igvc-card .igvc-track::before{ content:""; position:absolute; left:0; right:0; bottom:0; height:14px; }
+.igvc-bar.igvc-card.igvc-show .igvc-track, .igf-video.igf-active.igf-paused .igvc-bar.igvc-card .igvc-track{ height:5px; }
+.igvc-bar.igvc-card .igvc-thumb{ width:13px; height:13px; margin-left:-6.5px; box-shadow:0 0 0 2px rgba(255,255,255,.3), 0 1px 4px rgba(0,0,0,.5); }
+.igvc-bar.igvc-card .igvc-row{ gap:2px; padding:6px 10px 12px; }
+.igvc-bar.igvc-card .igvc-btn{ width:34px; height:34px; border-radius:10px; }
+.igvc-bar.igvc-card .igvc-speed{ width:auto; min-width:40px; }
+.igvc-bar.igvc-card .igvc-pop{ bottom:52px; }
+
 /* stories: do nosso player fica SÓ a barra de progresso (scrub) — o post original (reply, like,
    tudo) permanece INTACTO. Sem gradiente e sem a fileira de botões (não montados em story). */
 .igvc-bar.igvc-story::before{ display:none; }
@@ -677,7 +689,11 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 .igf-video.on:not(.igf-paused) .igf-play{ display:none; }
 .igf-video.igf-paused .igf-play svg{ opacity:.75; }
 /* clicou e o vídeo ainda não tem frame: o ▶ vira spinner (o clique foi registrado) */
-.igf-video.igf-loading .igf-play svg{ display:none; }
+.igf-video.igf-loading .igf-play svg, .igf-video.igf-buffering .igf-play svg{ display:none; }
+.igf-video.igf-buffering .igf-play{ display:flex !important; }
+.igf-video.igf-buffering .igf-play::after{ content:""; width:38px; height:38px; border-radius:50%; box-sizing:border-box;
+  border:3px solid rgba(255,255,255,.35); border-top-color:#fff; animation:igf-rot .8s linear infinite;
+  filter:drop-shadow(0 1px 4px rgba(0,0,0,.5)); }
 .igf-video.igf-loading .igf-play::after{ content:""; width:38px; height:38px; border-radius:50%; box-sizing:border-box;
   border:3px solid rgba(255,255,255,.35); border-top-color:#fff; animation:igf-rot .8s linear infinite;
   filter:drop-shadow(0 1px 4px rgba(0,0,0,.5)); }
@@ -975,6 +991,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (video.closest && video.closest(".igf-src")) return;   // vídeo da lista nativa off-screen → só anexa quando eu mover pro card
         const host = findWrapper(video);
         if (!host) return;
+        if (host.classList.contains("igf-video")) { attachCard(video, host); return; }   // card nosso: barra ÚNICA compartilhada
 
         const story = isStory();
         if (story && !prefs.stories) { bound.add(video); return; }  // marca e ignora
@@ -1252,6 +1269,200 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             bound.delete(video);
         }
     }
+
+    /* PLAYER DOS CARDS — UMA barra só, reaproveitada. Antes cada <video> de card (inclusive os
+     * aquecidos no hover, até KEEP_ALIVE deles) ganhava a barra inteira: ~25 nós + ~30 listeners.
+     * Agora o card ocioso tem só vídeo/poster + o ▶; a barra mora no card ATIVO (playCard) e é
+     * religada ao <video> dele (bindCardBar) — os listeners do vídeo vivem num AbortController
+     * por ligação, os dos controles são da barra e leem cardBar.video na hora.
+     * Progresso só por transform; o rect da trilha é lido 1× por arraste (pointerdown). */
+    let cardBar = null;
+    function attachCard(video, host) {
+        bound.add(video);
+        live.add(video);
+        host.classList.add("igvc-host");
+        try { video.playbackRate = prefs.speed; } catch (_) { /**/ }
+        const c = {
+            video, host, bar: null,
+            closePops: () => { if (cardBar) cardBar.closePops(); },
+            syncFs: () => {
+                const fs = document.fullscreenElement === host;
+                host.classList.toggle("igvc-fs", fs);
+                if (cardBar && cardBar.video === video) setIcon(cardBar.fsBtn, fs ? ICONS.fsExit : ICONS.fs);
+            },
+            endVolDrag: () => { if (cardBar) cardBar.endVolDrag(); },
+            destroy: () => {
+                if (cardBar && cardBar.video === video) unbindCardBar();
+                host.classList.remove("igvc-host", "igvc-fs", "igf-buffering");
+                live.delete(video); controllers.delete(video); bound.delete(video);
+            },
+        };
+        controllers.set(video, c);
+        bindPlayerShared();
+        syncCardBar();
+    }
+    // a barra segue o card ativo: liga no vídeo dele, ou sai de cena quando não há (ou ele foi devolvido)
+    function syncCardBar() {
+        const v = cardVideo(playCard);
+        if (v && controllers.has(v) && controllers.get(v).host.classList.contains("igf-video")) bindCardBar(v);
+        else unbindCardBar();
+    }
+    function buildCardBar() {
+        const buffered = el("div", { class: "igvc-buffered" });
+        const grad = el("div", { class: "igvc-grad" });
+        const fill = el("div", { class: "igvc-fill" }, grad);
+        const thumbPos = el("div", { class: "igvc-thumbpos" }, el("div", { class: "igvc-thumb" }));
+        const track = el("div", { class: "igvc-track" }, el("div", { class: "igvc-rail" }, buffered, fill), thumbPos);
+        const playBtn = el("button", { class: "igvc-btn", type: "button", "aria-label": "Play/Pause", icon: ICONS.play });
+        const time = el("span", { class: "igvc-time" }, "");
+        const speedBtn = el("button", { class: "igvc-btn igvc-speed", type: "button", "aria-label": "Velocidade" }, speedLabel(prefs.speed));
+        const speedPop = el("div", { class: "igvc-pop igvc-pop-speed" });
+        const muteBtn = el("button", { class: "igvc-btn", type: "button", "aria-label": "Mudo", icon: ICONS.volHigh });
+        const range = el("input", { class: "igvc-range", type: "range", min: "0", max: "1", step: "0.01", value: String(prefs.volume), "aria-label": "Volume" });
+        const volGroup = el("div", { class: "igvc-vol" }, muteBtn, range);
+        const pipBtn = el("button", { class: "igvc-btn", type: "button", "aria-label": "Picture-in-Picture", icon: ICONS.pip });
+        const fsBtn = el("button", { class: "igvc-btn", type: "button", "aria-label": "Tela cheia", icon: ICONS.fs });
+        const row = el("div", { class: "igvc-row" }, playBtn, time, el("span", { class: "igvc-spacer" }), speedBtn, volGroup, pipBtn, fsBtn, speedPop);
+        const bar = el("div", { class: "igvc-bar igvc-card" }, track, row);
+        const cb = { bar, fsBtn, video: null, host: null, ac: null, closePops, endVolDrag };
+        const V = () => cb.video;
+
+        let lastPc = -1, dragging = false, dragRect = null, volDragging = false, lastVolIcon = "", hideTimer = 0;
+        function setProgress(f) {
+            const pc = Math.round(clamp(f, 0, 1) * 1000) / 10;
+            if (pc === lastPc) return;
+            lastPc = pc;
+            fill.style.transform = "translateX(" + (pc - 100) + "%)";
+            grad.style.transform = "translateX(" + (100 - pc) + "%)";
+            thumbPos.style.transform = "translateX(" + pc + "%)";
+        }
+        function renderTime() {
+            const v = V(); if (!v || dragging) return;
+            const d = v.duration;
+            if (!isFinite(d) || d <= 0) { setProgress(0); if (time.textContent) time.textContent = ""; return; }
+            setProgress(v.currentTime / d);
+            const tt = fmt(v.currentTime) + " / " + fmt(d);
+            if (time.textContent !== tt) time.textContent = tt;
+        }
+        function renderBuffered() {
+            const v = V(); if (!v) return;
+            try {
+                const b = v.buffered, d = v.duration;
+                buffered.style.transform = "scaleX(" + ((b && b.length && isFinite(d) && d > 0) ? clamp(b.end(b.length - 1) / d, 0, 1).toFixed(3) : 0) + ")";
+            } catch (_) { /**/ }
+        }
+        const fracAt = (x) => { const r = dragRect; return r && r.width ? clamp((x - r.left) / r.width, 0, 1) : 0; };
+        function seekTo(f) { const v = V(); if (!v) return; const d = v.duration; if (isFinite(d) && d > 0) v.currentTime = f * d; setProgress(f); }
+        track.addEventListener("pointerdown", (e) => { e.preventDefault(); dragging = true; dragRect = track.getBoundingClientRect(); try { track.setPointerCapture(e.pointerId); } catch (_) { /**/ } seekTo(fracAt(e.clientX)); });
+        track.addEventListener("pointermove", (e) => { if (dragging) seekTo(fracAt(e.clientX)); });
+        const endDrag = () => { dragging = false; dragRect = null; };
+        track.addEventListener("pointerup", endDrag);
+        track.addEventListener("pointercancel", endDrag);
+        track.addEventListener("wheel", (e) => { const v = V(); if (!v) return; e.preventDefault(); const d = v.duration; if (isFinite(d)) v.currentTime = clamp(v.currentTime + (e.deltaY < 0 ? 2 : -2), 0, d); }, { passive: false });
+
+        function setPlayIcon() { const v = V(); setIcon(playBtn, !v || v.paused ? ICONS.play : ICONS.pause); }
+        playBtn.addEventListener("click", () => { const v = V(); if (!v) return; if (v.paused) v.play().catch(() => { /**/ }); else v.pause(); });
+
+        function setVolIcon() {
+            const v = V(); if (!v) return;
+            const want = (v.muted || v.volume === 0) ? "mute" : (v.volume < 0.5 ? "low" : "high");
+            if (want !== lastVolIcon) { setIcon(muteBtn, want === "mute" ? ICONS.volMute : want === "low" ? ICONS.volLow : ICONS.volHigh); lastVolIcon = want; }
+            const rv = String(v.muted ? 0 : v.volume);
+            if (range.value !== rv && !volDragging && document.activeElement !== range) range.value = rv;
+        }
+        muteBtn.addEventListener("click", () => {
+            const v = V(); if (!v) return;
+            const m = !(v.muted || v.volume === 0);
+            v.muted = m; v._igvcMuteIntent = m;
+            if (!m && v.volume === 0) v.volume = prefs.volume || 0.5;
+            if (!m && v.paused) { try { const pr = v.play(); if (pr && pr.catch) pr.catch(() => { /**/ }); } catch (_) { /**/ } }   // desmutar parado = tocar
+            setVolIcon();
+        });
+        range.addEventListener("input", () => {
+            const v = V(); if (!v) return;
+            const x = parseFloat(range.value);
+            v.volume = x; v.muted = x === 0; v._igvcMuteIntent = x === 0;
+            prefs.volume = x; savePrefsSoon(); setVolIcon();
+        });
+        volGroup.addEventListener("mouseenter", () => volGroup.classList.add("igvc-vol-open"));
+        volGroup.addEventListener("mouseleave", () => { if (!volDragging) volGroup.classList.remove("igvc-vol-open"); });
+        range.addEventListener("pointerdown", () => { volDragging = true; playerShared.volDrag = cb; volGroup.classList.add("igvc-vol-open"); });
+        function endVolDrag() { if (volDragging) { volDragging = false; if (!isHover(volGroup)) volGroup.classList.remove("igvc-vol-open"); } }
+
+        function setSpeed(r) {
+            const v = V(); if (v) v.playbackRate = r;
+            prefs.speed = r; savePrefsSoon();
+            speedBtn.textContent = speedLabel(r);
+            for (const b of speedPop.children) b.classList.toggle("igvc-on", parseFloat(b.dataset.r) === r);
+        }
+        for (const r of SPEEDS) speedPop.appendChild(el("button", { type: "button", "data-r": String(r) }, speedLabel(r)));
+        speedPop.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest("button[data-r]"); if (b) { setSpeed(parseFloat(b.dataset.r)); closePops(); } });
+        speedBtn.addEventListener("click", () => { const open = speedPop.classList.contains("igvc-open"); closePops(); if (!open) { speedPop.classList.add("igvc-open"); playerShared.openPop = cb; } });
+        function closePops() { speedPop.classList.remove("igvc-open"); if (playerShared.openPop === cb) playerShared.openPop = null; }
+
+        pipBtn.addEventListener("click", async () => {
+            const v = V(); if (!v) return;
+            try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else if (v.requestPictureInPicture) await v.requestPictureInPicture(); } catch (_) { /**/ }
+        });
+        fsBtn.addEventListener("click", () => { if (cb.host && cb.video) toggleFullscreen(cb.host, cb.video); });
+
+        // guarda: clique na barra não vira toque/pausa do card nem navegação
+        bar.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
+        bar.addEventListener("mousedown", (e) => e.stopPropagation());
+        bar.addEventListener("pointerdown", (e) => { playerShared.pressing = true; e.stopPropagation(); });
+
+        const popsOpen = () => speedPop.classList.contains("igvc-open");
+        function show() {
+            bar.classList.add("igvc-show");
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => { if (!isHover(bar) && !popsOpen()) bar.classList.remove("igvc-show"); }, HIDE_DELAY);
+        }
+        function hide() { clearTimeout(hideTimer); if (!popsOpen()) bar.classList.remove("igvc-show"); }
+
+        cb.bind = (v, host) => {
+            cb.video = v; cb.host = host; cb.ac = new AbortController();
+            const o = { signal: cb.ac.signal };
+            v.addEventListener("timeupdate", renderTime, o);
+            v.addEventListener("durationchange", renderTime, o);
+            v.addEventListener("seeked", renderTime, o);
+            v.addEventListener("progress", renderBuffered, o);
+            v.addEventListener("loadedmetadata", () => { renderTime(); renderBuffered(); }, o);
+            v.addEventListener("play", setPlayIcon, o);
+            v.addEventListener("pause", setPlayIcon, o);
+            v.addEventListener("ratechange", () => { speedBtn.textContent = speedLabel(v.playbackRate); }, o);
+            v.addEventListener("volumechange", () => {
+                setVolIcon();
+                if (!v._igfPreviewPlay && !v._igfAutoMute && !v.muted && v.volume > 0 && v.volume !== prefs.volume) { prefs.volume = v.volume; savePrefsSoon(); }
+            }, o);
+            // buffering no meio do play → spinner (o 1º frame já tem o .igf-loading do activateVideo)
+            v.addEventListener("waiting", () => host.classList.add("igf-buffering"), o);
+            for (const ev of ["playing", "canplay", "pause", "emptied"]) v.addEventListener(ev, () => host.classList.remove("igf-buffering"), o);
+            host.addEventListener("mousemove", show, Object.assign({ capture: true }, o));
+            host.addEventListener("mouseleave", hide, o);
+            host.appendChild(bar);
+            lastPc = -1; lastVolIcon = "";
+            speedBtn.textContent = speedLabel(v.playbackRate || prefs.speed);
+            setPlayIcon(); setVolIcon(); renderTime(); renderBuffered();
+            setIcon(fsBtn, document.fullscreenElement === host ? ICONS.fsExit : ICONS.fs);
+        };
+        cb.unbind = () => {
+            if (cb.ac) cb.ac.abort();
+            if (cb.host) cb.host.classList.remove("igf-buffering");
+            cb.ac = null; cb.video = null; cb.host = null;
+            closePops(); endDrag(); clearTimeout(hideTimer);
+            bar.classList.remove("igvc-show");
+            bar.remove();
+        };
+        return cb;
+    }
+    function bindCardBar(v) {
+        if (!cardBar) cardBar = buildCardBar();
+        const host = controllers.get(v).host;
+        if (cardBar.video === v && cardBar.bar.parentElement === host) return;
+        cardBar.unbind();
+        cardBar.bind(v, host);
+    }
+    function unbindCardBar() { if (cardBar && cardBar.video) cardBar.unbind(); }
 
     /* Listeners de DOCUMENT do player — UM conjunto para todos os vídeos (antes eram 6 por vídeo:
      * pointerup ×2, pointercancel, dragstart, fullscreenchange, click). O estado por vídeo fica no
@@ -1972,6 +2183,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         playCard = card;
         const m = card && card.querySelector(".igf-video");
         if (m) m.classList.add("igf-active");   // CSS: o player fica à mostra enquanto ESTE estiver pausado
+        syncCardBar();                          // a barra única muda pro card ativo
     }
     function ensureVideoIO() {
         if (videoIO || typeof IntersectionObserver === "undefined") return;
@@ -2143,7 +2355,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (v.readyState >= 2) reveal(); else v.addEventListener("loadeddata", reveal, { once: true });
         if (!media.querySelector("[data-instancekey]")) media.appendChild(el("div", { "data-instancekey": "igf" }));   // âncora p/ o player mirar a MÍDIA
         media.appendChild(v);
-        try { attach(v); } catch (_) { /**/ }   // barra de player (uma vez por vídeo, não por hover)
+        try { attach(v); } catch (_) { /**/ }   // registra no player (a barra única só liga no card ativo)
         return v;
     }
     // PAUSA. O nosso vídeo fica no card (frame parado + ▶ por cima) pra retomar instantâneo;
