@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit — Control Panel, Ad-Free
 // @namespace    reddit-tweaks
-// @version      2.78.0
+// @version      2.79.0
 // @author       oguilhermelima
 // @description  Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs.
 // @match        https://www.reddit.com/*
@@ -704,55 +704,72 @@
         .rx-fab { order: 3; }
         .rx-fab:hover { transform: rotate(30deg); }
 
+        /* ===== settings panel — fixed size, side tabs with labels, grouped cards ===== */
         .rx-panel {
-            position: fixed; right: 16px; bottom: 60px;
-            width: 372px; max-height: 88vh;
-            display: flex; flex-direction: column; overflow: hidden;
-            background: var(--color-neutral-background, #0e1a1d); color: var(--color-neutral-content, #e6ebed);
-            border: 1px solid var(--color-neutral-border, rgba(255, 255, 255, .14)); border-radius: 18px;
-            box-shadow: 0 16px 50px rgba(0, 0, 0, .65);
-            font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            z-index: 2147483647;
+            --k-bg: var(--color-neutral-background, #0e1a1d); --k-fg: var(--color-neutral-content-strong, #f0f3f4); --k-muted: var(--color-neutral-content-weak, #9aa4a8); --k-border: var(--color-neutral-border, rgba(255, 255, 255, .14));
+            --k-line: var(--color-neutral-border-weak, rgba(255, 255, 255, .1)); --k-hover: var(--color-neutral-background-hover, rgba(255, 255, 255, .06)); --k-input: var(--color-neutral-background-container, rgba(255, 255, 255, .05)); --k-track: var(--color-neutral-border-medium, rgba(127, 127, 127, .45));
+            --k-shadow: rgba(0, 0, 0, .5); --k-accent: #ff4500; --k-accent-soft: rgba(255, 69, 0, .14);
+            --k-card: color-mix(in srgb, var(--k-fg) 4%, var(--k-bg));
+            position: fixed; right: 16px; bottom: 72px; z-index: 2147483647;
+            /* tamanho FIXO: não muda conforme a aba, a busca ou a página */
+            width: min(600px, calc(100vw - 32px)); height: min(640px, calc(100vh - 96px));
+            flex-direction: column; overflow: hidden; box-sizing: border-box;
+            background: var(--k-bg); color: var(--k-fg); border: 1px solid var(--k-border);
+            border-radius: 20px; box-shadow: 0 24px 64px var(--k-shadow);
+            font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-transform: none; letter-spacing: normal; text-align: left;
+            transform-origin: bottom right;
         }
-        .rx-panel:not([hidden]) { animation: rx-pop .16s cubic-bezier(.2, .7, .3, 1); }
-        @keyframes rx-pop { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
-        .rx-panel[hidden] { display: none; }
-        .rx-panel-hd {
-            display: flex; align-items: center; gap: 10px; padding: 14px 14px 12px;
-            border-bottom: 1px solid var(--color-neutral-border-weak, rgba(255, 255, 255, .1));
-        }
-        .rx-logo { width: 28px; height: 28px; border-radius: 9px; background: #ff4500; display: flex; align-items: center; justify-content: center; flex: none; }
-        .rx-logo svg { width: 17px; height: 17px; color: #fff; }
-        .rx-panel-hd b { flex: 1; font-weight: 800; font-size: 16px; color: var(--color-neutral-content-strong, #fff); }
-        .rx-x { all: unset; cursor: pointer; color: var(--color-neutral-content-weak, #b8c0c3); width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 50%; transition: .15s; }
-        .rx-x:hover { color: #fff; background: var(--color-neutral-background-hover, rgba(255, 255, 255, .1)); }
-
-        .rx-psearch { padding: 10px 14px; border-bottom: 1px solid var(--color-neutral-border-weak, rgba(255, 255, 255, .1)); }
-        .rx-psearch > div { display: flex; align-items: center; gap: 8px; background: var(--color-neutral-background-container, rgba(255, 255, 255, .05)); border: 1px solid var(--color-neutral-border, rgba(255, 255, 255, .14)); border-radius: 999px; padding: 7px 12px; transition: border-color .15s; }
-        .rx-psearch > div:focus-within { border-color: #ff4500; }
-        .rx-psearch svg { width: 16px; height: 16px; color: var(--color-neutral-content-weak, #9aa4a8); flex: none; }
-        .rx-psearch input { all: unset; flex: 1; color: var(--color-neutral-content, #e6ebed); font: inherit; }
-        .rx-psearch input::placeholder { color: var(--color-neutral-content-weak, #9aa4a8); }
-
-        .rx-body { display: flex; min-height: 0; flex: 1; }
-        .rx-rail { display: flex; flex-direction: column; gap: 4px; padding: 10px 8px; border-right: 1px solid var(--color-neutral-border-weak, rgba(255, 255, 255, .1)); flex: none; }
-        .rx-tab { all: unset; box-sizing: border-box; width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: var(--color-neutral-content-weak, #9aa4a8); cursor: pointer; transition: background .15s, color .15s; }
-        .rx-tab svg { width: 21px; height: 21px; }
-        .rx-tab:hover { background: var(--color-neutral-background-hover, rgba(255, 255, 255, .06)); color: var(--color-neutral-content-strong, #f0f3f4); }
-        .rx-tab.active { background: rgba(255, 69, 0, .16); color: #ff6a33; }
-        .rx-content { flex: 1; min-width: 0; overflow-y: auto; padding: 4px 0 10px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .2) transparent; }
+        .rx-panel *, .rx-panel *::before, .rx-panel *::after { box-sizing: border-box; }
+        .rx-panel small { text-transform: none; }
+        @keyframes rx-pop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+        .rx-panel-hd { display: flex; align-items: center; gap: 12px; padding: 16px 14px 12px 18px; }
+        .rx-logo { width: 36px; height: 36px; border-radius: 11px; background: var(--k-accent); display: flex; align-items: center; justify-content: center; flex: none; }
+        .rx-logo svg { width: 20px; height: 20px; fill: #fff; color: #fff; }
+        .rx-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .rx-titles b { font-size: 16px; font-weight: 700; line-height: 20px; color: var(--k-fg); }
+        .rx-titles small { font-size: 12px; line-height: 16px; color: var(--k-muted); }
+        .rx-x { all: unset; box-sizing: border-box; cursor: pointer; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--k-muted); transition: background .15s, color .15s; }
+        .rx-x svg { width: 20px; height: 20px; fill: currentColor; }
+        .rx-x:hover { background: var(--k-hover); color: var(--k-fg); }
+        .rx-psearch { padding: 0 16px 12px; border: 0; }
+        .rx-psearch > div { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; border-radius: 12px; background: var(--k-input); border: 1px solid transparent; transition: border-color .15s, background .15s; }
+        .rx-psearch > div:focus-within { border-color: var(--k-accent); background: var(--k-bg); }
+        .rx-psearch svg { width: 17px; height: 17px; fill: var(--k-muted); color: var(--k-muted); flex: none; }
+        .rx-psearch input { all: unset; flex: 1; min-width: 0; color: var(--k-fg); font: inherit; }
+        .rx-psearch input::placeholder { color: var(--k-muted); }
+        .rx-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 188px 1fr; border-top: 1px solid var(--k-line); }
+        .rx-rail { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; border-right: 1px solid var(--k-line); overflow-y: auto; scrollbar-width: none; }
+        .rx-tab { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 8px 10px; line-height: 1.25; border-radius: 10px; color: var(--k-muted); cursor: pointer; font-size: 13.5px; font-weight: 600; transition: background .15s, color .15s; }
+        .rx-tab svg { width: 19px; height: 19px; fill: currentColor; flex: none; }
+        .rx-tab span { min-width: 0; overflow-wrap: anywhere; }
+        .rx-tab:hover { background: var(--k-hover); color: var(--k-fg); }
+        .rx-tab.active { background: var(--k-accent-soft); color: var(--k-accent); }
+        .rx-tab:focus-visible, .rx-x:focus-visible { outline: 2px solid var(--k-accent); outline-offset: 1px; }
+        .rx-content { min-width: 0; overflow-y: auto; padding: 16px 16px 20px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--k-track) transparent; }
         .rx-content::-webkit-scrollbar { width: 8px; }
-        .rx-content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .18); border-radius: 99px; border: 2px solid var(--color-neutral-background, #0e1a1d); }
-
+        .rx-content::-webkit-scrollbar-thumb { background: var(--k-track); border-radius: 99px; border: 2px solid var(--k-bg); }
         .rx-sec { display: none; }
-        .rx-sec-title { padding: 11px 16px 6px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ff6a33; }
-        .rx-content .rx-row { border-radius: 9px; margin: 1px 6px; }
-        .rx-empty { display: none; color: var(--color-neutral-content-weak, #9aa4a8); text-align: center; padding: 30px 16px; }
+        .rx-sec { margin-bottom: 24px; }
+        .rx-sec-title { margin: 0 0 10px 2px; padding: 0; font-size: 17px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--k-fg); background: none; border: 0; }
+        .rx-card { background: var(--k-card); border: 1px solid var(--k-line); border-radius: 14px; overflow: hidden; }
+        .rx-card > * { margin: 0 !important; border-radius: 0 !important; }
+        .rx-card > * + * { border-top: 1px solid var(--k-line); }
+        .rx-empty { display: none; color: var(--k-muted); text-align: center; padding: 48px 16px; font-size: 14px; }
+        .rx-foot { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--k-line); }
+        .rx-reset { all: unset; cursor: pointer; color: var(--k-muted); font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 10px; transition: background .15s, color .15s; }
+        .rx-reset:hover { color: #f4212e; background: rgba(244, 33, 46, .1); }
+        @media (max-width: 560px) {
+            .rx-body { grid-template-columns: 56px 1fr; }
+            .rx-tab { justify-content: center; padding: 0; }
+            .rx-tab span { display: none; }
+        }
 
-        .rx-foot { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-top: 1px solid var(--color-neutral-border-weak, rgba(255, 255, 255, .1)); }
-        .rx-ver { color: var(--color-neutral-content-weak, #6b7679); font-size: 12px; }
-        .rx-reset { all: unset; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--color-neutral-content-weak, #b8c0c3); padding: 4px 8px; border-radius: 7px; transition: .15s; }
-        .rx-reset:hover { color: #ff4500; background: rgba(255, 69, 0, .12); }
+        .rx-panel[hidden] { display: none; }
+        .rx-panel:not([hidden]) { display: flex; animation: rx-pop .16s cubic-bezier(.2, .7, .3, 1); }
+        .rx-panel .rx-card > .rx-row { min-height: 48px; padding: 11px 14px; }
+        .rx-panel .rx-card > .rx-row:hover { background: var(--k-hover); }
+        .rx-panel .rx-card > .rx-row.rx-col:hover { background: none; }
+        .rx-foot small { flex: 1; text-align: right; color: var(--k-muted); font-size: 12px; }
         /* group header — usado pelo sheet de settings do mobile (settingsRows) */
         .rx-group-hd {
             margin-top: 8px; padding: 7px 16px;
@@ -3522,6 +3539,7 @@
         "M7 1.5h10A1.5 1.5 0 0 1 18.5 3v18a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 21V3A1.5 1.5 0 0 1 7 1.5zM7 4v14h10V4H7zm5 15.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2z",  // Mobile (telefone)
     ];
 
+    const CLOSE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z"/></svg>';
     function buildPanel() {
         if (!document.body || document.querySelector(".rx-fab")) return;
 
@@ -3531,8 +3549,8 @@
         // cabeçalho
         panel.append(el("div", { className: "rx-panel-hd" },
             el("span", { className: "rx-logo" }, icon(PATH.gear)),
-            el("b", null, "Reddit Tweaks"),
-            el("button", { className: "rx-x", type: "button", title: "Close", "aria-label": "Close", onClick: () => (panel.hidden = true) }, "✕")));
+            el("div", { className: "rx-titles" }, el("b", null, "Reddit Tweaks"), el("small", null, (typeof GM_info !== "undefined" && GM_info.script ? "v" + GM_info.script.version : "Userscript"))),
+            el("button", { className: "rx-x", type: "button", title: "Close", "aria-label": "Close", html: CLOSE_SVG, onClick: () => (panel.hidden = true) })));
 
         // busca (filtra todas as categorias)
         const search = el("input", { type: "text", placeholder: "Search setting…", spellcheck: "false",
@@ -3550,27 +3568,34 @@
         GROUPS.forEach((grp, gi) => {
             const sec = el("div", { className: "rx-sec" });
             sec.append(el("div", { className: "rx-sec-title" }, grp.title));
+            const card = el("div", { className: "rx-card" });
             grp.items.forEach((item) => {
                 const row = buildRow(item);
                 row.setAttribute("data-label", (item.label || "").toLowerCase());
-                sec.append(row);
+                card.append(row);
             });
+            sec.append(card);
             content.append(sec);
             sections.push(sec);
 
-            const tab = el("button", { className: "rx-tab", type: "button", title: grp.title, onClick: () => { search.value = ""; showTab(gi); } }, icon(CAT_ICONS[gi] || CAT_ICONS[0]));
+            const tab = el("button", { className: "rx-tab", type: "button", title: grp.title, onClick: () => { search.value = ""; showTab(gi); } }, icon(CAT_ICONS[gi] || CAT_ICONS[0]), el("span", null, grp.title));
             rail.append(tab);
             tabs.push(tab);
         });
         content.append(empty);
         panel.append(el("div", { className: "rx-body" }, rail, content));
 
+        // um card some quando a busca esconde todas as linhas dele
+        const syncCards = (sec) => sec.querySelectorAll(".rx-card").forEach((c) => {
+            c.style.display = [...c.children].some((r) => r.style.display !== "none") ? "" : "none";
+        });
+
         function showTab(i) {
             active = i; empty.style.display = "none";
             sections.forEach((sec, idx) => {
                 sec.style.display = idx === i ? "block" : "none";
                 sec.querySelectorAll("[data-label]").forEach((r) => (r.style.display = ""));
-                const t = sec.querySelector(".rx-sec-title"); if (t) t.style.display = "";
+                syncCards(sec);
             });
             tabs.forEach((tb, idx) => tb.classList.toggle("active", idx === i));
             content.scrollTop = 0;
@@ -3587,7 +3612,7 @@
                     r.style.display = m ? "" : "none"; if (m) { vis = true; any = true; }
                 });
                 sec.style.display = vis ? "block" : "none";
-                const t = sec.querySelector(".rx-sec-title"); if (t) t.style.display = vis ? "" : "none";
+                syncCards(sec);
             });
             empty.style.display = any ? "none" : "block";
         });
@@ -3603,7 +3628,7 @@
                 buildPanel();
                 document.querySelector(".rx-panel").hidden = false;
             } }, "Reset"),
-            el("span", { className: "rx-ver" }, (typeof GM_info !== "undefined" && GM_info.script ? "v" + GM_info.script.version : ""))));
+            el("small", null, "Saved automatically")));
 
         document.body.append(panel);
         getDock().appendChild(fab);
