@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         YouTube Enhancer
 // @namespace    youtube-cinema
-// @version      1.1.0
+// @version      1.2.0
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/youtube.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/youtube.user.js
 // @author       oguilhermelima
-// @description  Full-screen theater by default with an auto-hiding masthead, live chat and up-next as switchable sidebars, black-bar crop, loop, audio boost, speed and quality controls in the player bar, and advanced settings for playback quality, video filters, info cards and Shorts.
+// @description  Full-screen theater by default with an auto-hiding masthead, live chat and up-next as switchable sidebars, black-bar crop, loop, audio boost, speed and quality controls in the player bar, a live-now section with a TV mode, a "Live now" filter on channel live tabs, and advanced settings for playback quality, video filters, info cards and Shorts.
 // @match        https://www.youtube.com/*
 // @grant        GM_addStyle
 // @grant        GM_getValue
@@ -70,6 +70,13 @@
         } catch {}
     }
 
+    // Custom properties are rewritten from the 1s refresh; writing one even
+    // with the same value makes the browser restyle the whole page, so only
+    // a change is written.
+    function setVar(element, name, value) {
+        if (element.style.getPropertyValue(name) !== value) element.style.setProperty(name, value);
+    }
+
     function icon(path, { viewBox = '0 0 24 24', transform = '' } = {}) {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', viewBox);
@@ -110,6 +117,10 @@
         shortsWatch: Boolean(getSetting('shortsWatch', true)),
         shortsSubs: Boolean(getSetting('shortsSubs', true)),
         liveSection: Boolean(getSetting('liveSection', true)),
+        liveTv: Boolean(getSetting('liveTv', true)),
+        tvChat: Boolean(getSetting('tvChat', true)),
+        tvGroups: getSetting('tvGroups', {}) || {},
+        liveNowFilter: Boolean(getSetting('liveNowFilter', true)),
         cropBars: Boolean(getSetting('cropBars', true)),
         sideWidth: Number(getSetting('sideWidth', 0)) || 0,
         rate: Number(getSetting('rate', 1)) || 1,
@@ -942,6 +953,128 @@
             white-space: nowrap;
             font: 400 14px/20px Roboto, Arial, sans-serif;
         }
+        .ytc-live-stream { height: 48px; }
+        .ytc-live-stream .ytc-live-avatar { width: 32px; height: 32px; margin-right: 16px; }
+        .ytc-live-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+        .ytc-live-top { display: flex; align-items: center; gap: 8px; }
+        .ytc-live-stream .ytc-live-name { font-weight: 500; }
+        .ytc-live-viewers {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex: none;
+            font: 400 12px/16px Roboto, Arial, sans-serif;
+        }
+        .ytc-live-viewers::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--yt-spec-static-brand-red, #f03);
+        }
+        .ytc-live-stream-title {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font: 400 12px/16px Roboto, Arial, sans-serif;
+            color: var(--yt-spec-text-secondary, #aaa);
+        }
+        .ytc-live-explore-hidden { display: none !important; }
+
+        /* Live hub, on YouTube's live page. */
+        .ytc-hub {
+            /* Same edges as the page's own content below it. */
+            margin: 8px 24px 40px;
+            color: var(--yt-spec-text-primary, #f1f1f1);
+            font-family: Roboto, Arial, sans-serif;
+        }
+        .ytc-hub-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .ytc-hub-title { margin: 0; font: 700 20px/28px Roboto, Arial, sans-serif; }
+        .ytc-hub-count {
+            padding: 0 8px;
+            border-radius: 999px;
+            background: var(--yt-spec-badge-chip-background, rgba(255, 255, 255, 0.1));
+            font-size: 12px;
+            line-height: 20px;
+        }
+        .ytc-hub-count:empty { display: none; }
+        .ytc-hub-tv {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            height: 36px;
+            margin-left: auto;
+            padding: 0 16px 0 12px;
+            border-radius: 18px;
+            background: var(--yt-spec-static-brand-red, #f03);
+            color: #fff;
+            font: 500 14px/36px Roboto, Arial, sans-serif;
+            text-decoration: none;
+        }
+        .ytc-hub-tv:hover { filter: brightness(1.1); }
+        .ytc-hub-tv svg { width: 20px; height: 20px; }
+        .ytc-hub-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 24px 16px;
+        }
+        .ytc-hub-card { display: flex; flex-direction: column; gap: 12px; color: inherit; text-decoration: none; }
+        .ytc-hub-thumb {
+            position: relative;
+            aspect-ratio: 16 / 9;
+            overflow: hidden;
+            border-radius: 12px;
+            background: var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1));
+        }
+        .ytc-hub-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s ease; }
+        .ytc-hub-card:hover .ytc-hub-thumb img { transform: scale(1.03); }
+        .ytc-hub-pill {
+            position: absolute;
+            right: 8px;
+            bottom: 8px;
+            padding: 1px 6px;
+            border-radius: 4px;
+            background: var(--yt-spec-static-brand-red, #f03);
+            color: #fff;
+            font: 700 12px/18px Roboto, Arial, sans-serif;
+        }
+        .ytc-hub-meta { display: flex; gap: 12px; }
+        .ytc-hub-avatar {
+            width: 36px;
+            height: 36px;
+            flex: none;
+            border-radius: 50%;
+            background: var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1));
+        }
+        .ytc-hub-text { display: flex; flex-direction: column; min-width: 0; }
+        .ytc-hub-video {
+            display: -webkit-box;
+            margin-bottom: 4px;
+            overflow: hidden;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            font: 500 16px/22px Roboto, Arial, sans-serif;
+        }
+        .ytc-hub-channel { font: 400 14px/20px Roboto, Arial, sans-serif; color: var(--yt-spec-text-secondary, #aaa); }
+        .ytc-hub-skeleton { aspect-ratio: 16 / 9; border-radius: 12px; background: var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1)); animation: ytc-pulse 1.2s ease-in-out infinite alternate; }
+        .ytc-hub-empty { margin: 0; color: var(--yt-spec-text-secondary, #aaa); font-size: 14px; }
+        .ytc-hub-more {
+            grid-column: 1 / -1;
+            justify-self: center;
+            height: 36px;
+            padding: 0 16px;
+            border: 1px solid var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.2));
+            border-radius: 18px;
+            background: none;
+            color: inherit;
+            font: 500 14px Roboto, Arial, sans-serif;
+            cursor: pointer;
+        }
+        ytd-guide-renderer #sections { display: flex; flex-direction: column; }
+        ytd-guide-renderer #sections > * { order: 3; }
+        ytd-guide-renderer #sections > .ytc-guide-home { order: 0; }
+        ytd-guide-renderer #sections > .ytc-live-section { order: 1; }
+        ytd-guide-renderer #sections > .ytc-guide-subs { order: 2; }
         .ytc-live-badge {
             width: 20px;
             height: 20px;
@@ -949,6 +1082,410 @@
             margin-left: 8px;
             color: var(--yt-spec-static-brand-red, #f03);
         }
+        .ytc-live-tv {
+            width: 100%;
+            border: 0;
+            background: none;
+            cursor: pointer;
+            text-align: left;
+            font-weight: 500;
+        }
+        .ytc-live-tv .ytc-live-chevron { color: var(--yt-spec-static-brand-red, #f03); }
+
+        /* "Transmitindo agora" on a channel's live tab: only what is on air.
+           The grid lists upcoming streams first, then live ones, then past
+           ones; the continuation keeps loading until past ones show up. */
+        html.ytc-live-only ytd-browse:not([hidden]) ytd-rich-grid-renderer #contents > ytd-rich-item-renderer:not(:has(.ytBadgeShapeThumbnailLive, ytd-thumbnail-overlay-time-status-renderer[overlay-style="LIVE"])) {
+            display: none !important;
+        }
+        html.ytc-live-only.ytc-live-settled ytd-browse:not([hidden]) ytd-rich-grid-renderer #contents > ytd-continuation-item-renderer {
+            display: none !important;
+        }
+        .ytc-live-chip .ytChipShapeText { display: flex; align-items: center; gap: 6px; }
+        .ytc-live-chip .ytChipShapeText::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--yt-spec-static-brand-red, #f03);
+        }
+        .ytc-live-empty {
+            padding: 48px 0;
+            text-align: center;
+            font: 400 16px/22px Roboto, Arial, sans-serif;
+            color: var(--yt-spec-text-secondary, #aaa);
+        }
+
+        /* TV mode: one live at a time, full screen. The channel list is a
+           docked sidebar on the left and the live chat one on the right,
+           so neither covers the picture. */
+        html.ytc-tv-open { overflow: hidden !important; }
+        html.ytc-tv-page ytd-app { display: none !important; }
+        html.ytc-tv-page, html.ytc-tv-page body { background: #000 !important; }
+        .ytc-tv {
+            --tv-red: #ff0033;
+            --tv-guide-w: 0px;
+            --tv-chat-w: 0px;
+            --tv-panel: #0f0f0f;
+            --tv-raised: rgba(255, 255, 255, 0.08);
+            --tv-line: rgba(255, 255, 255, 0.1);
+            --tv-muted: rgba(255, 255, 255, 0.62);
+            --tv-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            overflow: hidden;
+            background: #000;
+            color: #fff;
+            font-family: "YouTube Sans", Roboto, Arial, sans-serif;
+            outline: none;
+            animation: ytc-tv-in 0.35s var(--tv-ease);
+        }
+        @keyframes ytc-tv-in { from { opacity: 0; transform: scale(1.02); } }
+        .ytc-tv.is-guide { --tv-guide-w: 360px; }
+        .ytc-tv.is-chat { --tv-chat-w: 360px; }
+        .ytc-tv button { font-family: inherit; }
+        .ytc-tv button:focus-visible { outline: none; background-color: rgba(255, 255, 255, 0.16); }
+        .ytc-tv kbd {
+            min-width: 18px;
+            padding: 1px 6px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.12);
+            box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+            font: 500 11px/18px Roboto, Arial, sans-serif;
+            color: #fff;
+            text-align: center;
+        }
+
+        .ytc-tv-stage {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: var(--tv-guide-w);
+            right: var(--tv-chat-w);
+            transition: left 0.3s var(--tv-ease), right 0.3s var(--tv-ease);
+        }
+        .ytc-tv-frame { width: 100%; height: 100%; border: 0; background: #000; }
+        /* Fades in while the channel loads, so a zap reads as a cut. */
+        .ytc-tv-veil {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            background: radial-gradient(circle at center, #1a1a1f 0%, #000 70%);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+        .ytc-tv.is-tuning .ytc-tv-veil { opacity: 1; }
+        .ytc-tv-veil img {
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            box-shadow: 0 0 0 3px var(--tv-red), 0 0 48px rgba(255, 0, 51, 0.45);
+            animation: ytc-tv-pulse 1.4s ease-in-out infinite;
+        }
+        @keyframes ytc-tv-pulse { 50% { box-shadow: 0 0 0 3px var(--tv-red), 0 0 80px rgba(255, 0, 51, 0.7); } }
+
+        /* Labelled pill buttons. */
+        .ytc-tv-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            height: 40px;
+            padding: 0 16px 0 12px;
+            border: 0;
+            border-radius: 999px;
+            background: var(--tv-raised);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 500;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        .ytc-tv-button:hover { background: rgba(255, 255, 255, 0.16); }
+        .ytc-tv-button svg { width: 22px; height: 22px; flex: none; }
+        .ytc-tv-button.is-on { background: #f1f1f1; color: #0f0f0f; }
+        .ytc-tv-icon-button { width: 40px; padding: 0; }
+
+        /* Channel sidebar, drawn like YouTube's up-next / playlist panel. */
+        .ytc-tv-guide {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            display: flex;
+            flex-direction: column;
+            width: 360px;
+            background: var(--tv-panel);
+            border-right: 1px solid var(--tv-line);
+            font-family: Roboto, Arial, sans-serif;
+            transform: translateX(-100%);
+            visibility: hidden;
+            transition: transform 0.3s var(--tv-ease), visibility 0s 0.3s;
+        }
+        .ytc-tv.is-guide .ytc-tv-guide { transform: none; visibility: visible; transition: transform 0.3s var(--tv-ease); }
+        .ytc-tv-top {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            height: 56px;
+            flex: none;
+            padding: 0 16px 0 12px;
+        }
+        .ytc-tv-top .ytc-tv-icon-button { background: none; }
+        .ytc-tv-top .ytc-tv-icon-button:hover { background: rgba(255, 255, 255, 0.1); }
+        .ytc-tv-yt {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            color: #fff;
+            text-decoration: none;
+            font: 700 20px/1 "YouTube Sans", Roboto, Arial, sans-serif;
+            letter-spacing: -0.05em;
+        }
+        .ytc-tv-yt svg { width: 29px; height: 20px; }
+        .ytc-tv-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: none;
+            margin: 0 12px 8px;
+            padding: 8px 6px 8px 14px;
+            border-radius: 12px;
+            background: #212121;
+        }
+        .ytc-tv-head .ytc-tv-icon-button { background: none; }
+        .ytc-tv-head .ytc-tv-icon-button:hover { background: rgba(255, 255, 255, 0.1); }
+        .ytc-tv-head .ytc-tv-icon-button.is-on { background: none; color: #fff; }
+        .ytc-tv-titles { flex: 1; min-width: 0; }
+        .ytc-tv-brand { font-size: 18px; font-weight: 700; line-height: 26px; }
+        .ytc-tv-count { font-size: 12px; line-height: 18px; color: var(--tv-muted); }
+        .ytc-tv-list {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 0 12px 8px 4px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+        .ytc-tv-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            width: 100%;
+            padding: 4px 8px 4px 0;
+            border: 0;
+            border-radius: 8px;
+            background: none;
+            color: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+        .ytc-tv-row + .ytc-tv-row { margin-top: 4px; }
+        .ytc-tv-row:hover { background: rgba(255, 255, 255, 0.06); }
+        .ytc-tv-row.is-current { background: rgba(255, 255, 255, 0.1); }
+        /* Where the arrow keys are, while the list is open: a lighter
+           fill, like hover, not a ring. */
+        .ytc-tv-row.is-cursor,
+        .ytc-tv-group.is-cursor { background: rgba(255, 255, 255, 0.16); }
+        /* The index column of a playlist: a number, a play mark for the
+           one on screen. */
+        .ytc-tv-number {
+            display: grid;
+            place-items: center;
+            width: 24px;
+            height: 68px;
+            flex: none;
+            font-size: 12px;
+            color: var(--tv-muted);
+            font-variant-numeric: tabular-nums;
+        }
+        .ytc-tv-number svg { display: none; width: 14px; height: 14px; color: #fff; }
+        .ytc-tv-row.is-current .ytc-tv-index { display: none; }
+        .ytc-tv-row.is-current .ytc-tv-number svg { display: block; }
+        .ytc-tv-thumb {
+            position: relative;
+            width: 120px;
+            height: 68px;
+            flex: none;
+            overflow: hidden;
+            border-radius: 8px;
+            background: var(--tv-raised);
+        }
+        .ytc-tv-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .ytc-tv-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 1px 5px;
+            border-radius: 4px;
+            background: var(--tv-red);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            line-height: 14px;
+        }
+        .ytc-tv-thumb .ytc-tv-pill { position: absolute; right: 4px; bottom: 4px; }
+        .ytc-tv-playing {
+            position: absolute;
+            inset: 0;
+            display: none;
+            place-items: center;
+            background: rgba(0, 0, 0, 0.5);
+        }
+        .ytc-tv-row.is-current .ytc-tv-playing { display: grid; }
+        .ytc-tv-eq { display: flex; align-items: flex-end; gap: 3px; height: 16px; }
+        .ytc-tv-eq i {
+            width: 4px;
+            border-radius: 2px;
+            background: #fff;
+            animation: ytc-tv-eq 0.9s ease-in-out infinite alternate;
+        }
+        .ytc-tv-eq i:nth-child(2) { animation-delay: -0.3s; }
+        .ytc-tv-eq i:nth-child(3) { animation-delay: -0.6s; }
+        @keyframes ytc-tv-eq { from { height: 4px; } to { height: 16px; } }
+        .ytc-tv-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+        .ytc-tv-title {
+            display: -webkit-box;
+            overflow: hidden;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 3;
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 20px;
+        }
+        .ytc-tv-channel,
+        .ytc-tv-meta {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 12px;
+            line-height: 18px;
+            color: var(--tv-muted);
+        }
+        .ytc-tv-channel { margin-top: 2px; }
+        .ytc-tv-divider { height: 1px; margin: 12px 0 12px 24px; background: var(--tv-line); }
+        .ytc-tv-heading { padding: 0 8px 4px 32px; font-size: 16px; font-weight: 700; line-height: 22px; }
+        .ytc-tv-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            height: 40px;
+            margin: 2px 0;
+            padding: 0 8px 0 26px;
+            border: 0;
+            border-radius: 8px;
+            background: none;
+            color: inherit;
+            font-size: 14px;
+            font-weight: 500;
+            text-align: left;
+            cursor: pointer;
+        }
+        .ytc-tv-group:hover { background: rgba(255, 255, 255, 0.06); }
+        .ytc-tv-group svg { width: 20px; height: 20px; flex: none; color: var(--tv-muted); transition: transform 0.2s var(--tv-ease); }
+        .ytc-tv-group.is-open svg { transform: rotate(90deg); }
+        .ytc-tv-group-name { flex: 1; }
+        .ytc-tv-group-count {
+            min-width: 22px;
+            padding: 0 6px;
+            border-radius: 999px;
+            background: var(--tv-raised);
+            font-size: 12px;
+            line-height: 20px;
+            color: var(--tv-muted);
+            text-align: center;
+        }
+        .ytc-tv-none { padding: 32px 16px; text-align: center; color: var(--tv-muted); font-size: 14px; }
+        .ytc-tv-foot { flex: none; padding: 8px 12px; border-top: 1px solid var(--tv-line); }
+        .ytc-tv-exit {
+            justify-content: flex-start;
+            width: 100%;
+            padding: 0 8px;
+            background: none;
+            color: var(--tv-muted);
+        }
+        .ytc-tv-exit:hover { background: none; color: #fff; }
+        .ytc-tv-exit kbd { margin-left: auto; }
+
+        /* With the list closed: one button to bring it back. */
+        .ytc-tv-opener {
+            position: absolute;
+            top: 8px;
+            left: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 4px 16px 4px 4px;
+            border-radius: 999px;
+            background: rgba(15, 15, 15, 0.8);
+            -webkit-backdrop-filter: blur(16px);
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-8px);
+            transition: opacity 0.25s ease, transform 0.3s var(--tv-ease);
+        }
+        .ytc-tv-opener .ytc-tv-icon-button { background: none; }
+        .ytc-tv-opener .ytc-tv-icon-button:hover { background: rgba(255, 255, 255, 0.1); }
+        .ytc-tv.is-ui:not(.is-guide) .ytc-tv-opener { opacity: 1; pointer-events: auto; transform: none; }
+
+        /* Now-playing banner on each zap, while the list is closed. */
+        .ytc-tv-banner {
+            position: absolute;
+            left: calc((100% - var(--tv-chat-w)) / 2);
+            bottom: 88px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            width: max-content;
+            max-width: min(720px, calc(100% - var(--tv-chat-w) - 48px));
+            padding: 14px 22px 14px 14px;
+            border: 1px solid var(--tv-line);
+            border-radius: 20px;
+            background: rgba(15, 15, 15, 0.82);
+            -webkit-backdrop-filter: blur(24px);
+            backdrop-filter: blur(24px);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            pointer-events: none;
+            transform: translate(-50%, 16px);
+            transition: opacity 0.25s ease, transform 0.3s var(--tv-ease);
+        }
+        .ytc-tv.is-banner:not(.is-guide) .ytc-tv-banner { opacity: 1; transform: translate(-50%, 0); }
+        .ytc-tv-banner-number {
+            font-size: 40px;
+            font-weight: 300;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+            color: var(--tv-muted);
+        }
+        .ytc-tv-banner > img { width: 52px; height: 52px; flex: none; border-radius: 50%; background: var(--tv-raised); }
+        .ytc-tv-banner-channel { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; }
+        .ytc-tv-banner .ytc-tv-title { font-size: 14px; line-height: 19px; -webkit-line-clamp: 1; }
+        .ytc-tv-banner .ytc-tv-meta kbd { margin: 0 2px; }
+
+        /* Live chat, docked to the right. */
+        .ytc-tv-chat {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            width: 360px;
+            background: var(--tv-panel);
+            border-left: 1px solid var(--tv-line);
+            transform: translateX(100%);
+            visibility: hidden;
+            transition: transform 0.3s var(--tv-ease), visibility 0s 0.3s;
+        }
+        .ytc-tv.is-chat .ytc-tv-chat { transform: none; visibility: visible; transition: transform 0.3s var(--tv-ease); }
+        .ytc-tv-chat iframe { flex: 1; width: 100%; border: 0; background: var(--tv-panel); }
     `);
 
     // ---------------------------------------------------------------------
@@ -1087,7 +1624,7 @@
         root.classList.toggle('ytc-masthead-autohide', active);
         const masthead = document.querySelector('#masthead-container');
         const height = Math.round(masthead?.getBoundingClientRect().height ?? 0) || 56;
-        root.style.setProperty('--ytc-masthead-h', active ? '0px' : `${height}px`);
+        setVar(root, '--ytc-masthead-h', active ? '0px' : `${height}px`);
     }
 
     function setRevealed(value) {
@@ -1122,22 +1659,22 @@
         const root = document.documentElement;
         root.classList.toggle('ytc-chat-hidden', theater && chat && !state.chatVisible);
         root.classList.toggle('ytc-related-sidebar', theater && relatedShown());
-        root.style.setProperty('--ytc-chat-size', `${state.sideWidth}px`);
-        root.style.setProperty('--ytc-related-w', `${state.sideWidth || RELATED_WIDTH}px`);
+        setVar(root, '--ytc-chat-size', `${state.sideWidth}px`);
+        setVar(root, '--ytc-related-w', `${state.sideWidth || RELATED_WIDTH}px`);
 
         // The up-next sidebar sits left of YouTube's pinned chat.
         const chatContainer = flexy?.querySelector('#chat-container');
         const chatWidth = theater && chat && state.chatVisible && chatContainer
             ? Math.round(chatContainer.querySelector('ytd-live-chat-frame')?.getBoundingClientRect().width ?? 0)
             : 0;
-        root.style.setProperty('--ytc-chat-w', `${chatWidth}px`);
+        setVar(root, '--ytc-chat-w', `${chatWidth}px`);
         // Only a chat actually on screen is resized and given room: a
         // collapsed chat replay has no width and must not reserve any.
         root.classList.toggle('ytc-chat-sized', theater && state.sideWidth > 0 && chatWidth > 0);
         syncMasthead(flexy);
         // The pinned sidebar takes the page's own background, light or dark.
         const pageBg = getComputedStyle(document.querySelector('ytd-app') ?? document.body).backgroundColor;
-        if (pageBg && pageBg !== 'rgba(0, 0, 0, 0)') root.style.setProperty('--ytc-page-bg', pageBg);
+        if (pageBg && pageBg !== 'rgba(0, 0, 0, 0)') setVar(root, '--ytc-page-bg', pageBg);
 
         const chatButton = document.querySelector('#movie_player .ytc-chat');
         if (chatButton) {
@@ -1152,7 +1689,7 @@
         const visibleButtons = document.querySelectorAll('#movie_player .ytc-top-controls > .ytc-button:not([hidden])').length;
         // Each button is 44px with its margins, plus the pill's padding and
         // a gap before YouTube's own overlay.
-        root.style.setProperty('--ytc-top-w', visibleButtons ? `${visibleButtons * 44 + 16}px` : '0px');
+        setVar(root, '--ytc-top-w', visibleButtons ? `${visibleButtons * 44 + 16}px` : '0px');
         // Line our buttons up with YouTube's info button when it is there.
         const info = document.querySelector('#movie_player .ytp-cards-button');
         const host = player();
@@ -1160,7 +1697,7 @@
         if (host && infoBox?.height) {
             const pill = host.querySelector(':scope > .ytc-top-controls');
             const top = infoBox.top - host.getBoundingClientRect().top + infoBox.height / 2 - (pill?.offsetHeight ?? 48) / 2;
-            root.style.setProperty('--ytc-top-y', `${Math.round(top)}px`);
+            setVar(root, '--ytc-top-y', `${Math.round(top)}px`);
         }
 
         // The player sizes its video from its container only on resize.
@@ -1367,9 +1904,9 @@
         const k = Math.min(width / content.w, height / content.h);
         const tx = (width - content.w * k) / 2 - box.x - content.x * k;
         const ty = (height - content.h * k) / 2 - box.y - content.y * k;
-        video.style.setProperty('--ytc-crop-k', k.toFixed(4));
-        video.style.setProperty('--ytc-crop-x', `${tx.toFixed(1)}px`);
-        video.style.setProperty('--ytc-crop-y', `${ty.toFixed(1)}px`);
+        setVar(video, '--ytc-crop-k', k.toFixed(4));
+        setVar(video, '--ytc-crop-x', `${tx.toFixed(1)}px`);
+        setVar(video, '--ytc-crop-y', `${ty.toFixed(1)}px`);
         video.classList.add('ytc-cropped');
     }
 
@@ -2080,9 +2617,9 @@
         root.classList.toggle('ytc-hide-cards', state.hideCards);
         const filtered = state.filtersOn && [state.filterBrightness, state.filterContrast, state.filterSaturation].some(value => value !== 100);
         root.classList.toggle('ytc-filters', filtered);
-        root.style.setProperty('--ytc-f-brightness', String(state.filterBrightness / 100));
-        root.style.setProperty('--ytc-f-contrast', String(state.filterContrast / 100));
-        root.style.setProperty('--ytc-f-saturation', String(state.filterSaturation / 100));
+        setVar(root, '--ytc-f-brightness', String(state.filterBrightness / 100));
+        setVar(root, '--ytc-f-contrast', String(state.filterContrast / 100));
+        setVar(root, '--ytc-f-saturation', String(state.filterSaturation / 100));
     }
 
     // Playback quality, YouTube's names from best to worst.
@@ -2164,27 +2701,38 @@
     //  while the tab is visible. The last result is kept, so the section is
     //  there on the next page load before the first fetch returns.
     // ---------------------------------------------------------------------
-    // ytInitialData from a YouTube page's HTML: the streams live right now,
-    // one per channel. Covers both card formats, videoRenderer and the newer
-    // lockupViewModel.
-    function parseLiveStreams(html) {
-        const start = html.indexOf('var ytInitialData = ');
-        if (start < 0) return null;
-        const from = start + 'var ytInitialData = '.length;
+    // ytInitialData from a YouTube page's HTML.
+    function parseInitialData(html) {
+        // Pages set it as "var ytInitialData = "; the chat page as
+        // 'window["ytInitialData"] = '.
+        const marker = ['var ytInitialData = ', 'window["ytInitialData"] = '].find(text => html.includes(text));
+        if (!marker) return null;
+        const from = html.indexOf(marker) + marker.length;
         const end = html.indexOf(';</script>', from);
-        let data;
         try {
-            data = JSON.parse(html.slice(from, end));
+            return JSON.parse(html.slice(from, end));
         } catch {
             return null;
         }
-        const text = value => value?.simpleText ?? value?.runs?.map(run => run.text).join('') ?? value?.content ?? '';
+    }
+
+    const ytText = value => value?.simpleText ?? value?.runs?.map(run => run.text).join('') ?? value?.content ?? '';
+
+    function parseLiveStreams(html) {
+        const data = parseInitialData(html);
+        return data ? collectLives(data) : null;
+    }
+
+    // The streams live right now under a node of that data, every one of
+    // them, so a channel running two lives lists both. Covers both card
+    // formats, videoRenderer and the newer lockupViewModel.
+    function collectLives(data) {
+        const text = ytText;
         const lives = [];
         const seen = new Set();
         const add = live => {
-            const key = live.channelUrl || live.channel;
-            if (!live.videoId || !live.channel || seen.has(key)) return;
-            seen.add(key);
+            if (!live.videoId || !live.channel || seen.has(live.videoId)) return;
+            seen.add(live.videoId);
             lives.push(live);
         };
         const walk = (node, depth) => {
@@ -2206,6 +2754,7 @@
                         channel: owner?.text || '',
                         channelUrl: owner?.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl || owner?.navigationEndpoint?.commandMetadata?.webCommandMetadata?.url || '',
                         avatar: thumbs?.[0]?.url || '',
+                        viewers: text(video.viewCountText || video.shortViewCountText),
                     });
                 }
                 return;
@@ -2226,6 +2775,7 @@
                         // sem link de canal (ex.: aba do próprio canal) a 1ª linha é "x assistindo", não o nome
                         channel: avatar ? text(rows[0]?.metadataParts?.[0]?.text) : '',
                         avatar: avatar?.avatar?.avatarViewModel?.image?.sources?.[0]?.url || '',
+                        viewers: avatar ? text(rows[1]?.metadataParts?.[0]?.text) : text(rows[0]?.metadataParts?.[0]?.text),
                     });
                 }
                 return;
@@ -2236,19 +2786,54 @@
         return lives;
     }
 
+    // YouTube's live page in its own shelves: "Ao vivo agora" and one per
+    // topic ("Ao vivo agora: Esportes"...). Shelves with nothing on air
+    // (recent and upcoming streams) drop out.
+    function parseLiveShelves(html) {
+        const data = parseInitialData(html);
+        if (!data) return null;
+        const shelves = [];
+        const walk = (node, depth) => {
+            if (!node || typeof node !== 'object' || depth > 40) return;
+            if (Array.isArray(node)) {
+                for (const item of node) walk(item, depth + 1);
+                return;
+            }
+            const shelf = node.richShelfRenderer || node.shelfRenderer;
+            if (shelf) {
+                const lives = collectLives(shelf);
+                if (lives.length) shelves.push({ title: ytText(shelf.title), lives });
+                return;
+            }
+            for (const key in node) walk(node[key], depth + 1);
+        };
+        walk(data, 0);
+        return shelves;
+    }
+
     const LIVE_REFRESH_MS = 3 * 60 * 1000;
     const LIVE_CACHE_MS = 15 * 60 * 1000;
     const LIVE_ICON = 'M4.93,4.93C3.12,6.74 2,9.24 2,12C2,14.76 3.12,17.26 4.93,19.07L6.34,17.66C4.89,16.22 4,14.22 4,12C4,9.79 4.89,7.78 6.34,6.34L4.93,4.93M19.07,4.93L17.66,6.34C19.11,7.78 20,9.79 20,12C20,14.22 19.11,16.22 17.66,17.66L19.07,19.07C20.88,17.26 22,14.76 22,12C22,9.24 20.88,6.74 19.07,4.93M7.76,7.76C6.67,8.85 6,10.35 6,12C6,13.65 6.67,15.15 7.76,16.24L9.17,14.83C8.45,14.11 8,13.11 8,12C8,10.89 8.45,9.89 9.17,9.17L7.76,7.76M16.24,7.76L14.83,9.17C15.55,9.89 16,10.89 16,12C16,13.11 15.55,14.11 14.83,14.83L16.24,16.24C17.33,15.15 18,13.65 18,12C18,10.35 17.33,8.85 16.24,7.76M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z';
+    // A live's own picture, refreshed by YouTube while it runs; the plain
+    // one when there is none.
+    const liveThumb = videoId => `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/mqdefault_live.jpg`;
+    const liveThumbFallback = videoId => `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/mqdefault.jpg`;
+    // YouTube's own live page, Explorar > Ao vivo in the guide.
+    const LIVE_EXPLORE_URL = '/channel/UC4R8DWoMoI7CAwX8_LjQHig';
     // Like Inscrições, only the first few show until "Mostrar mais".
     const LIVE_VISIBLE = 7;
     // Until the first answer (or a recent cached one) the section holds its
     // place with placeholder rows, so it does not pop in under the guide.
     // An empty answer is cached too: no placeholder on every page then.
+    // Channels in alphabetical order, ignoring case and accents; a
+    // channel's own lives by title.
+    const byChannel = (a, b) => a.channel.localeCompare(b.channel, 'pt-BR', { sensitivity: 'base' }) ||
+        (a.title ?? '').localeCompare(b.title ?? '', 'pt-BR', { sensitivity: 'base' });
     const liveGuide = { list: [], loaded: false, fetchedAt: 0, loading: false, section: null, renderedKey: '', expanded: false };
     {
         const cached = getSetting('liveCache', null);
         if (cached && Date.now() - cached.at < LIVE_CACHE_MS && Array.isArray(cached.list)) {
-            liveGuide.list = cached.list;
+            liveGuide.list = cached.list.sort(byChannel);
             liveGuide.loaded = true;
         }
     }
@@ -2261,13 +2846,14 @@
             const response = await fetch('/feed/subscriptions', { credentials: 'include' });
             const lives = response.ok ? parseLiveStreams(await response.text()) : null;
             if (lives) {
-                liveGuide.list = lives;
+                liveGuide.list = lives.sort(byChannel);
                 setSetting('liveCache', { at: Date.now(), list: lives });
             }
         } catch {} finally {
             liveGuide.loading = false;
             liveGuide.loaded = true;
         }
+        syncTv();
     }
 
     // The subscriptions section is the one headed by a link to the channel
@@ -2283,36 +2869,75 @@
         return null;
     }
 
+    // Each live as Twitch lists them: the channel's picture, its name with
+    // the audience beside it, and what is on air underneath.
     function liveEntry(live) {
         const entry = document.createElement('a');
-        entry.className = 'ytc-live-entry';
+        entry.className = 'ytc-live-entry ytc-live-stream';
         entry.href = `/watch?v=${encodeURIComponent(live.videoId)}`;
-        entry.title = live.title ? `${live.channel} · ${live.title}` : live.channel;
+        entry.title = [live.channel, live.title, live.viewers].filter(Boolean).join('\n');
         const avatar = document.createElement('img');
         avatar.className = 'ytc-live-avatar';
         avatar.alt = '';
         avatar.loading = 'lazy';
+        avatar.addEventListener('error', () => avatar.removeAttribute('src'), { once: true });
         if (live.avatar) avatar.src = live.avatar;
+        const text = document.createElement('span');
+        text.className = 'ytc-live-text';
+        const top = document.createElement('span');
+        top.className = 'ytc-live-top';
         const name = document.createElement('span');
         name.className = 'ytc-live-name';
         name.textContent = live.channel;
-        const badge = icon(LIVE_ICON);
-        badge.classList.add('ytc-live-badge');
-        entry.append(avatar, name, badge);
+        top.append(name);
+        // "138 mil assistindo" -> "138 mil": the number and its unit.
+        const count = live.viewers?.match(/^[\d.,]+(\s?(mil|mi|bi|[KMB]))?/i)?.[0];
+        if (count) {
+            const viewers = document.createElement('span');
+            viewers.className = 'ytc-live-viewers';
+            viewers.textContent = count;
+            top.append(viewers);
+        }
+        const title = document.createElement('span');
+        title.className = 'ytc-live-stream-title';
+        title.textContent = live.title;
+        text.append(top, title);
+        entry.append(avatar, text);
         return entry;
     }
 
+    // YouTube orders the guide's sections differently from page to page
+    // (Inscrições sometimes under Você and Explorar). They are kept as
+    // Início, Ao vivo, Inscrições, then the rest, by flex order on the
+    // sections' container rather than by moving YouTube's own nodes.
+    function orderGuideSections() {
+        const subs = subscriptionsSection();
+        subs?.classList.add('ytc-guide-subs');
+        const home = document.querySelector('ytd-guide-renderer #sections > ytd-guide-section-renderer a[href="/"]')?.closest('ytd-guide-section-renderer');
+        home?.classList.add('ytc-guide-home');
+    }
+
     function syncLiveSection() {
+        orderGuideSections();
         const subs = state.liveSection ? subscriptionsSection() : null;
+        // While the section is up it carries the link to YouTube's live
+        // page, so Explorar's own "Ao vivo" entry steps aside.
+        const shown = section => {
+            const explore = document.querySelector(`ytd-guide-section-renderer a[href="${LIVE_EXPLORE_URL}"]`)?.closest('ytd-guide-entry-renderer');
+            explore?.classList.toggle('ytc-live-explore-hidden', section);
+        };
         if (!subs) {
             liveGuide.section?.remove();
+            shown(false);
             return;
         }
         if (Date.now() - liveGuide.fetchedAt > LIVE_REFRESH_MS) fetchLiveStreams();
         if (liveGuide.loaded && !liveGuide.list.length) {
             liveGuide.section?.remove();
+            shown(false);
             return;
         }
+        shown(true);
         let section = liveGuide.section;
         if (!section) {
             section = liveGuide.section = document.createElement('div');
@@ -2323,7 +2948,7 @@
             section.append(title, document.createElement('div'));
         }
         if (section.nextElementSibling !== subs) subs.before(section);
-        const key = liveGuide.loaded ? liveGuide.list.map(live => live.videoId).join(',') : 'loading';
+        const key = liveGuide.loaded ? `${state.liveTv}:${liveGuide.list.map(live => live.videoId).join(',')}` : 'loading';
         if (key === liveGuide.renderedKey) return;
         liveGuide.renderedKey = key;
         if (liveGuide.loaded) renderLiveEntries();
@@ -2339,6 +2964,18 @@
         const list = liveGuide.list;
         const shown = liveGuide.expanded ? list : list.slice(0, LIVE_VISIBLE);
         const entries = shown.map(liveEntry);
+        if (state.liveTv) {
+            const tv = document.createElement('a');
+            tv.href = TV_PATH;
+            tv.className = 'ytc-live-entry ytc-live-tv';
+            const tvIcon = icon(TV_ICON);
+            tvIcon.classList.add('ytc-live-chevron');
+            const label = document.createElement('span');
+            label.className = 'ytc-live-name';
+            label.textContent = 'Modo TV';
+            tv.append(tvIcon, label);
+            entries.unshift(tv);
+        }
         if (list.length > LIVE_VISIBLE) {
             const more = document.createElement('button');
             more.type = 'button';
@@ -2355,9 +2992,730 @@
             });
             entries.push(more);
         }
+        const explore = document.createElement('a');
+        explore.className = 'ytc-live-entry';
+        explore.href = LIVE_EXPLORE_URL;
+        const compass = icon('M14.19,14.19L6,18L9.81,9.81L18,6M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,10.9A1.1,1.1 0 0,0 10.9,12A1.1,1.1 0 0,0 12,13.1A1.1,1.1 0 0,0 13.1,12A1.1,1.1 0 0,0 12,10.9Z');
+        compass.classList.add('ytc-live-chevron');
+        const label = document.createElement('span');
+        label.className = 'ytc-live-name';
+        label.textContent = 'Explorar mais lives';
+        explore.append(compass, label);
+        entries.push(explore);
         liveGuide.section.lastElementChild.replaceChildren(...entries);
     }
 
+    // ---------------------------------------------------------------------
+    //  "Transmitindo agora" on a channel's live tab (/@x/streams). YouTube
+    //  sorts that tab upcoming first, so what is on air sits below every
+    //  scheduled stream. A chip of our own, on by default on each visit,
+    //  hides everything that is not live; the grid keeps loading pages
+    //  until the first past stream (a duration badge) shows up, and stops
+    //  there.
+    // ---------------------------------------------------------------------
+    const channelLive = { path: '', on: false };
+
+    // ---------------------------------------------------------------------
+    //  Live hub: YouTube's live page (Explorar > Ao vivo) opens with the
+    //  subscribed channels live now, as cards above its own shelves, and
+    //  the way into TV mode.
+    // ---------------------------------------------------------------------
+    const LIVE_HUB_SHOWN = 8;
+    const liveHub = { root: null, renderedKey: '', expanded: false };
+
+    function syncLiveHub() {
+        const grid = location.pathname.startsWith(LIVE_EXPLORE_URL)
+            ? document.querySelector('ytd-browse:not([hidden]) ytd-two-column-browse-results-renderer > #primary > ytd-rich-grid-renderer')
+            : null;
+        if (!grid) {
+            liveHub.root?.remove();
+            return;
+        }
+        if (Date.now() - liveGuide.fetchedAt > LIVE_REFRESH_MS) fetchLiveStreams();
+        if (!liveHub.root) {
+            const root = liveHub.root = document.createElement('section');
+            root.className = 'ytc-hub';
+            const head = document.createElement('div');
+            head.className = 'ytc-hub-head';
+            const title = document.createElement('h2');
+            title.className = 'ytc-hub-title';
+            title.textContent = 'Seus canais ao vivo';
+            const count = document.createElement('span');
+            count.className = 'ytc-hub-count';
+            const tvLink = document.createElement('a');
+            tvLink.className = 'ytc-hub-tv';
+            tvLink.href = TV_PATH;
+            tvLink.append(icon(TV_ICON), Object.assign(document.createElement('span'), { textContent: 'Assistir no Modo TV' }));
+            head.append(title, count, tvLink);
+            const cards = document.createElement('div');
+            cards.className = 'ytc-hub-cards';
+            root.append(head, cards);
+        }
+        if (liveHub.root.nextElementSibling !== grid) grid.before(liveHub.root);
+        const list = liveGuide.list;
+        const key = liveGuide.loaded ? `${liveHub.expanded}:${list.map(live => `${live.videoId}:${live.viewers ?? ''}`).join(',')}` : 'loading';
+        if (key === liveHub.renderedKey) return;
+        liveHub.renderedKey = key;
+        const [, count] = liveHub.root.firstElementChild.children;
+        count.textContent = liveGuide.loaded && list.length ? String(list.length) : '';
+        const cards = liveHub.root.lastElementChild;
+        if (!liveGuide.loaded) {
+            cards.replaceChildren(...Array.from({ length: 4 }, () => Object.assign(document.createElement('div'), { className: 'ytc-hub-card ytc-hub-skeleton' })));
+            return;
+        }
+        if (!list.length) {
+            cards.replaceChildren(Object.assign(document.createElement('p'), { className: 'ytc-hub-empty', textContent: 'Ninguém que você segue está ao vivo agora. As lives do YouTube estão logo abaixo.' }));
+            return;
+        }
+        const shown = liveHub.expanded ? list : list.slice(0, LIVE_HUB_SHOWN);
+        const children = shown.map(live => {
+            const card = document.createElement('a');
+            card.className = 'ytc-hub-card';
+            card.href = `/watch?v=${encodeURIComponent(live.videoId)}`;
+            const thumb = document.createElement('span');
+            thumb.className = 'ytc-hub-thumb';
+            const picture = document.createElement('img');
+            picture.alt = '';
+            picture.loading = 'lazy';
+            picture.addEventListener('error', () => {
+                if (picture.src !== liveThumbFallback(live.videoId)) picture.src = liveThumbFallback(live.videoId);
+            }, { once: true });
+            picture.src = liveThumb(live.videoId);
+            const pill = document.createElement('span');
+            pill.className = 'ytc-hub-pill';
+            pill.textContent = 'AO VIVO';
+            thumb.append(picture, pill);
+            const meta = document.createElement('span');
+            meta.className = 'ytc-hub-meta';
+            const avatar = document.createElement('img');
+            avatar.className = 'ytc-hub-avatar';
+            avatar.alt = '';
+            avatar.addEventListener('error', () => avatar.removeAttribute('src'), { once: true });
+            if (live.avatar) avatar.src = live.avatar;
+            const text = document.createElement('span');
+            text.className = 'ytc-hub-text';
+            text.append(
+                Object.assign(document.createElement('span'), { className: 'ytc-hub-video', textContent: live.title || live.channel }),
+                Object.assign(document.createElement('span'), { className: 'ytc-hub-channel', textContent: live.channel }),
+            );
+            if (live.viewers) text.append(Object.assign(document.createElement('span'), { className: 'ytc-hub-channel', textContent: live.viewers }));
+            meta.append(avatar, text);
+            card.append(thumb, meta);
+            return card;
+        });
+        if (list.length > LIVE_HUB_SHOWN) {
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.className = 'ytc-hub-more';
+            more.textContent = liveHub.expanded ? 'Mostrar menos' : `Mostrar todos (${list.length})`;
+            more.addEventListener('click', () => {
+                liveHub.expanded = !liveHub.expanded;
+                syncLiveHub();
+            });
+            children.push(more);
+        }
+        cards.replaceChildren(...children);
+    }
+
+    function syncLiveFilter() {
+        const root = document.documentElement;
+        const streams = pageKind() === 'channel' && /\/streams\/?$/.test(location.pathname);
+        if (!streams) {
+            channelLive.path = '';
+            root?.classList.remove('ytc-live-only', 'ytc-live-settled');
+            document.querySelector('.ytc-live-empty')?.remove();
+            return;
+        }
+        if (channelLive.path !== location.pathname) {
+            channelLive.path = location.pathname;
+            channelLive.on = state.liveNowFilter;
+        }
+        root.classList.toggle('ytc-live-only', channelLive.on);
+        const grid = document.querySelector('ytd-browse:not([hidden]) ytd-rich-grid-renderer');
+        const bar = grid?.querySelector('#header chip-bar-view-model .ytChipBarViewModelChipBarScrollContainer');
+        if (!bar) return;
+        let chip = bar.querySelector('.ytc-live-chip');
+        if (!chip) {
+            chip = document.createElement('div');
+            chip.className = 'ytChipBarViewModelChipWrapper ytc-live-chip';
+            chip.setAttribute('role', 'presentation');
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'ytChipShapeButtonReset';
+            button.setAttribute('role', 'tab');
+            const shape = document.createElement('div');
+            const text = document.createElement('div');
+            text.className = 'ytChipShapeText';
+            text.textContent = 'Transmitindo agora';
+            shape.append(text);
+            button.append(shape);
+            chip.append(button);
+            button.addEventListener('click', () => {
+                channelLive.on = !channelLive.on;
+                syncLiveFilter();
+            });
+            bar.prepend(chip);
+        }
+        chip.firstElementChild.setAttribute('aria-selected', String(channelLive.on));
+        chip.firstElementChild.firstElementChild.className = `ytChipShapeChip ${channelLive.on ? 'ytChipShapeActive' : 'ytChipShapeInactive'} ytChipShapeOnlyTextPadding`;
+
+        const items = grid.querySelectorAll('#contents > ytd-rich-item-renderer');
+        const isLive = item => item.querySelector('.ytBadgeShapeThumbnailLive, ytd-thumbnail-overlay-time-status-renderer[overlay-style="LIVE"]');
+        const past = Array.from(items).some(item => !isLive(item) &&
+            Array.from(item.querySelectorAll('badge-shape, ytd-thumbnail-overlay-time-status-renderer')).some(badge => /^\d+(:\d\d)+$/.test(badge.textContent.trim())));
+        const settled = past || !grid.querySelector('#contents > ytd-continuation-item-renderer');
+        root.classList.toggle('ytc-live-settled', settled);
+        const empty = channelLive.on && settled && !Array.from(items).some(isLive);
+        let message = grid.querySelector('.ytc-live-empty');
+        if (empty && !message) {
+            message = document.createElement('div');
+            message.className = 'ytc-live-empty';
+            message.textContent = 'Nenhuma transmissão ao vivo agora.';
+            grid.querySelector('#header')?.append(message);
+        } else if (!empty) message?.remove();
+    }
+
+    // ---------------------------------------------------------------------
+    //  TV mode: the subscribed channels live now, one at a time, full
+    //  screen, on a page of its own (/feed/ytc-tv: a path YouTube serves
+    //  as an empty page, whose app is hidden while ours takes over; so it
+    //  has its own address, back button and tab, and nothing of the page
+    //  it was opened from keeps running underneath). Laid out like a TV guide: the channel list docks on the
+    //  left, the picture in the middle, the live chat on the right.
+    //  With the list open the arrows move through it and Enter watches the
+    //  chosen channel; with it closed the arrows zap straight away, with a
+    //  now-playing banner. The chat shows every message, not only the top
+    //  ones, and the player is kept at the live edge.
+    //  YouTube refuses its own /embed player inside youtube.com (error
+    //  152), so the stage frames a real watch page instead, styled down to
+    //  its player, and zaps with the player's loadVideoById: no reload
+    //  between channels. The frame is same-origin, so its keys and pointer
+    //  moves reach us too. The chat is YouTube's /live_chat page.
+    // ---------------------------------------------------------------------
+    const TV_ICON = 'M8.16,3L6.75,4.41L9.34,7H4C2.89,7 2,7.89 2,9V19C2,20.11 2.89,21 4,21H20C21.11,21 22,20.11 22,19V9C22,7.89 21.11,7 20,7H14.66L17.25,4.41L15.84,3L12,6.84L8.16,3M4,9H17V19H4V9M19.5,9A1,1 0 0,1 20.5,10A1,1 0 0,1 19.5,11A1,1 0 0,1 18.5,10A1,1 0 0,1 19.5,9M19.5,12A1,1 0 0,1 20.5,13A1,1 0 0,1 19.5,14A1,1 0 0,1 18.5,13A1,1 0 0,1 19.5,12Z';
+    const TV_PATH = '/feed/ytc-tv';
+    const TV_TITLE = 'Modo TV - YouTube';
+    const TV_MENU_ICON = 'M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z';
+    const TV_EXIT_ICON = 'M10.09,15.59L11.5,17L16.5,12L11.5,7L10.09,8.41L12.67,11H3V13H12.67L10.09,15.59M19,3H5C3.89,3 3,3.9 3,5V9H5V5H19V19H5V15H3V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.9 20.1,3 19,3Z';
+    const TV_UI_MS = 3500;
+    const TV_BANNER_MS = 4000;
+    // Zapping through several channels loads only the one it stops on.
+    const TV_TUNE_MS = 400;
+    const TV_FRAME_CSS = `
+        html, body { overflow: hidden !important; background: #000 !important; }
+        #masthead-container, tp-yt-app-drawer, ytd-mini-guide-renderer { display: none !important; }
+        /* The page around the player stacks above a fixed player (its
+           ancestors form stacking contexts), so all of it is made
+           invisible instead: hidden inherits, and the player opts back in
+           (a plain rule; a selector matching every element but the
+           player's made each of the page's DOM changes costly). */
+        body { visibility: hidden !important; }
+        #movie_player {
+            visibility: visible !important;
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 2147483647 !important;
+            background: #000 !important;
+        }
+    `;
+    const TV_EMPTY = { root: null, frame: null, chat: null, list: null, count: null, banner: null, veil: null, chatToggle: null, videoId: '', chatFor: '', livePending: false, cursor: 0, nav: [], renderedKey: '', digits: '' };
+    const tv = { ...TV_EMPTY, timers: {} };
+
+    function tvElement(tag, className, text) {
+        const element = document.createElement(tag);
+        if (className) element.className = className;
+        if (text) element.textContent = text;
+        return element;
+    }
+
+    function tvImage(className, src, fallback) {
+        const image = tvElement('img', className);
+        image.alt = '';
+        image.loading = 'lazy';
+        // A missing picture falls back once, then leaves the empty circle or
+        // frame rather than a broken-image icon.
+        image.addEventListener('error', () => {
+            if (fallback && image.src !== fallback) image.src = fallback;
+            else image.removeAttribute('src');
+        });
+        if (src) image.src = src;
+        return image;
+    }
+
+    function tvButton(className, label, path, run) {
+        const button = tvElement('button', `ytc-tv-button ${className}`);
+        button.type = 'button';
+        if (path) button.append(icon(path));
+        if (label) button.append(tvElement('span', '', label));
+        button.addEventListener('click', run);
+        return button;
+    }
+
+    const tvPill = () => tvElement('span', 'ytc-tv-pill', 'AO VIVO');
+    // Under the subscriptions, YouTube's own live page (Explorar > Ao
+    // vivo) by its topic shelves: Esportes first and open, the others
+    // collapsed (each remembers being opened or closed), the general "Ao
+    // vivo agora" shelf last as "Em alta". A live shows once: under the
+    // subscriptions if it is there, else under its first topic.
+    const exploreLives = { shelves: [], fetchedAt: 0, loading: false };
+    const TV_SPORTS = /esporte|sport/i;
+
+    async function fetchExploreLives() {
+        if (exploreLives.loading || document.hidden) return;
+        exploreLives.loading = true;
+        exploreLives.fetchedAt = Date.now();
+        try {
+            const response = await fetch(LIVE_EXPLORE_URL, { credentials: 'include' });
+            const shelves = response.ok ? parseLiveShelves(await response.text()) : null;
+            if (shelves) exploreLives.shelves = shelves;
+        } catch {} finally {
+            exploreLives.loading = false;
+        }
+        syncTv();
+    }
+
+    function tvLives() {
+        const own = liveGuide.list;
+        const seen = new Set(own.map(live => live.videoId));
+        const topics = exploreLives.shelves.map(shelf => {
+            const topic = shelf.title.includes(':') ? shelf.title.slice(shelf.title.indexOf(':') + 1).trim() : '';
+            return { name: topic || 'Em alta', general: !topic, lives: shelf.lives };
+        });
+        const ordered = [
+            ...topics.filter(group => !group.general && TV_SPORTS.test(group.name)),
+            ...topics.filter(group => !group.general && !TV_SPORTS.test(group.name)),
+            ...topics.filter(group => group.general),
+        ];
+        const groups = [];
+        for (const group of ordered) {
+            const lives = group.lives.filter(live => !seen.has(live.videoId));
+            lives.forEach(live => seen.add(live.videoId));
+            const existing = groups.find(other => other.name === group.name);
+            if (existing) existing.lives.push(...lives);
+            else if (lives.length) groups.push({ name: group.name, lives });
+        }
+        return { own, groups, all: [...own, ...groups.flatMap(group => group.lives)] };
+    }
+
+    const tvGroupOpen = name => state.tvGroups[name] ?? TV_SPORTS.test(name);
+
+    function toggleTvGroup(name) {
+        state.tvGroups = { ...state.tvGroups, [name]: !tvGroupOpen(name) };
+        setSetting('tvGroups', state.tvGroups);
+        tv.renderedKey = '';
+        syncTv();
+    }
+
+    const tvIndex = () => tvLives().all.findIndex(live => live.videoId === tv.videoId);
+    const tvGuideOpen = () => tv.root.classList.contains('is-guide');
+
+    function tvLater(name, ms, run) {
+        clearTimeout(tv.timers[name]);
+        tv.timers[name] = setTimeout(run, ms);
+    }
+
+    // The page opens (or closes) TV mode by its address, from the refresh.
+    function syncTvPage() {
+        const onPage = location.pathname === TV_PATH;
+        document.documentElement.classList.toggle('ytc-tv-page', onPage);
+        if (onPage && !tv.root && document.body) openTv();
+        else if (!onPage && tv.root) closeTv();
+        if (onPage && document.title !== TV_TITLE) document.title = TV_TITLE;
+    }
+
+    // Back where it came from on YouTube, or the home page.
+    function exitTv() {
+        let fromYouTube = false;
+        try {
+            fromYouTube = new URL(document.referrer).origin === location.origin;
+        } catch {}
+        if (fromYouTube && history.length > 1) history.back();
+        else location.assign('/');
+    }
+
+    function youTubeLogo() {
+        const link = tvElement('a', 'ytc-tv-yt');
+        link.href = '/';
+        link.title = 'Início do YouTube';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 28 20');
+        svg.setAttribute('aria-hidden', 'true');
+        const frame = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        for (const [name, value] of [['width', '28'], ['height', '20'], ['rx', '5'], ['fill', '#ff0033']]) frame.setAttribute(name, value);
+        const play = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        play.setAttribute('d', 'M11 5.5v9l7.5-4.5z');
+        play.setAttribute('fill', '#fff');
+        svg.append(frame, play);
+        link.append(svg, tvElement('span', '', 'YouTube'));
+        return link;
+    }
+
+    function openTv() {
+        if (tv.root) return;
+        const root = tv.root = tvElement('div', 'ytc-tv is-guide');
+        root.tabIndex = -1;
+        root.setAttribute('role', 'dialog');
+        root.setAttribute('aria-label', 'Modo TV');
+        root.classList.toggle('is-chat', state.tvChat);
+
+        const stage = tvElement('div', 'ytc-tv-stage');
+        const frame = tv.frame = tvElement('iframe', 'ytc-tv-frame');
+        frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+        frame.addEventListener('load', () => {
+            try {
+                const inner = frame.contentDocument;
+                const style = inner.createElement('style');
+                style.textContent = TV_FRAME_CSS;
+                inner.documentElement.append(style);
+                frame.contentWindow.addEventListener('keydown', onTvKey, true);
+                frame.contentWindow.addEventListener('mousemove', showTvUi);
+                // Media events do not bubble; captured, "playing" catches
+                // the stream starting after an ad and every resume after a
+                // pause, each of which lands back on the live edge.
+                inner.addEventListener('playing', keepTvLive, true);
+                inner.addEventListener('pause', () => { tv.livePending = true; }, true);
+                // The player sizes its video on resize.
+                frame.contentWindow.dispatchEvent(new Event('resize'));
+            } catch {}
+        });
+        tv.veil = tvElement('div', 'ytc-tv-veil');
+        stage.append(frame, tv.veil);
+
+        // Channel sidebar: title, the list, then what to do.
+        const guide = tvElement('aside', 'ytc-tv-guide');
+        guide.setAttribute('aria-label', 'Canais ao vivo');
+        // Headed like YouTube's playlist panel: title, a line under it,
+        // and the panel's own buttons on the right.
+        // On top, like YouTube's masthead: the menu button and the logo.
+        const top = tvElement('div', 'ytc-tv-top');
+        const hide = tvButton('ytc-tv-icon-button', '', TV_MENU_ICON, toggleTvGuide);
+        hide.title = 'Esconder lista (G)';
+        hide.setAttribute('aria-label', 'Esconder lista de canais');
+        top.append(hide, youTubeLogo());
+        const head = tvElement('div', 'ytc-tv-head');
+        const titles = tvElement('div', 'ytc-tv-titles');
+        tv.count = tvElement('div', 'ytc-tv-count');
+        titles.append(tvElement('div', 'ytc-tv-brand', 'Ao vivo agora'), tv.count);
+        tv.chatToggle = tvButton('ytc-tv-icon-button', '', '', toggleTvChat);
+        tv.chatToggle.title = 'Chat (C)';
+        tv.chatToggle.setAttribute('aria-label', 'Chat ao vivo');
+        head.append(titles, tv.chatToggle);
+        tv.list = tvElement('div', 'ytc-tv-list');
+        tv.list.setAttribute('role', 'listbox');
+        const foot = tvElement('div', 'ytc-tv-foot');
+        const exit = tvButton('ytc-tv-exit', 'Sair do Modo TV', TV_EXIT_ICON, exitTv);
+        exit.append(tvElement('kbd', '', 'Esc'));
+        foot.append(exit);
+        guide.append(top, head, tv.list, foot);
+
+        // With the list closed, the way back to it.
+        // Like YouTube's masthead: the menu button and the logo.
+        const opener = tvElement('div', 'ytc-tv-opener');
+        const show = tvButton('ytc-tv-icon-button', '', TV_MENU_ICON, toggleTvGuide);
+        show.title = 'Mostrar lista (G)';
+        show.setAttribute('aria-label', 'Mostrar lista de canais');
+        opener.append(show, youTubeLogo());
+        opener.addEventListener('mouseenter', () => clearTimeout(tv.timers.ui));
+
+        tv.banner = tvElement('div', 'ytc-tv-banner');
+        const chat = tvElement('div', 'ytc-tv-chat');
+        tv.chat = tvElement('iframe');
+        tv.chat.title = 'Chat ao vivo';
+        chat.append(tv.chat);
+
+        root.append(stage, guide, chat, opener, tv.banner);
+        root.addEventListener('mousemove', showTvUi);
+        document.documentElement.classList.add('ytc-tv-open');
+        document.body.append(root);
+        window.addEventListener('keydown', onTvKey, true);
+        root.focus();
+        // Each fetch redraws the list when it lands; one skipped (tab hidden,
+        // one already running) must not call back, or it loops.
+        if (Date.now() - liveGuide.fetchedAt > LIVE_REFRESH_MS) fetchLiveStreams();
+        if (Date.now() - exploreLives.fetchedAt > LIVE_REFRESH_MS) fetchExploreLives();
+        // Start on the live being watched, if it is one of them.
+        const watching = new URL(location.href).searchParams.get('v');
+        const start = Math.max(0, tvLives().all.findIndex(live => live.videoId === watching));
+        syncTv();
+        syncTvChatToggle();
+        if (tvLives().all.length) tuneTv(start, 0);
+    }
+
+    function closeTv() {
+        if (!tv.root) return;
+        if (document.fullscreenElement === tv.root) document.exitFullscreen().catch(() => {});
+        for (const timer of Object.values(tv.timers)) clearTimeout(timer);
+        window.removeEventListener('keydown', onTvKey, true);
+        tv.root.remove();
+        Object.assign(tv, TV_EMPTY, { timers: {} });
+        document.documentElement.classList.remove('ytc-tv-open');
+    }
+
+    // The list follows the live list as it refreshes, keeping the channel
+    // on screen even if its stream has just ended.
+    function syncTv() {
+        if (!tv.root) return;
+        silenceFramedChat();
+        if (Date.now() - exploreLives.fetchedAt > LIVE_REFRESH_MS) fetchExploreLives();
+        const { own, groups } = tvLives();
+        const key = [...own, ...groups.flatMap(group => group.lives)].map(live => `${live.videoId}:${live.viewers ?? ''}`).join(',') +
+            groups.map(group => `|${group.name}:${tvGroupOpen(group.name)}`).join('');
+        if (key === tv.renderedKey) return;
+        tv.renderedKey = key;
+        tv.count.textContent = `Modo TV · ${own.length} de quem você segue`;
+        // Everything the arrow keys stop on, in screen order: rows and the
+        // group headers.
+        tv.nav = [];
+        let number = 0;
+        const row = live => {
+            const index = number++;
+            const button = tvElement('button', 'ytc-tv-row');
+            button.type = 'button';
+            button.setAttribute('role', 'option');
+            const thumb = tvElement('span', 'ytc-tv-thumb');
+            const playing = tvElement('span', 'ytc-tv-playing');
+            const eq = tvElement('span', 'ytc-tv-eq');
+            eq.append(tvElement('i'), tvElement('i'), tvElement('i'));
+            playing.append(eq);
+            thumb.append(tvImage('', liveThumb(live.videoId), liveThumbFallback(live.videoId)), tvPill(), playing);
+            // Like a video in the up-next list: title first, then channel
+            // and audience.
+            const text = tvElement('span', 'ytc-tv-text');
+            text.append(tvElement('span', 'ytc-tv-title', live.title || live.channel), tvElement('span', 'ytc-tv-channel', live.channel));
+            if (live.viewers) text.append(tvElement('span', 'ytc-tv-meta', live.viewers));
+            const mark = tvElement('span', 'ytc-tv-number');
+            mark.append(tvElement('span', 'ytc-tv-index', String(index + 1)), icon('M8,5.14V19.14L19,12.14L8,5.14Z'));
+            button.append(mark, thumb, text);
+            button.addEventListener('click', () => tuneTv(index, 0));
+            tv.nav.push({ element: button, videoId: live.videoId, index });
+            return button;
+        };
+        const children = own.length
+            ? own.map(row)
+            : [tvElement('div', 'ytc-tv-none', liveGuide.loaded ? 'Ninguém que você segue está ao vivo agora.' : 'Procurando canais ao vivo…')];
+        if (groups.length) {
+            children.push(tvElement('div', 'ytc-tv-divider'), tvElement('div', 'ytc-tv-heading', 'Outras lives'));
+            for (const group of groups) {
+                const open = tvGroupOpen(group.name);
+                const header = tvElement('button', `ytc-tv-group${open ? ' is-open' : ''}`);
+                header.type = 'button';
+                header.setAttribute('aria-expanded', String(open));
+                header.append(icon('M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z'), tvElement('span', 'ytc-tv-group-name', group.name), tvElement('span', 'ytc-tv-group-count', String(group.lives.length)));
+                header.addEventListener('click', () => toggleTvGroup(group.name));
+                tv.nav.push({ element: header, group: group.name });
+                children.push(header);
+                if (open) children.push(...group.lives.map(row));
+                else number += group.lives.length;
+            }
+        }
+        tv.list.replaceChildren(...children);
+        const cursor = tv.nav.findIndex(entry => entry.videoId === tv.videoId);
+        if (cursor >= 0 && !tv.nav[tv.cursor]?.group) tv.cursor = cursor;
+        tv.cursor = Math.min(tv.cursor, Math.max(0, tv.nav.length - 1));
+        markTvRows();
+    }
+
+    function markTvRows() {
+        tv.nav.forEach((entry, index) => {
+            const current = Boolean(entry.videoId) && entry.videoId === tv.videoId;
+            entry.element.classList.toggle('is-current', current);
+            if (entry.videoId) entry.element.setAttribute('aria-selected', String(current));
+            entry.element.classList.toggle('is-cursor', index === tv.cursor && tvGuideOpen());
+        });
+        tv.nav[tv.cursor]?.element.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+
+    function moveTvCursor(step) {
+        const count = tv.nav.length;
+        if (!count) return;
+        tv.cursor = (tv.cursor + step + count) % count;
+        markTvRows();
+    }
+
+    // Enter on the list: a row is watched, a group header opens or closes.
+    function pickTvCursor() {
+        const entry = tv.nav[tv.cursor];
+        if (entry?.group) toggleTvGroup(entry.group);
+        else if (entry) tuneTv(entry.index, 0);
+    }
+
+    function tuneTv(index, delay = TV_TUNE_MS) {
+        const list = tvLives().all;
+        if (!tv.root || !list.length) return;
+        const position = (index + list.length) % list.length;
+        const live = list[position];
+        const cursor = tv.nav.findIndex(entry => entry.videoId === live.videoId);
+        if (cursor >= 0) tv.cursor = cursor;
+        if (live.videoId === tv.videoId && tv.frame.src) {
+            markTvRows();
+            return;
+        }
+        tv.videoId = live.videoId;
+        tv.livePending = true;
+        markTvRows();
+        showTvBanner(live, position);
+        tv.veil.replaceChildren(tvImage('', live.avatar));
+        tv.root.classList.add('is-tuning');
+        tvLater('tune', delay, () => {
+            if (!tv.frame) return;
+            let framed = null;
+            try {
+                framed = tv.frame.contentDocument?.getElementById('movie_player');
+            } catch {}
+            if (typeof framed?.loadVideoById === 'function') framed.loadVideoById(live.videoId);
+            else tv.frame.src = `/watch?v=${encodeURIComponent(live.videoId)}`;
+            if (state.tvChat) loadTvChat();
+            waitTvPicture(live.videoId);
+        });
+    }
+
+    // The veil lifts once the new channel's video is actually playing.
+    function waitTvPicture(videoId, tries = 0) {
+        if (!tv.root || tv.videoId !== videoId) return;
+        let ready = false;
+        try {
+            const framed = tv.frame.contentDocument?.getElementById('movie_player');
+            const video = framed?.querySelector('video');
+            ready = framed?.getVideoData?.().video_id === videoId && video?.readyState >= 3 && !video.paused;
+        } catch {}
+        if (ready) keepTvLive();
+        if (ready || tries > 60) tv.root.classList.remove('is-tuning');
+        else tvLater('picture', 150, () => waitTvPicture(videoId, tries + 1));
+    }
+
+    // A live opens a little behind its edge (often where it was last left);
+    // TV mode always shows what is on air now.
+    // The framed watch page loads its own live chat, hidden behind the
+    // player: a second chat streaming for nothing next to ours. Its frame
+    // is emptied (YouTube sets it again on each video, hence the check
+    // from the 1s refresh).
+    function silenceFramedChat() {
+        try {
+            const chat = tv.frame?.contentDocument?.querySelector('ytd-live-chat-frame iframe');
+            if (chat && chat.getAttribute('src') !== 'about:blank') chat.src = 'about:blank';
+        } catch {}
+    }
+
+    // Once per channel and once per resume: the seek itself fires
+    // "playing" again, and the edge check flickers while buffering, so an
+    // unguarded call would keep seeking.
+    function keepTvLive() {
+        if (!tv.livePending) return;
+        try {
+            const framed = tv.frame?.contentDocument?.getElementById('movie_player');
+            if (!framed || framed.classList.contains('ad-showing')) return;
+            tv.livePending = false;
+            if (framed.getVideoData?.().isLive && framed.isAtLiveHead?.() === false) framed.seekToLiveHead?.();
+        } catch {}
+    }
+
+    function showTvBanner(live, position) {
+        const text = tvElement('div', 'ytc-tv-text');
+        const channel = tvElement('div', 'ytc-tv-banner-channel');
+        channel.append(tvElement('span', '', live.channel), tvPill());
+        const hint = tvElement('div', 'ytc-tv-meta');
+        if (live.viewers) hint.append(`${live.viewers} · `);
+        hint.append(tvElement('kbd', '', 'G'), 'lista de canais');
+        text.append(channel, tvElement('div', 'ytc-tv-title', live.title), hint);
+        tv.banner.replaceChildren(tvElement('span', 'ytc-tv-banner-number', String(position + 1)), tvImage('', live.avatar), text);
+        tv.root.classList.add('is-banner');
+        tvLater('banner', TV_BANNER_MS, () => tv.root?.classList.remove('is-banner'));
+    }
+
+    function showTvUi() {
+        if (!tv.root) return;
+        tv.root.classList.add('is-ui');
+        tvLater('ui', TV_UI_MS, () => tv.root?.classList.remove('is-ui'));
+    }
+
+    // The chat opens on "Principais mensagens", and switching it to "Chat
+    // ao vivo" in its menu leaves it empty for a long while (YouTube's own
+    // behaviour). Instead the chat page is read first and the frame opened
+    // straight on the "Chat ao vivo" continuation from that menu, which
+    // comes up already filled. Without one, the plain chat.
+    async function loadTvChat() {
+        const videoId = tv.videoId;
+        if (!videoId || tv.chatFor === videoId) return;
+        tv.chatFor = videoId;
+        let src = `/live_chat?v=${encodeURIComponent(videoId)}&dark_theme=1`;
+        try {
+            const data = parseInitialData(await (await fetch(`/live_chat?v=${encodeURIComponent(videoId)}`, { credentials: 'include' })).text());
+            let items = null;
+            const walk = (node, depth) => {
+                if (items || !node || typeof node !== 'object' || depth > 40) return;
+                if (node.sortFilterSubMenuRenderer) items = node.sortFilterSubMenuRenderer.subMenuItems;
+                else for (const key in node) walk(node[key], depth + 1);
+            };
+            walk(data, 0);
+            const continuation = items?.[1]?.continuation?.reloadContinuationData?.continuation;
+            if (continuation) src = `/live_chat?continuation=${encodeURIComponent(continuation)}&dark_theme=1`;
+        } catch {}
+        if (tv.chat && tv.chatFor === videoId) tv.chat.src = src;
+    }
+
+    // Same pair as the chat toggle in the player bar: outline while hidden,
+    // filled while shown.
+    function syncTvChatToggle() {
+        const button = tv.chatToggle;
+        button.classList.toggle('is-on', state.tvChat);
+        button.setAttribute('aria-pressed', String(state.tvChat));
+        button.querySelector('svg')?.remove();
+        button.prepend(icon(state.tvChat ? ICONS.chatOpen : ICONS.chat));
+    }
+
+    function toggleTvChat() {
+        state.tvChat = !state.tvChat;
+        setSetting('tvChat', state.tvChat);
+        tv.root.classList.toggle('is-chat', state.tvChat);
+        syncTvChatToggle();
+        if (state.tvChat) loadTvChat();
+    }
+
+    function toggleTvGuide() {
+        const open = !tvGuideOpen();
+        tv.root.classList.toggle('is-guide', open);
+        if (open) tv.cursor = Math.max(0, tv.nav.findIndex(entry => entry.videoId === tv.videoId));
+        markTvRows();
+        showTvUi();
+    }
+
+    function toggleTvFullscreen() {
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        else tv.root.requestFullscreen().catch(() => {});
+    }
+
+    // With the list open the arrows browse it and Enter watches; closed,
+    // the arrows zap. Numbers, C, F and Esc work either way.
+    function onTvKey(event) {
+        if (!tv.root || event.ctrlKey || event.metaKey || event.altKey) return;
+        const target = event.composedPath()[0];
+        if (target instanceof Element && target.closest('input, textarea, [contenteditable=""], [contenteditable="true"]')) return;
+        const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+        const open = tvGuideOpen();
+        let handled = true;
+        if (key === 'ArrowDown' || key === 'PageDown') open ? moveTvCursor(1) : tuneTv(tvIndex() + 1);
+        else if (key === 'ArrowUp' || key === 'PageUp') open ? moveTvCursor(-1) : tuneTv(Math.max(0, tvIndex()) - 1);
+        else if (key === 'Enter') open ? pickTvCursor() : toggleTvGuide();
+        else if (key === 'ArrowLeft' && open) toggleTvGuide();
+        else if (key === 'ArrowRight' && !open) toggleTvGuide();
+        else if (key === 'g') toggleTvGuide();
+        else if (key === 'Escape') exitTv();
+        else if (key === 'f') toggleTvFullscreen();
+        else if (key === 'c') toggleTvChat();
+        else if (/^[0-9]$/.test(key)) {
+            // Two digits typed in quick succession make one channel number.
+            tv.digits = (tv.digits + key).slice(-2);
+            tvLater('digits', 1000, () => { tv.digits = ''; });
+            const number = Number(tv.digits);
+            if (number >= 1 && number <= tvLives().all.length) tuneTv(number - 1);
+        } else handled = false;
+        if (handled) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+    }
 
     let settingsTab = 'player';
     const SETTINGS_ICON = 'M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z';
@@ -2539,9 +3897,12 @@
         toggle(where, 'shortsSidebar', 'Menu lateral', { hint: 'O atalho Shorts no menu da esquerda.' });
 
         // Sidebar
-        const sidebarPane = pane('sidebar', 'Menu lateral', LIVE_ICON, 'O que aparece no menu da esquerda.');
-        const subsGroup = group(sidebarPane, 'Inscrições');
-        toggle(subsGroup, 'liveSection', 'Seção Ao vivo', { hint: 'Canais inscritos transmitindo agora, acima de Inscrições.' });
+        const livePane = pane('live', 'Ao vivo', LIVE_ICON, 'A seção no menu da esquerda, o Modo TV e a aba Ao vivo dos canais.');
+        const subsGroup = group(livePane, 'Menu lateral');
+        toggle(subsGroup, 'liveSection', 'Seção Ao vivo', { hint: 'Canais inscritos transmitindo agora, em ordem alfabética, acima de Inscrições.' });
+        toggle(subsGroup, 'liveTv', 'Modo TV', { hint: 'No topo da seção: os canais ao vivo em tela cheia, trocados pelas setas.', needs: ['liveSection'], child: true });
+        const channelGroup = group(livePane, 'Páginas de canal');
+        toggle(channelGroup, 'liveNowFilter', 'Abrir em Transmitindo agora', { hint: 'Na aba Ao vivo, só o que está no ar; o filtro desliga ali mesmo.' });
 
         select(tabs.some(entry => entry.id === settingsTab) ? settingsTab : 'player');
         refreshDependents();
@@ -2824,6 +4185,10 @@
         syncLayout();
         cropBlackBars();
         syncLiveSection();
+        syncLiveFilter();
+        syncLiveHub();
+        syncTvPage();
+        syncTv();
         showOnboarding();
     }
 
@@ -2831,7 +4196,13 @@
     // navigation events, and poll lightly for the player and chat, which
     // mount asynchronously after them.
     // Page classes go first, so shorts never flash on in-app navigation.
-    document.addEventListener('yt-navigate-finish', syncGlobal);
+    document.addEventListener('yt-navigate-finish', () => {
+        syncGlobal();
+        syncLiveFilter();
+    });
+    // TV mode's page hides YouTube's app from the first paint.
+    if (location.pathname === TV_PATH) document.documentElement?.classList.add('ytc-tv-page');
+    document.addEventListener('DOMContentLoaded', syncTvPage);
     syncGlobal();
     for (const type of ['yt-navigate-finish', 'yt-page-data-updated', 'fullscreenchange']) {
         document.addEventListener(type, () => requestAnimationFrame(refresh));
