@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Enhancer
 // @namespace    youtube-cinema
-// @version      1.2.0
+// @version      1.2.1
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/youtube.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/youtube.user.js
 // @author       oguilhermelima
@@ -128,7 +128,8 @@
         // live in the player settings menu.
         boostLevel: Number(getSetting('boostLevel', 2)) || 2,
         autoBoost: Boolean(getSetting('autoBoost', false)),
-        boostOn: Boolean(getSetting('autoBoost', false)),
+        // Left as last switched, across reloads.
+        boostOn: Boolean(getSetting('boostOn', getSetting('autoBoost', false))),
         defaultVolumeOn: Boolean(getSetting('defaultVolumeOn', false)),
         defaultVolume: Number(getSetting('defaultVolume', 50)),
         wheelVolume: Boolean(getSetting('wheelVolume', false)),
@@ -2012,6 +2013,7 @@
 
     function setBoostOn(on) {
         state.boostOn = on;
+        setSetting('boostOn', on);
         unlockAudio();
         applyBoost();
         syncBarControls();
@@ -2084,8 +2086,11 @@
         const want = ref ? inkSize(ref) : 0;
         if (!svg || !want) return;
         // absolute, from the glyph's own geometry: calling it again never compounds
+        // By area, not by the longer side: the wide, short boost glyph
+        // (26x18) fitted by its width came out a third shorter than the
+        // square gear beside it.
         const box = svg.getBBox(), vb = svg.viewBox.baseVal;
-        const perUnit = want / Math.max(box.width, box.height);
+        const perUnit = want / Math.sqrt(box.width * box.height);
         if (!Number.isFinite(perUnit) || !vb?.width) return;
         const w = `${(vb.width * perUnit).toFixed(1)}px`, h = `${(vb.height * perUnit).toFixed(1)}px`;
         if (svg.style.width === w && svg.style.height === h) return;
@@ -2309,12 +2314,16 @@
             list.prepend(playerItem, audioItem);
             changed = true;
         }
-        // The menu sized itself to its items when it opened.
-        const panel = list.closest('.ytp-panel');
-        if (changed && menu.offsetParent && panel) {
-            const height = `${list.scrollHeight}px`;
-            menu.style.height = height;
-            panel.style.height = height;
+        // The menu sized itself to its items when it opened, with speed,
+        // captions and quality still in and ours not yet. Closed and opened
+        // again out of sight, it sizes itself as on every later open.
+        const host = player();
+        const button = host?.querySelector('.ytp-settings-button');
+        if (changed && menu.offsetParent && button && !host.classList.contains('ytc-jumping')) {
+            host.classList.add('ytc-jumping');
+            button.click();
+            button.click();
+            requestAnimationFrame(() => requestAnimationFrame(() => host.classList.remove('ytc-jumping')));
         }
     }
 
@@ -2702,18 +2711,23 @@
     //  there on the next page load before the first fetch returns.
     // ---------------------------------------------------------------------
     // ytInitialData from a YouTube page's HTML.
-    function parseInitialData(html) {
-        // Pages set it as "var ytInitialData = "; the chat page as
-        // 'window["ytInitialData"] = '.
-        const marker = ['var ytInitialData = ', 'window["ytInitialData"] = '].find(text => html.includes(text));
+    // Pages set it as "var ytInitialData = "; the chat page as
+    // 'window["ytInitialData"] = '. Other markers read another object the
+    // same way, such as the watch page's ytInitialPlayerResponse.
+    function parseInitialData(html, markers = ['var ytInitialData = ', 'window["ytInitialData"] = ']) {
+        const marker = markers.find(text => html.includes(text));
         if (!marker) return null;
         const from = html.indexOf(marker) + marker.length;
-        const end = html.indexOf(';</script>', from);
-        try {
-            return JSON.parse(html.slice(from, end));
-        } catch {
-            return null;
+        // Most close the script right after it; the watch page's player
+        // response goes on with "var meta = " in the same script.
+        for (const close of [';</script>', ';var meta = ']) {
+            const end = html.indexOf(close, from);
+            if (end < 0) continue;
+            try {
+                return JSON.parse(html.slice(from, end));
+            } catch {}
         }
+        return null;
     }
 
     const ytText = value => value?.simpleText ?? value?.runs?.map(run => run.text).join('') ?? value?.content ?? '';
@@ -2829,7 +2843,11 @@
     // channel's own lives by title.
     const byChannel = (a, b) => a.channel.localeCompare(b.channel, 'pt-BR', { sensitivity: 'base' }) ||
         (a.title ?? '').localeCompare(b.title ?? '', 'pt-BR', { sensitivity: 'base' });
-    const liveGuide = { list: [], loaded: false, fetchedAt: 0, loading: false, section: null, renderedKey: '', expanded: false };
+    const liveGuide = { list: [], loaded: false, fetchedAt: 0, loading: false, section: null, renderedKey: '', expanded: false, onAir: [], onAirKey: '', guidePending: false, asked: [] };
+    // The guide is drawn seconds after the page; the channels it last
+    // marked live are kept so the first refresh already reads them.
+    liveGuide.onAir = getSetting('liveOnAir', []);
+    liveGuide.onAirKey = liveGuide.onAir.map(channel => channel.url).join(',');
     {
         const cached = getSetting('liveCache', null);
         if (cached && Date.now() - cached.at < LIVE_CACHE_MS && Array.isArray(cached.list)) {
@@ -2843,15 +2861,102 @@
         liveGuide.loading = true;
         liveGuide.fetchedAt = Date.now();
         try {
-            const response = await fetch('/feed/subscriptions', { credentials: 'include' });
-            const lives = response.ok ? parseLiveStreams(await response.text()) : null;
+            // The channels the feed did not cover last time are read from
+            // their /live address meanwhile, not after it.
+            const [lives, found] = await Promise.all([
+                fetch('/feed/subscriptions', { credentials: 'include' })
+                    .then(async response => (response.ok ? parseLiveStreams(await response.text()) : null)),
+                guideLives(liveGuide.list.filter(live => !live.fromGuide)),
+            ]);
             if (lives) {
-                liveGuide.list = lives.sort(byChannel);
-                setSetting('liveCache', { at: Date.now(), list: lives });
+                const asked = liveGuide.asked;
+                liveGuide.list = withGuideLives(lives, found).sort(byChannel);
+                // One the feed was thought to cover and now leaves out.
+                if (liveGuide.onAir.some(channel => !coveredBy(liveGuide.list, channel) && !asked.includes(channel.url))) liveGuide.guidePending = true;
+                setSetting('liveCache', { at: Date.now(), list: liveGuide.list });
             }
         } catch {} finally {
             liveGuide.loading = false;
             liveGuide.loaded = true;
+        }
+        syncTv();
+        // The guide marked a channel live while this ran, too late for it.
+        if (liveGuide.guidePending) fetchGuideLives();
+    }
+
+    // The subscriptions page lists uploads by date, so a stream on air for
+    // hours can sit past its first page. The guide still marks its channel
+    // live (the red icon in Inscrições, line-end-style="badge"); such a
+    // channel's stream is read from its /live address.
+    function guideLiveChannels(section) {
+        return [...section.querySelectorAll('ytd-guide-entry-renderer[line-end-style="badge"] a#endpoint')]
+            .map(link => ({ url: link.getAttribute('href') ?? '', name: link.title, avatar: link.querySelector('img')?.src ?? '' }))
+            .filter(channel => /^\/(@|channel\/)/.test(channel.url));
+    }
+
+    const findNode = (node, key, depth = 0) => {
+        if (!node || typeof node !== 'object' || depth > 40) return null;
+        if (node[key]) return node[key];
+        for (const value of Object.values(node)) {
+            const found = findNode(value, key, depth + 1);
+            if (found) return found;
+        }
+        return null;
+    };
+
+    async function liveOnChannel(channel) {
+        try {
+            const response = await fetch(`${channel.url}/live`, { credentials: 'include' });
+            if (!response.ok) return null;
+            const html = await response.text();
+            const details = parseInitialData(html, ['var ytInitialPlayerResponse = '])?.videoDetails;
+            if (!details?.isLive) return null;
+            const data = parseInitialData(html);
+            const views = findNode(data, 'videoViewCountRenderer');
+            // The guide's picture can still be unloaded; the page's owner
+            // row has one too.
+            const owner = findNode(data, 'videoOwnerRenderer')?.thumbnail?.thumbnails;
+            return {
+                videoId: details.videoId,
+                title: details.title ?? '',
+                channel: details.author || channel.name,
+                channelUrl: channel.url,
+                avatar: owner?.[0]?.url || channel.avatar,
+                fromGuide: true,
+                viewers: ytText(views?.viewCount),
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    const coveredBy = (lives, channel) => lives.some(live => live.channelUrl === channel.url || live.channel === channel.name);
+
+    // The streams of the channels marked live that these lives leave out.
+    async function guideLives(lives) {
+        const missing = liveGuide.onAir.filter(channel => !coveredBy(lives, channel)).slice(0, 8);
+        liveGuide.asked = missing.map(channel => channel.url);
+        return (await Promise.all(missing.map(liveOnChannel))).filter(Boolean);
+    }
+
+    function withGuideLives(lives, found) {
+        const extra = found.filter(live => !coveredBy(lives, { url: live.channelUrl, name: live.channel }) && !lives.some(other => other.videoId === live.videoId));
+        return extra.length ? [...lives, ...extra] : lives;
+    }
+
+    // A channel newly marked live in the guide, between two refreshes.
+    async function fetchGuideLives() {
+        liveGuide.guidePending = liveGuide.loading;
+        if (liveGuide.loading || document.hidden) return;
+        liveGuide.loading = true;
+        try {
+            const list = withGuideLives(liveGuide.list, await guideLives(liveGuide.list));
+            if (list !== liveGuide.list) {
+                liveGuide.list = list.sort(byChannel);
+                setSetting('liveCache', { at: Date.now(), list: liveGuide.list });
+            }
+        } catch {} finally {
+            liveGuide.loading = false;
         }
         syncTv();
     }
@@ -2930,6 +3035,14 @@
             liveGuide.section?.remove();
             shown(false);
             return;
+        }
+        const onAir = guideLiveChannels(subs);
+        const onAirKey = onAir.map(channel => channel.url).join(',');
+        if (onAirKey !== liveGuide.onAirKey) {
+            liveGuide.onAir = onAir;
+            liveGuide.onAirKey = onAirKey;
+            setSetting('liveOnAir', onAir);
+            if (liveGuide.loaded) fetchGuideLives();
         }
         if (Date.now() - liveGuide.fetchedAt > LIVE_REFRESH_MS) fetchLiveStreams();
         if (liveGuide.loaded && !liveGuide.list.length) {
