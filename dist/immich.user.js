@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Immich — YouTube-Style Player, Cards & Album Sidebar
 // @namespace    immich-player
-// @version      2.2.0
+// @version      2.3.0
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/immich.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/immich.user.js
 // @author       oguilhermelima
@@ -133,6 +133,7 @@
             chevronDown: 'M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z',
             dots: 'M12,16A2,2 0 0,1 14,18A2,2 0 0,1 12,20A2,2 0 0,1 10,18A2,2 0 0,1 12,16M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10M12,4A2,2 0 0,1 14,6A2,2 0 0,1 12,8A2,2 0 0,1 10,6A2,2 0 0,1 12,4Z',
             grid: 'M3,11H11V3H3M3,21H11V13H3M13,21H21V13H13M13,3V11H21V3',
+            gridSmall: 'M3,9H7V5H3V9M3,14H7V10H3V14M8,14H12V10H8V14M13,14H17V10H13V14M8,9H12V5H8V9M13,5V9H17V5H13M18,14H22V10H18V14M3,19H7V15H3V19M8,19H12V15H8V19M13,19H17V15H13V19M18,19H22V15H18V19M18,5V9H22V5H18Z',
             groupBy: 'M3,4H21V8H3V4M3,10H21V14H3V10M3,16H21V20H3V16Z',
             sortBy: 'M18,21L14,17H17V7H14L18,3L22,7H19V17H22M2,19V17H12V19M2,13V11H9V13M2,7V5H6V7H2Z',
             pencil: 'M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z',
@@ -161,6 +162,12 @@
             cardViews: {
                 album: Boolean(getSetting('cardsAlbum', true)),
                 home: Boolean(getSetting('cardsHome', false)),
+            },
+            // How our view lays items out, per page type: cards with titles,
+            // or a plain thumbnail grid.
+            cardLayouts: {
+                album: getSetting('cardsLayoutAlbum', 'cards') === 'grid' ? 'grid' : 'cards',
+                home: getSetting('cardsLayoutHome', 'cards') === 'grid' ? 'grid' : 'cards',
             },
             // Group and order of the open card view, read per page type
             // when it opens (see CARD_ORDER_DEFAULTS).
@@ -196,6 +203,8 @@
             if (localStorage.getItem(ORIGINAL_PREF) === null) localStorage.setItem(ORIGINAL_PREF, 'true');
         } catch {}
 
+        const transcodedUrl = src => src.replace(/\/original(\?|$)/, '/video/playback$1').replace(/([?&])size=original&?/, '$1');
+
         // An original the browser cannot decode (some HEVC/ProRes files) falls
         // back to the transcoded stream instead of showing an error.
         document.addEventListener('error', event => {
@@ -204,7 +213,7 @@
             const src = video.getAttribute('src') || '';
             if (!src.includes('/original')) return;
             const time = video.currentTime;
-            video.setAttribute('src', src.replace(/\/original(\?|$)/, '/video/playback$1').replace(/([?&])size=original&?/, '$1'));
+            video.setAttribute('src', transcodedUrl(src));
             video.addEventListener('loadedmetadata', () => { video.currentTime = time; }, { once: true });
             video.load();
             showHud('Original não suportado — usando transcodificado');
@@ -696,6 +705,40 @@
             }
             .iv-marks-add:hover { filter: brightness(1.08); }
             ${PLAYER} div:has(> immich-time-range) { position: relative; }
+            .iv-preview {
+                position: absolute;
+                left: 0;
+                z-index: 3;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 4px;
+                pointer-events: none;
+                will-change: transform;
+            }
+            .iv-preview[hidden] { display: none; }
+            /* Our preview shows the time; media-chrome's own box would repeat it. */
+            ${PLAYER} immich-time-range::part(preview-box),
+            ${PLAYER} immich-time-range::part(arrow) { display: none; }
+            .iv-preview-frame {
+                display: block;
+                border: 2px solid #fff;
+                border-radius: 8px;
+                background: #000;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+            }
+            .iv-preview-frame:not(.is-ready) { visibility: hidden; }
+            .iv-preview-label,
+            .iv-preview-time {
+                max-width: 100%;
+                overflow: hidden;
+                color: #fff;
+                font: 600 12px/1.3 system-ui, sans-serif;
+                text-overflow: ellipsis;
+                text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+                white-space: nowrap;
+            }
+            .iv-preview-time { font-size: 13px; font-variant-numeric: tabular-nums; }
             .iv-mark-ticks {
                 position: absolute;
                 z-index: 2;
@@ -981,6 +1024,23 @@
                 inset: 0;
                 background: rgba(173, 203, 250, 0.18);
             }
+            /* The open item gets YouTube's "now playing" label. */
+            .iv-item.is-current::before {
+                content: 'Reproduzindo';
+                position: absolute;
+                z-index: 1;
+                top: 6px;
+                left: 6px;
+                padding: 3px 6px;
+                border-radius: 4px;
+                background: var(--iv-accent);
+                color: var(--iv-accent-text);
+                font: 700 10px/1 system-ui, sans-serif;
+                letter-spacing: 0.02em;
+                text-transform: uppercase;
+            }
+            .iv-item.is-current[data-video="false"]::before { content: 'Aberta'; }
+            #iv-sidebar.is-list .iv-item.is-current::before { top: 10px; left: 10px; }
             .iv-item-badge {
                 position: absolute;
                 right: 4px;
@@ -1163,6 +1223,13 @@
                 text-overflow: ellipsis;
                 white-space: nowrap;
             }
+            /* Grid layout: the same justified rows, denser, thumbnails only. */
+            #iv-cards.is-grid .iv-cards-grid { --iv-row-h: 200px; gap: 4px; }
+            #iv-cards.is-grid .iv-card { padding: 0; border-radius: 0; }
+            #iv-cards.is-grid .iv-card:hover { background: transparent; }
+            #iv-cards.is-grid .iv-card:hover img { filter: brightness(1.08); }
+            #iv-cards.is-grid .iv-card-thumb { border-radius: 4px; }
+            #iv-cards.is-grid :is(.iv-card-title, .iv-card-meta, .iv-card-place) { display: none; }
             #iv-cards .iv-status button {
                 margin-top: 8px;
                 padding: 6px 14px;
@@ -1371,6 +1438,7 @@
                 .iv-card-title { margin-top: 6px; font-size: 13px; }
                 .iv-card-meta,
                 .iv-card-place { font-size: 12px; }
+                #iv-cards.is-grid .iv-cards-grid { --iv-row-h: 110px; gap: 2px; }
             }
         `);
 
@@ -1597,8 +1665,8 @@
             // level, another turns it off; Shift+↑/↓ fine-tunes it.
             const boost = controlButton('iv-boost', 'Amplificador', ICONS.boost, () => setBoost(state.boost > 1 ? 1 : BOOST_MAX));
             boost.insertAdjacentHTML('beforeend', '<span class="iv-badge is-on">ON</span>');
-            const previous = controlButton('iv-previous', 'Anterior', ICONS.previous, () => assetNavButton('previous')?.click());
-            const next = controlButton('iv-next', 'Próximo', ICONS.next, () => assetNavButton('next')?.click());
+            const previous = controlButton('iv-previous', 'Anterior', ICONS.previous, () => stepAsset('previous'));
+            const next = controlButton('iv-next', 'Próximo', ICONS.next, () => stepAsset('next'));
             const loop = controlButton('iv-loop', 'Repetir', ICONS.loop, toggleLoop);
             loop.insertAdjacentHTML('beforeend', '<span class="iv-badge is-on">ON</span>');
             const autoplay = controlButton('iv-autoplay', 'Autoplay', '', toggleAutoplay);
@@ -1608,6 +1676,7 @@
             // Placement comes from the CSS order rules, so these only need to sit
             // next to static nodes, away from Svelte's block anchors.
             timeDisplay.after(loop, previous, next, autoplay, ...buildMarkControls(controller), boost, speed, pip);
+            buildPreview(controller);
             // media-chrome hides the controls 2s after the last input, paused
             // or not; on a touch screen a tap is the only input, so they
             // flashed. Keep them while paused, and longer after a tap.
@@ -1646,10 +1715,64 @@
             return document.querySelector(`${VIEWER} > div.${column}.row-span-full button`);
         }
 
+        // Inside an album, previous and next follow the sidebar instead: the
+        // album page's order, narrowed by the sidebar's filter.
+        let immichStepping = false;
+
+        function immichStep(direction) {
+            immichStepping = true;
+            try {
+                assetNavButton(direction)?.click();
+            } finally {
+                immichStepping = false;
+            }
+        }
+
+        async function albumNeighbor(direction, { videosOnly = false } = {}) {
+            const match = ALBUM_ASSET_RE.exec(location.pathname);
+            if (!match) return null;
+            const [, albumId, assetId] = match;
+            const album = await albumData(albumId);
+            const items = orderedAlbumItems(album.items, albumOrder());
+            const index = items.findIndex(item => item.id === assetId);
+            if (index < 0) return null;
+            const ahead = direction === 'next' ? items.slice(index + 1) : items.slice(0, index).reverse();
+            const accepts = item => videosOnly
+                ? item.isVideo
+                : state.filter === 'all' || (state.filter === 'video') === item.isVideo;
+            return { albumId, item: ahead.find(accepts) ?? null };
+        }
+
+        async function stepAsset(direction) {
+            try {
+                const step = await albumNeighbor(direction);
+                if (step) {
+                    if (step.item) navigateTo(`/albums/${step.albumId}/photos/${step.item.id}`);
+                    else showHud(direction === 'next' ? 'Fim do álbum' : 'Início do álbum');
+                    return;
+                }
+            } catch (error) {
+                console.warn('[immich-player] could not read the album order', error);
+            }
+            immichStep(direction);
+        }
+
+        // Immich's own arrows in the viewer, too.
+        document.addEventListener('click', event => {
+            if (immichStepping || !ALBUM_ASSET_RE.test(location.pathname)) return;
+            for (const direction of ['previous', 'next']) {
+                if (!assetNavButton(direction)?.contains(event.target)) continue;
+                consume(event);
+                stepAsset(direction);
+                return;
+            }
+        }, true);
+
         function syncPlayerControls() {
+            const inAlbum = ALBUM_ASSET_RE.test(location.pathname);
             for (const direction of ['previous', 'next']) {
                 const button = document.querySelector(`${PLAYER} .iv-${direction}`);
-                if (button) button.disabled = !assetNavButton(direction);
+                if (button) button.disabled = !inAlbum && !assetNavButton(direction);
             }
             // Svelte re-applies its own loop value whenever the player re-renders.
             const video = activeVideo();
@@ -1713,26 +1836,21 @@
         // the album page's order, so photos in between are skipped. Elsewhere,
         // fall back to the next asset.
         async function playNextVideo() {
-            const match = ALBUM_ASSET_RE.exec(location.pathname);
-            if (match) {
-                const [, albumId, assetId] = match;
-                try {
-                    const album = await albumData(albumId);
-                    const items = orderedAlbumItems(album.items, albumOrder());
-                    const index = items.findIndex(item => item.id === assetId);
-                    const next = items.slice(index + 1).find(item => item.isVideo);
-                    if (!next) {
+            try {
+                const step = await albumNeighbor('next', { videosOnly: true });
+                if (step) {
+                    if (!step.item) {
                         showHud('Fim dos vídeos do álbum');
                         return;
                     }
                     showHud('Próximo vídeo');
-                    navigateTo(`/albums/${albumId}/photos/${next.id}`);
+                    navigateTo(`/albums/${step.albumId}/photos/${step.item.id}`);
                     return;
-                } catch (error) {
-                    console.warn('[immich-player] autoplay could not read the album', error);
                 }
+            } catch (error) {
+                console.warn('[immich-player] autoplay could not read the album', error);
             }
-            assetNavButton('next')?.click();
+            immichStep('next');
         }
 
         // SvelteKit routes clicks on same-origin anchors client-side.
@@ -2121,10 +2239,214 @@
             }
             const video = controller.querySelector('[slot="media"]');
             video?.addEventListener('durationchange', () => renderMarks());
-            video?.addEventListener('timeupdate', () => markCurrent(root));
+            video?.addEventListener('timeupdate', () => markCurrentMark(root));
 
             marksControls.push({ root, ticks, range });
             return [add, root];
+        }
+
+        // Hover preview over the progress bar. Immich generates no storyboard,
+        // so a hidden, muted copy of the transcoded video seeks to the time
+        // under the pointer and its frame is drawn into a canvas. Kept cheap:
+        // pointer moves are handled once per animation frame with all layout
+        // reads before any write, one seek runs at a time and the latest
+        // wanted time wins, fastSeek (nearest keyframe) is used where the
+        // browser has it, and frames are cached per PREVIEW_STEP seconds. The
+        // copy loads its metadata when the pointer enters the bar and is
+        // released with the player. On touch it follows the finger while
+        // dragging.
+        const PREVIEW_STEP = 2;
+        const PREVIEW_CACHE = 200;
+
+        function buildPreview(controller) {
+            const range = controller.querySelector('immich-time-range');
+            const video = controller.querySelector('[slot="media"]');
+            if (!range || !video) return;
+            const box = document.createElement('div');
+            box.className = 'iv-preview';
+            box.hidden = true;
+            box.innerHTML = '<canvas class="iv-preview-frame"></canvas><span class="iv-preview-label"></span><span class="iv-preview-time"></span>';
+            range.parentElement.append(box);
+            const canvas = box.querySelector('canvas');
+            const context = canvas.getContext('2d', { alpha: false });
+            const label = box.querySelector('.iv-preview-label');
+            const time = box.querySelector('.iv-preview-time');
+            const listeners = new AbortController();
+            const { signal } = listeners;
+            const frames = new Map();
+            let probe = null;
+            let shown = null;
+            let wanted = null;
+            let seeking = null;
+            let busy = false;
+            let dragging = false;
+            let pending = null;
+            let frameRequest = 0;
+
+            function release() {
+                listeners.abort();
+                cancelAnimationFrame(frameRequest);
+                frames.clear();
+                if (probe) {
+                    probe.removeAttribute('src');
+                    probe.load();
+                    probe = null;
+                }
+            }
+
+            // The copy, created on first use and pointed at the current video.
+            function ready() {
+                const src = transcodedUrl(video.currentSrc || video.getAttribute('src') || '');
+                if (!src) return false;
+                if (!probe) {
+                    probe = document.createElement('video');
+                    probe.muted = true;
+                    probe.playsInline = true;
+                    probe.preload = 'metadata';
+                    probe.addEventListener('seeked', captured, { signal });
+                    probe.addEventListener('error', () => { busy = false; }, { signal });
+                }
+                if (probe.dataset.src !== src) {
+                    probe.dataset.src = src;
+                    probe.src = src;
+                    frames.clear();
+                    seeking = null;
+                    busy = false;
+                }
+                return true;
+            }
+
+            function paint(frame) {
+                context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+                canvas.classList.add('is-ready');
+            }
+
+            function captured() {
+                if (seeking === null) return;
+                const frame = document.createElement('canvas');
+                frame.width = canvas.width;
+                frame.height = canvas.height;
+                frame.getContext('2d', { alpha: false }).drawImage(probe, 0, 0, frame.width, frame.height);
+                frames.set(seeking, frame);
+                if (frames.size > PREVIEW_CACHE) frames.delete(frames.keys().next().value);
+                if (seeking === shown) paint(frame);
+                seeking = null;
+                busy = false;
+                seekNext();
+            }
+
+            function seekNext() {
+                if (busy || wanted === null || box.hidden || !ready()) return;
+                busy = true;
+                if (probe.readyState < 1) {
+                    probe.addEventListener('loadedmetadata', () => {
+                        busy = false;
+                        seekNext();
+                    }, { once: true, signal });
+                    return;
+                }
+                const step = wanted;
+                wanted = null;
+                if (frames.has(step)) {
+                    busy = false;
+                    if (step === shown) paint(frames.get(step));
+                    return;
+                }
+                seeking = step;
+                // The middle of the step stands for all of it.
+                const at = Math.min((step + 0.5) * PREVIEW_STEP, Math.max(0, probe.duration - 0.1));
+                if (typeof probe.fastSeek === 'function') probe.fastSeek(at);
+                else probe.currentTime = at;
+            }
+
+            function update() {
+                frameRequest = 0;
+                if (!range.isConnected) {
+                    release();
+                    return;
+                }
+                const duration = video.duration;
+                if (!pending || !Number.isFinite(duration) || duration <= 0) return;
+                // Reads first. The track sits 8px in from the range's sides,
+                // as placeTicks assumes.
+                const rect = range.getBoundingClientRect();
+                const parent = box.parentElement.getBoundingClientRect();
+                const fraction = Math.min(1, Math.max(0, (pending.clientX - rect.left - 8) / Math.max(1, rect.width - 16)));
+                const at = fraction * duration;
+                const ratio = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
+                const height = ratio >= 1 ? 90 : 120;
+                const width = Math.round(Math.min(200, height * ratio));
+
+                if (canvas.width !== width || canvas.height !== height) {
+                    canvas.width = width;
+                    canvas.height = height;
+                    canvas.classList.remove('is-ready');
+                    frames.clear();
+                    shown = null;
+                }
+                const mark = marks.list.findLast(item => item.end
+                    ? item.t <= at && at <= item.end
+                    : Math.abs(item.t - at) <= duration * 0.006);
+                const text = mark ? markLabel(mark, marks.list.indexOf(mark)) : '';
+                if (label.textContent !== text) label.textContent = text;
+                label.hidden = !text;
+                time.textContent = formatMarkTime(at);
+                // A fixed width (the frame plus its border) places the box
+                // without measuring it.
+                const half = (width + 4) / 2;
+                const x = Math.min(parent.width - half - 4, Math.max(half + 4, pending.clientX - parent.left));
+                box.style.width = `${width + 4}px`;
+                box.style.bottom = `${parent.bottom - rect.top + 4}px`;
+                box.style.transform = `translateX(${x - half}px)`;
+                box.hidden = false;
+
+                const step = Math.floor(at / PREVIEW_STEP);
+                if (step === shown) return;
+                shown = step;
+                if (frames.has(step)) {
+                    paint(frames.get(step));
+                } else {
+                    wanted = step;
+                    seekNext();
+                }
+            }
+
+            function show(event) {
+                pending = event;
+                frameRequest ||= requestAnimationFrame(update);
+            }
+
+            function hide() {
+                box.hidden = true;
+                pending = null;
+                shown = null;
+                wanted = null;
+            }
+
+            range.addEventListener('pointerenter', ready, { signal });
+            range.addEventListener('pointerdown', event => {
+                dragging = true;
+                show(event);
+            }, { signal });
+            range.addEventListener('pointermove', event => {
+                if (event.pointerType === 'mouse' || dragging) show(event);
+            }, { signal });
+            range.addEventListener('pointerleave', () => {
+                if (!dragging) hide();
+            }, { signal });
+            window.addEventListener('pointerup', () => {
+                if (!range.isConnected) {
+                    release();
+                    return;
+                }
+                if (!dragging) return;
+                dragging = false;
+                if (!range.matches(':hover')) hide();
+            }, { signal });
+            window.addEventListener('pointercancel', () => {
+                dragging = false;
+                hide();
+            }, { signal });
         }
 
         function placeTicks(range, ticks) {
@@ -2133,7 +2455,7 @@
             ticks.style.top = `${range.offsetTop + 8}px`;
         }
 
-        function markCurrent(root) {
+        function markCurrentMark(root) {
             if (!root.classList.contains('is-open')) return;
             const now = activeVideo()?.currentTime ?? 0;
             const current = marks.list.findLastIndex(mark => mark.t <= now + 0.05 && (!mark.end || now <= mark.end));
@@ -2178,7 +2500,7 @@
                     }));
                 }
                 list.classList.toggle('has-range', marks.list.some(mark => mark.end));
-                markCurrent(root);
+                markCurrentMark(root);
 
                 if (range) placeTicks(range, ticks);
                 ticks.replaceChildren(...(duration ? marks.list.map((mark, index) => {
@@ -2499,9 +2821,13 @@
             if (event.ctrlKey || event.metaKey || event.altKey || isTyping(event.target)) return;
             const video = activeVideo();
             if (!video) {
-                if (event.key === 'b' && document.documentElement.classList.contains('iv-album-viewer')) {
+                const inAlbumViewer = document.documentElement.classList.contains('iv-album-viewer');
+                if (event.key === 'b' && inAlbumViewer) {
                     consume(event);
                     toggleSidebar();
+                } else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !event.shiftKey && inAlbumViewer) {
+                    consume(event);
+                    stepAsset(event.key === 'ArrowRight' ? 'next' : 'previous');
                 }
                 return;
             }
@@ -2719,15 +3045,13 @@
                 if (albumId) syncSidebar();
             };
             if (chip.dataset.pick === 'view') {
-                const current = state.cardViews.album ? 'cards' : 'grid';
+                const current = viewType('album');
                 openPopup(chip, Object.entries(CARD_VIEW_TYPES).map(([value, type]) => ({
                     label: type.label,
                     icon: type.icon,
                     checked: value === current,
                     onClick: () => {
-                        state.cardViews.album = value === 'cards';
-                        setSetting('cardsAlbum', state.cardViews.album);
-                        syncCards();
+                        setViewType('album', value);
                         rerender();
                     },
                 })));
@@ -2775,14 +3099,19 @@
             }
         }
 
-        function markCurrent(assetId) {
+        // Scrolled into view only when it changes, so browsing the list is
+        // not pulled back on every sync.
+        let markedAsset = null;
+
+        function markCurrent(assetId, { scroll = assetId !== markedAsset } = {}) {
+            markedAsset = assetId;
             let current = null;
             for (const item of sidebar.querySelectorAll('.iv-item')) {
                 const isCurrent = item.dataset.id === assetId;
                 item.classList.toggle('is-current', isCurrent);
                 if (isCurrent) current = item;
             }
-            current?.scrollIntoView({ block: 'nearest' });
+            if (scroll) current?.scrollIntoView({ block: 'center' });
         }
 
         async function renderAlbum(albumId, assetId) {
@@ -2811,12 +3140,12 @@
                 `${album.items.length} itens · ${videos} vídeos · ${album.items.length - videos} fotos`;
 
             const order = albumOrder();
-            const list = Boolean(state.cardViews.album);
+            const type = CARD_VIEW_TYPES[viewType('album')];
+            const list = viewType('album') === 'cards';
             sidebar.classList.toggle('is-list', list);
-            const viewType = CARD_VIEW_TYPES[list ? 'cards' : 'grid'];
             const viewChip = sidebar.querySelector('[data-pick="view"]');
-            viewChip.querySelector('.iv-chip-icon').innerHTML = icon(viewType.icon);
-            viewChip.title = `Visualização: ${viewType.label}`;
+            viewChip.querySelector('.iv-chip-icon').innerHTML = icon(type.icon);
+            viewChip.title = `Visualização: ${type.label}`;
             sidebar.querySelector('[data-pick="group"] .iv-chip-value').textContent = CARD_GROUPS[order.group];
             sidebar.querySelector('[data-pick="sort"] .iv-chip-value').textContent = CARD_SORTS[order.sort];
             const fragment = document.createDocumentFragment();
@@ -2880,7 +3209,7 @@
             grid.replaceChildren(fragment);
             if (!album.items.length) grid.innerHTML = '<div class="iv-status">Álbum vazio.</div>';
             applyFilter();
-            markCurrent(assetId);
+            markCurrent(ALBUM_ASSET_RE.exec(location.pathname)?.[2] ?? assetId, { scroll: true });
         }
 
         function syncSidebar() {
@@ -2896,8 +3225,8 @@
 
             const [, albumId, assetId] = match;
             // The album's view type also picks the sidebar's: a YouTube-style
-            // list beside the card view, thumbnails beside Immich's grid.
-            const list = Boolean(state.cardViews.album);
+            // list beside the cards, thumbnails beside either grid.
+            const list = viewType('album') === 'cards';
             if (state.renderedAlbum !== albumId || sidebar.classList.contains('is-list') !== list) renderAlbum(albumId, assetId);
             else markCurrent(assetId);
         }
@@ -2996,7 +3325,9 @@
             }
             if (button.parentElement !== host) host.prepend(button);
             const on = state.cardViews[context.view];
-            const label = on ? 'Voltar à grade do Immich' : 'Mostrar título, data e duração';
+            const label = on
+                ? 'Voltar à grade do Immich'
+                : state.cardLayouts[context.view] === 'grid' ? 'Mostrar grade com agrupamento e ordem' : 'Mostrar título, data e duração';
             button.classList.toggle('is-active', on);
             button.setAttribute('aria-pressed', String(on));
             button.title = label;
@@ -3416,10 +3747,29 @@
         //  confirmations still run. They are told apart by icon, which does
         //  not change with the interface language.
         // ---------------------------------------------------------------------
+        // Cards and grid are layouts of our view, so the grouping, order and
+        // actions stay; "immich" turns our view off for Immich's own grid.
         const CARD_VIEW_TYPES = {
             cards: { label: 'Cards com título', short: 'Cards', icon: ICONS.cards },
-            grid: { label: 'Grade do Immich', short: 'Grade', icon: ICONS.grid },
+            grid: { label: 'Grade', short: 'Grade', icon: ICONS.gridSmall },
+            immich: { label: 'Grade do Immich', short: 'Immich', icon: ICONS.grid },
         };
+
+        function viewType(type) {
+            return state.cardViews[type] ? state.cardLayouts[type] : 'immich';
+        }
+
+        function setViewType(type, value) {
+            const suffix = type === 'album' ? 'Album' : 'Home';
+            state.cardViews[type] = value !== 'immich';
+            setSetting(`cards${suffix}`, state.cardViews[type]);
+            if (value !== 'immich') {
+                state.cardLayouts[type] = value;
+                setSetting(`cardsLayout${suffix}`, value);
+            }
+            if (cards) syncCardsBar(cards);
+            syncCards();
+        }
         const ALBUM_ACTIONS = {
             add: { prefix: 'M13 19C13 19.7' },
             share: { prefix: 'M18 16.08' },
@@ -3486,6 +3836,13 @@
 
         function syncCardsBar(view) {
             const bar = view.root.querySelector('.iv-cards-bar');
+            const layout = state.cardLayouts[view.type];
+            const type = CARD_VIEW_TYPES[layout];
+            view.root.classList.toggle('is-grid', layout === 'grid');
+            const chip = bar.querySelector('[data-pick="view"]');
+            chip.querySelector('svg').outerHTML = icon(type.icon);
+            chip.querySelector('.iv-chip-value').textContent = type.short;
+            chip.title = `Visualização: ${type.label}`;
             bar.querySelector('[data-pick="group"] .iv-chip-value').textContent = CARD_GROUPS[state.cardGroup];
             bar.querySelector('[data-pick="sort"] .iv-chip-value').textContent = CARD_SORTS[state.cardSort];
         }
@@ -3517,12 +3874,10 @@
             }));
             switch (control.dataset.pick ?? control.dataset.action) {
                 case 'view':
-                    openPopup(control, choose(CARD_VIEW_TYPES, 'cards', value => {
-                        if (value !== 'grid') return;
-                        const type = cardContext()?.view;
-                        state.cardViews[type] = false;
-                        setSetting(type === 'album' ? 'cardsAlbum' : 'cardsHome', false);
-                        syncCards();
+                    openPopup(control, choose(CARD_VIEW_TYPES, viewType(view.type), value => {
+                        setViewType(view.type, value);
+                        // The sidebar follows the album's layout.
+                        if (view.type === 'album') state.renderedAlbum = null;
                     }));
                     break;
                 case 'group':
