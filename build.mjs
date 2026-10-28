@@ -81,7 +81,6 @@ for (const entry of entries) {
 }
 
 const descriptions = {
-  crunchyroll: "Full-height player mode, direct speed and episode controls, official auto-skip for intros and credits without redirects, and clean UI.",
   immich: "YouTube-style video player for self-hosted Immich: original quality, speed and audio boost, seek keys, reorganised bars and an album sidebar.",
   instagram: "Native video controls, unified mosaic feed, responsive grids, lightbox viewer, and saved-post tools for Instagram.",
   reddit: "Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs.",

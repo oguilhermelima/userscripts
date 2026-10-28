@@ -33,7 +33,6 @@ The script checks that the page really is Immich before doing anything, so a bro
 
 | Script | Description | Install |
 |---|---|---|
-| **crunchyroll** | Full-height player mode, direct speed and episode controls, official auto-skip for intros and credits without redirects, and clean UI. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/crunchyroll.user.js) |
 | **immich** | YouTube-style video player for self-hosted Immich: original quality, speed and audio boost, seek keys, reorganised bars and an album sidebar. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/immich.user.js) |
 | **instagram** | Native video controls, unified mosaic feed, responsive grids, lightbox viewer, and saved-post tools for Instagram. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/instagram.user.js) |
 | **reddit** | Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs. | [Install](https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/reddit.user.js) |
