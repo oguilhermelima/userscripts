@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         Immich — YouTube-Style Player & Album Sidebar
+// @name         Immich — YouTube-Style Player, Cards & Album Sidebar
 // @namespace    immich-player
-// @version      2.0.0
+// @version      2.1.0
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/immich.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/immich.user.js
 // @author       oguilhermelima
-// @description  YouTube-style video player for Immich: original quality with automatic fallback, 0.25x–5x speed, audio boost, arrow keys that seek instead of switching assets, J/K/L shortcuts, reorganised bars, picture-in-picture and a collapsible album sidebar. Add your own server as a user @match in your userscript manager.
+// @description  YouTube-style video player for Immich: original quality with automatic fallback, 0.25x–5x speed, audio boost, arrow keys that seek instead of switching assets, J/K/L shortcuts, reorganised bars, picture-in-picture, a collapsible album sidebar and a YouTube-style card view with title, date and duration under each thumbnail (on by default in albums, toggle on the timeline). Add your own server as a user @match in your userscript manager.
 // @match        https://demo.immich.app/*
 // @grant        GM_addStyle
 // @grant        GM_getValue
@@ -57,6 +57,10 @@
         const PLAYER = `${VIEWER} media-controller`;
         const NAV_ACTIONS = `${VIEWER} [data-testid="asset-viewer-navbar-actions"]`;
         const ALBUM_ASSET_RE = /^\/albums\/([0-9a-f-]{36})\/photos\/([0-9a-f-]{36})/;
+        const ALBUM_PAGE_RE = /^\/albums\/([0-9a-f-]{36})(?:\/photos\/([0-9a-f-]{36}))?\/?$/;
+        const HOME_PAGE_RE = /^\/photos(?:\/([0-9a-f-]{36}))?\/?$/;
+        const HOME_QUERY = 'visibility=timeline&withPartners=true&withStacked=true';
+        const TITLE_REQUESTS = 6;
         const ORIGINAL_PREF = 'always-load-original-video';
 
         const RATE_MIN = 0.25;
@@ -80,6 +84,7 @@
             boost: 'M3,9H7L12,4V20L7,15H3V9M14,11H17V8H19V11H22V13H19V16H17V13H14V11Z',
             pip: 'M19,11H11V17H19V11M23,19V5C23,3.88 22.1,3 21,3H3A2,2 0 0,0 1,5V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19M21,19H3V4.97H21V19Z',
             sidebar: 'M3,4H21A1,1 0 0,1 22,5V19A1,1 0 0,1 21,20H3A1,1 0 0,1 2,19V5A1,1 0 0,1 3,4M4,6V18H14V6H4M16,6V18H20V6H16Z',
+            cards: 'M20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20M4,6V18H20V6H4M6,9H18V11H6V9M6,13H16V15H6V13Z',
         };
 
         function icon(path, size = 24, label = '') {
@@ -110,6 +115,13 @@
             autoplay: Boolean(getSetting('autoplay', false)) && !getSetting('loop', true),
             sidebarOpen: Boolean(getSetting('sidebarOpen', true)),
             filter: getSetting('sidebarFilter', 'all'),
+            // Card view per page type: on by default in albums, off on the
+            // main timeline.
+            cardViews: {
+                album: Boolean(getSetting('cardsAlbum', true)),
+                home: Boolean(getSetting('cardsHome', false)),
+            },
+            titles: new Map(),
             albums: new Map(),
             renderedAlbum: null,
         };
@@ -175,7 +187,9 @@
             /* Menus and the sidebar follow Immich's theme (html.dark / html.light);
                controls drawn over the video stay dark. */
             html:not(.dark) .iv-menu,
-            html:not(.dark) #iv-sidebar {
+            html:not(.dark) #iv-sidebar,
+            html:not(.dark) #iv-cards,
+            html:not(.dark) .iv-cards-toggle {
                 --iv-bg: #ffffff;
                 --iv-surface: #f1f5f9;
                 --iv-surface-hover: #e2e8f0;
@@ -567,6 +581,131 @@
                 color: #fff;
                 font: 600 11px/1.2 system-ui, sans-serif;
             }
+
+            /* Card view: covers Immich's grid inside <main>; the grid and its
+               scrubber stay mounted but invisible. */
+            html.iv-cards-on main:has(> #iv-cards) > :not(#iv-cards) {
+                visibility: hidden !important;
+            }
+            /* The top padding mirrors <main>'s, which sits under the bar, so
+               only the scroller takes pointer events. */
+            #iv-cards {
+                position: absolute;
+                inset: 0;
+                z-index: 2;
+                display: flex;
+                pointer-events: none;
+                flex-direction: column;
+                padding-top: inherit;
+                color: var(--iv-text);
+                font-size: 14px;
+                line-height: 1.4;
+            }
+            .iv-cards-scroll {
+                flex: 1;
+                min-height: 0;
+                padding: 8px 16px 48px;
+                overflow-y: auto;
+                overscroll-behavior: contain;
+                pointer-events: auto;
+            }
+            .iv-cards-head { padding: 72px 0 8px; }
+            .iv-cards-head h1 {
+                margin: 0;
+                color: var(--iv-accent);
+                font-size: 48px;
+                font-weight: 600;
+                line-height: 1.15;
+                overflow-wrap: anywhere;
+            }
+            .iv-cards-sub { margin: 12px 0 0; color: var(--iv-muted); font-size: 14px; }
+            .iv-cards-desc { margin: 8px 0 0; white-space: pre-line; }
+            .iv-cards-month h2 {
+                margin: 28px 0 14px;
+                font-size: 18px;
+                font-weight: 600;
+            }
+            .iv-cards-month h2::first-letter { text-transform: uppercase; }
+            .iv-cards-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+                gap: 28px 16px;
+            }
+            .iv-card {
+                display: flex;
+                flex-direction: column;
+                min-width: 0;
+                color: inherit;
+                text-decoration: none;
+            }
+            .iv-card-thumb {
+                position: relative;
+                aspect-ratio: 16 / 9;
+                overflow: hidden;
+                border-radius: 12px;
+                background: var(--iv-surface);
+            }
+            .iv-card-thumb img {
+                display: block;
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                transition: transform 0.2s ease;
+            }
+            .iv-card:hover .iv-card-thumb img { transform: scale(1.04); }
+            .iv-card:focus-visible { outline: none; }
+            .iv-card:focus-visible .iv-card-thumb { outline: 3px solid var(--iv-accent); outline-offset: 2px; }
+            .iv-card-thumb .iv-item-badge {
+                right: 8px;
+                bottom: 8px;
+                font-size: 12px;
+            }
+            .iv-card-title {
+                display: -webkit-box;
+                margin-top: 10px;
+                overflow: hidden;
+                font-size: 15px;
+                font-weight: 600;
+                line-height: 1.35;
+                overflow-wrap: anywhere;
+                -webkit-box-orient: vertical;
+                -webkit-line-clamp: 2;
+            }
+            .iv-card-title.is-loading {
+                width: 70%;
+                height: 1em;
+                border-radius: 4px;
+                background: var(--iv-surface);
+            }
+            .iv-card-meta {
+                margin-top: 4px;
+                color: var(--iv-muted);
+                font-size: 13px;
+            }
+            #iv-cards .iv-status button {
+                margin-top: 8px;
+                padding: 6px 14px;
+                border: 0;
+                border-radius: 8px;
+                background: var(--iv-surface);
+                color: var(--iv-text);
+                font: inherit;
+                cursor: pointer;
+            }
+            .iv-cards-toggle {
+                display: grid;
+                place-items: center;
+                flex-shrink: 0;
+                width: 40px;
+                height: 40px;
+                border: 0;
+                border-radius: 999px;
+                background: transparent;
+                color: inherit;
+                cursor: pointer;
+            }
+            .iv-cards-toggle:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
+            .iv-cards-toggle.is-active { color: var(--iv-accent); }
         `);
 
         // ---------------------------------------------------------------------
@@ -1301,20 +1440,20 @@
             const order = album.order === 'asc' ? 'asc' : 'desc';
             const query = `albumId=${albumId}&order=${order}`;
             const buckets = await api(`/timeline/buckets?${query}`);
-            const columns = await Promise.all(buckets.map(bucket =>
-                api(`/timeline/bucket?${query}&timeBucket=${encodeURIComponent(bucket.timeBucket)}`)));
-            const items = [];
-            for (const column of columns) {
-                for (let index = 0; index < column.id.length; index++) {
-                    items.push({
-                        id: column.id[index],
-                        isVideo: !column.isImage[index],
-                        duration: column.duration?.[index] ?? null,
-                        takenAt: column.fileCreatedAt?.[index] ?? null,
-                    });
-                }
-            }
-            return { id: albumId, name: album.albumName || 'Álbum', items };
+            const columns = await Promise.all(buckets.map(bucket => loadBucket(query, bucket)));
+            return { id: albumId, name: album.albumName || 'Álbum', items: columns.flat() };
+        }
+
+        async function loadBucket(query, bucket) {
+            const column = await api(`/timeline/bucket?${query}&timeBucket=${encodeURIComponent(bucket.timeBucket)}`);
+            return column.id.map((id, index) => ({
+                id,
+                isVideo: !column.isImage[index],
+                duration: column.duration?.[index] ?? null,
+                takenAt: column.fileCreatedAt?.[index] ?? null,
+                thumbhash: column.thumbhash?.[index] ?? null,
+                place: [column.city?.[index], column.country?.[index]].filter(Boolean).join(', '),
+            }));
         }
 
         function albumData(albumId) {
@@ -1345,10 +1484,10 @@
             return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${tail}` : `${minutes}:${tail}`;
         }
 
-        function formatDate(value) {
+        function formatDate(value, options) {
             if (!value) return '';
             const date = new Date(value);
-            return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+            return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(undefined, options);
         }
 
         function buildSidebar() {
@@ -1496,6 +1635,269 @@
         }
 
         // ---------------------------------------------------------------------
+        //  Card view: a YouTube-style grid with title, date and duration under
+        //  each thumbnail. Immich lays its grid out in JS with fixed row
+        //  heights, so captions cannot be added to it; the card view covers it
+        //  with its own list, read from the same timeline buckets and loaded a
+        //  month at a time as it scrolls. Immich's grid stays mounted
+        //  underneath, so opening an asset and stepping through it still work.
+        // ---------------------------------------------------------------------
+        let cards = null;
+        const titleQueue = [];
+        let titleRequests = 0;
+
+        function cardContext() {
+            const album = ALBUM_PAGE_RE.exec(location.pathname);
+            if (album) return { view: 'album', key: `album:${album[1]}`, albumId: album[1], assetId: album[2] ?? null };
+            const home = HOME_PAGE_RE.exec(location.pathname);
+            if (home) return { view: 'home', key: 'home', albumId: null, assetId: home[1] ?? null };
+            return null;
+        }
+
+        function syncCards() {
+            const context = cardContext();
+            syncCardsToggle(context);
+            const main = document.getElementById('asset-grid')?.closest('main');
+            const enabled = Boolean(context && main && state.cardViews[context.view]);
+            document.documentElement.classList.toggle('iv-cards-on', enabled);
+            if (!enabled) {
+                closeCards();
+                return;
+            }
+            if (cards?.key !== context.key || cards.root.parentElement !== main) {
+                closeCards();
+                cards = openCards(context, main);
+            }
+            if (context.assetId) {
+                cards.lastAsset = context.assetId;
+            } else if (cards.lastAsset) {
+                // Back from the viewer: bring the last asset seen into view.
+                cards.root.querySelector(`.iv-card[data-id="${cards.lastAsset}"]`)?.scrollIntoView({ block: 'nearest' });
+                cards.lastAsset = null;
+            }
+        }
+
+        function syncCardsToggle(context) {
+            const host = context && document.querySelector(context.view === 'album'
+                ? '#control-bar nav > .ms-auto'
+                : '#dashboard-navbar section.justify-end');
+            let button = document.querySelector('.iv-cards-toggle');
+            if (!host) {
+                button?.remove();
+                return;
+            }
+            if (!button) {
+                button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'iv-cards-toggle';
+                button.innerHTML = icon(ICONS.cards);
+                button.addEventListener('click', () => {
+                    const view = cardContext()?.view;
+                    if (!view) return;
+                    state.cardViews[view] = !state.cardViews[view];
+                    setSetting(view === 'album' ? 'cardsAlbum' : 'cardsHome', state.cardViews[view]);
+                    syncCards();
+                });
+            }
+            if (button.parentElement !== host) host.prepend(button);
+            const on = state.cardViews[context.view];
+            const label = on ? 'Voltar à grade do Immich' : 'Mostrar título, data e duração';
+            button.classList.toggle('is-active', on);
+            button.setAttribute('aria-pressed', String(on));
+            button.title = label;
+            button.setAttribute('aria-label', label);
+        }
+
+        function closeCards() {
+            if (!cards) return;
+            cards.titleObserver.disconnect();
+            cards.root.remove();
+            cards = null;
+        }
+
+        function openCards(context, main) {
+            const root = document.createElement('section');
+            root.id = 'iv-cards';
+            root.setAttribute('aria-label', 'Itens');
+            root.innerHTML = `
+                <div class="iv-cards-scroll">
+                    <header class="iv-cards-head" hidden>
+                        <h1></h1>
+                        <p class="iv-cards-sub"></p>
+                        <p class="iv-cards-desc"></p>
+                    </header>
+                    <div class="iv-cards-body"></div>
+                    <div class="iv-status">Carregando…</div>
+                </div>
+            `;
+            const scroller = root.querySelector('.iv-cards-scroll');
+            const view = {
+                key: context.key,
+                root,
+                scroller,
+                status: root.querySelector('.iv-status'),
+                hrefBase: context.albumId ? `/albums/${context.albumId}/photos/` : '/photos/',
+                query: '',
+                buckets: [],
+                next: 0,
+                loading: false,
+                lastAsset: null,
+                titleObserver: new IntersectionObserver(entries => {
+                    for (const entry of entries) {
+                        if (!entry.isIntersecting) continue;
+                        view.titleObserver.unobserve(entry.target);
+                        titleQueue.push(entry.target);
+                    }
+                    pumpTitles();
+                }, { root: scroller, rootMargin: '400px 0px' }),
+            };
+            scroller.addEventListener('scroll', () => loadMoreCards(view), { passive: true });
+            view.status.addEventListener('click', event => {
+                if (event.target.closest('button')) loadMoreCards(view);
+            });
+            main.append(root);
+            startCards(view, context.albumId);
+            return view;
+        }
+
+        async function startCards(view, albumId) {
+            try {
+                if (albumId) {
+                    const album = await api(`/albums/${albumId}`);
+                    view.query = `albumId=${albumId}&order=${album.order === 'asc' ? 'asc' : 'desc'}`;
+                    renderCardsHead(view, album);
+                } else {
+                    view.query = HOME_QUERY;
+                }
+                view.buckets = await api(`/timeline/buckets?${view.query}`);
+            } catch (error) {
+                view.status.textContent = 'Não foi possível carregar os itens.';
+                console.warn('[immich-player] card view failed', error);
+                return;
+            }
+            if (!view.buckets.length) view.status.textContent = 'Nenhum item.';
+            else loadMoreCards(view);
+        }
+
+        function renderCardsHead(view, album) {
+            const head = view.root.querySelector('.iv-cards-head');
+            const range = [album.startDate, album.endDate]
+                .map(value => formatDate(value, { dateStyle: 'medium', timeZone: 'UTC' }))
+                .filter(Boolean);
+            head.querySelector('h1').textContent = album.albumName || 'Álbum';
+            head.querySelector('.iv-cards-sub').textContent =
+                [[...new Set(range)].join(' – '), `${album.assetCount} itens`].filter(Boolean).join(' · ');
+            head.querySelector('.iv-cards-desc').textContent = album.description || '';
+            head.hidden = false;
+        }
+
+        // Loads the next month while the end of the list is within reach,
+        // so a short month never leaves the list stuck above the fold.
+        async function loadMoreCards(view) {
+            const { scroller } = view;
+            while (!view.loading && cards === view && view.next < view.buckets.length
+                && scroller.scrollTop + scroller.clientHeight > scroller.scrollHeight - 1500) {
+                const bucket = view.buckets[view.next];
+                view.loading = true;
+                let items;
+                try {
+                    items = await loadBucket(view.query, bucket);
+                } catch (error) {
+                    view.status.innerHTML = 'Não foi possível carregar este mês.<br><button type="button">Tentar de novo</button>';
+                    console.warn('[immich-player] bucket load failed', error);
+                    return;
+                } finally {
+                    view.loading = false;
+                }
+                view.next++;
+                view.root.querySelector('.iv-cards-body').append(cardsMonth(view, bucket, items));
+                view.status.textContent = 'Carregando…';
+            }
+            if (view.next >= view.buckets.length && view.buckets.length) view.status.hidden = true;
+        }
+
+        function cardsMonth(view, bucket, items) {
+            const section = document.createElement('section');
+            section.className = 'iv-cards-month';
+            const title = document.createElement('h2');
+            title.textContent = formatDate(bucket.timeBucket, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+            const grid = document.createElement('div');
+            grid.className = 'iv-cards-grid';
+            for (const item of items) grid.append(card(view, item));
+            section.append(title, grid);
+            return section;
+        }
+
+        function card(view, item) {
+            const link = document.createElement('a');
+            link.className = 'iv-card';
+            link.href = view.hrefBase + item.id;
+            link.dataset.id = item.id;
+            link.dataset.video = String(item.isVideo);
+            link.dataset.sveltekitNoscroll = '';
+
+            const thumb = document.createElement('div');
+            thumb.className = 'iv-card-thumb';
+            const image = document.createElement('img');
+            image.loading = 'lazy';
+            image.decoding = 'async';
+            image.alt = '';
+            // Same URL Immich's grid uses, so the browser cache is shared.
+            image.src = `/api/assets/${item.id}/thumbnail?size=thumbnail${item.thumbhash ? `&c=${encodeURIComponent(item.thumbhash)}` : ''}`;
+            thumb.append(image);
+            if (item.isVideo) {
+                const badge = document.createElement('span');
+                badge.className = 'iv-item-badge';
+                badge.textContent = formatDuration(item.duration) || '▶';
+                thumb.append(badge);
+            }
+
+            const title = document.createElement('div');
+            title.className = 'iv-card-title is-loading';
+            const meta = document.createElement('div');
+            meta.className = 'iv-card-meta';
+            meta.textContent = [formatDate(item.takenAt, { dateStyle: 'medium', timeStyle: 'short' }), item.place]
+                .filter(Boolean).join(' · ');
+
+            link.append(thumb, title, meta);
+            view.titleObserver.observe(link);
+            return link;
+        }
+
+        // Timeline buckets carry no file name, so titles come from each
+        // asset, fetched as its card nears the viewport.
+        function pumpTitles() {
+            while (titleRequests < TITLE_REQUESTS && titleQueue.length) {
+                const link = titleQueue.shift();
+                if (!link.isConnected) continue;
+                titleRequests++;
+                assetTitle(link.dataset.id)
+                    .then(text => {
+                        const title = link.querySelector('.iv-card-title');
+                        title.classList.remove('is-loading');
+                        title.textContent = text || (link.dataset.video === 'true' ? 'Vídeo' : 'Foto');
+                        link.title = title.textContent;
+                    })
+                    .finally(() => {
+                        titleRequests--;
+                        pumpTitles();
+                    });
+            }
+        }
+
+        function assetTitle(assetId) {
+            if (!state.titles.has(assetId)) {
+                state.titles.set(assetId, api(`/assets/${assetId}`)
+                    .then(asset => asset.exifInfo?.description?.trim() || asset.originalFileName || '')
+                    .catch(() => {
+                        state.titles.delete(assetId);
+                        return '';
+                    }));
+            }
+            return state.titles.get(assetId);
+        }
+
+        // ---------------------------------------------------------------------
         //  Lifecycle: Immich is a SvelteKit SPA, so watch both the DOM and the URL.
         // ---------------------------------------------------------------------
         let lastPath = '';
@@ -1509,6 +1911,7 @@
                 syncPlayerControls();
             }
             syncNavbar();
+            syncCards();
             const path = location.pathname;
             const viewerOpen = Boolean(document.querySelector(VIEWER));
             const sidebarStale = document.documentElement.classList.contains('iv-album-viewer') !== (viewerOpen && ALBUM_ASSET_RE.test(path));
