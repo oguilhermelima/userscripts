@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         YouTube Enhancer
 // @namespace    youtube-cinema
-// @version      1.2.1
+// @version      1.3.0
 // @author       oguilhermelima
-// @description  Full-screen theater by default with an auto-hiding masthead, live chat and up-next as switchable sidebars, black-bar crop, loop, audio boost, speed and quality controls in the player bar, a live-now section with a TV mode, a "Live now" filter on channel live tabs, and advanced settings for playback quality, video filters, info cards and Shorts.
+// @description  Full-screen theater by default with an auto-hiding masthead, live chat and up-next as switchable sidebars, black-bar crop, loop, audio boost, speed and quality controls in the player bar, a live-now section with a TV mode, a "Live now" filter on channel live tabs, an advanced playlist mode (search, sort, filters by watched and by who added, followed in playback), and advanced settings for playback quality, video filters, info cards and Shorts.
 // @match        https://www.youtube.com/*
 // @grant        GM_addStyle
 // @grant        GM_getValue
@@ -122,6 +122,8 @@
         liveNowFilter: Boolean(getSetting('liveNowFilter', true)),
         cropBars: Boolean(getSetting('cropBars', true)),
         sideWidth: Number(getSetting('sideWidth', 0)) || 0,
+        // Docked sidebar with a playlist: which of the two views is shown.
+        sideView: getSetting('sideView', 'playlist') === 'related' ? 'related' : 'playlist',
         rate: Number(getSetting('rate', 1)) || 1,
         // Audio boost works like a switch at a chosen level; the options
         // live in the player settings menu.
@@ -206,6 +208,15 @@
         html.ytc-masthead-autohide ytd-page-manager {
             margin-top: 0 !important;
         }
+        /* Over the video (theater) YouTube draws it see-through; slid in
+           over the player and the sidebar it needs its own background. */
+        html.ytc-masthead-autohide #masthead-container,
+        html.ytc-masthead-autohide ytd-masthead {
+            background: var(--ytc-c-bg) !important;
+        }
+        html.ytc-masthead-autohide ytd-masthead #background {
+            opacity: 1 !important;
+        }
         html.ytc-masthead-autohide ytd-watch-flexy[fixed-panels] #chat {
             top: 0 !important;
             height: 100vh !important;
@@ -256,7 +267,7 @@
             overscroll-behavior: contain;
             box-sizing: border-box !important;
             background: var(--ytc-page-bg);
-            border-left: 1px solid var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1));
+            border-left: 1px solid var(--ytc-c-line, rgba(255, 255, 255, 0.1));
         }
         html.ytc-related-sidebar ${FLEXY} #secondary-inner {
             width: 100% !important;
@@ -293,6 +304,483 @@
         ${FLEXY} ytd-playlist-panel-renderer#playlist:not([collapsed]) {
             height: calc(100vh - var(--ytc-masthead-h) - 120px) !important;
             max-height: calc(100vh - var(--ytc-masthead-h) - 120px) !important;
+        }
+
+        /* Colour tokens for our panels. YouTube now themes through its
+           --yt-sys-color-baseline--* variables (light and dark); the older
+           --yt-spec-* ones and the dark values are only fallbacks. */
+        html {
+            --ytc-c-text: var(--yt-sys-color-baseline--text-primary, var(--yt-spec-text-primary, #f1f1f1));
+            --ytc-c-text2: var(--yt-sys-color-baseline--text-secondary, var(--yt-spec-text-secondary, #aaa));
+            --ytc-c-bg: var(--yt-sys-color-baseline--base-background, var(--yt-spec-base-background, #0f0f0f));
+            --ytc-c-raised: var(--yt-sys-color-baseline--raised-background, var(--yt-spec-raised-background, #212121));
+            --ytc-c-menu: var(--yt-sys-color-baseline--menu-background, var(--yt-spec-menu-background, #282828));
+            --ytc-c-field: var(--yt-sys-color-baseline--additive-background, var(--yt-spec-badge-chip-background, rgba(255, 255, 255, 0.1)));
+            --ytc-c-hover: var(--yt-sys-color-baseline--mono-tonal-hover, var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.2)));
+            --ytc-c-line: var(--yt-sys-color-baseline--outline, var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.2)));
+            --ytc-c-accent: var(--yt-sys-color-baseline--call-to-action, var(--yt-spec-call-to-action, #3ea6ff));
+        }
+
+        /* Advanced playlist: our list replaces YouTube's items in the
+           panel, with search, sort and filters stuck to the top of its own
+           scroller. Colours come from YouTube's theme variables, so the
+           light and dark themes both follow; the fallbacks are the dark
+           ones. */
+        .ytc-pl-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex: none;
+            height: 32px;
+            margin: 4px 0 4px auto;
+            padding: 0 12px 0 10px;
+            border: 0;
+            border-radius: 16px;
+            background: var(--ytc-c-field);
+            color: var(--ytc-c-text);
+            font: 500 13px/1 Roboto, Arial, sans-serif;
+            cursor: pointer;
+            transition: background-color 0.15s, color 0.15s;
+        }
+        .ytc-pl-toggle svg { width: 18px; height: 18px; }
+        .ytc-pl-toggle:hover { background: var(--ytc-c-hover); }
+        .ytc-pl-toggle.is-on { background: var(--ytc-c-text); color: var(--ytc-c-bg); }
+        ytd-playlist-panel-renderer.ytc-pl-on #items { display: none !important; }
+        .ytc-pl {
+            --ytc-pl-bg: var(--ytc-c-raised);
+            /* The panel is a fixed-height column: the list takes what the
+               header leaves and scrolls inside it. */
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            font-family: Roboto, Arial, sans-serif;
+            color: var(--ytc-c-text);
+            scrollbar-width: thin;
+        }
+        .ytc-pl :focus-visible { outline: 2px solid var(--ytc-c-accent); outline-offset: 1px; }
+        .ytc-pl-bar {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 10px 12px 8px;
+            background: var(--ytc-pl-bg);
+            border-bottom: 1px solid var(--ytc-c-line);
+        }
+        .ytc-pl-line { display: flex; align-items: center; gap: 8px; }
+        /* Search: a field with its magnifier inside, like YouTube's own. */
+        .ytc-pl-searchbox { position: relative; flex: 1; min-width: 0; display: flex; }
+        .ytc-pl-searchbox > svg,
+        .ytc-pl-sortbox > svg {
+            position: absolute;
+            top: 50%;
+            width: 18px;
+            height: 18px;
+            transform: translateY(-50%);
+            color: var(--ytc-c-text2);
+            pointer-events: none;
+        }
+        .ytc-pl-searchbox > svg { left: 11px; }
+        .ytc-pl-search,
+        .ytc-pl-sort {
+            box-sizing: border-box;
+            width: 100%;
+            height: 36px;
+            border: 1px solid transparent;
+            border-radius: 18px;
+            background: var(--ytc-c-field);
+            color: inherit;
+            font: 400 14px Roboto, Arial, sans-serif;
+            transition: border-color 0.15s, background-color 0.15s;
+        }
+        .ytc-pl-search { padding: 0 12px 0 38px; }
+        .ytc-pl-search::placeholder { color: var(--ytc-c-text2); }
+        .ytc-pl-search:focus { outline: none; border-color: var(--ytc-c-accent); background: transparent; }
+        .ytc-pl-search::-webkit-search-cancel-button { cursor: pointer; }
+        /* Sort: still the native select (keyboard and screen readers
+           work as usual), drawn as a pill with an icon and a chevron. */
+        .ytc-pl-sortbox { position: relative; flex: 1; min-width: 0; display: flex; }
+        .ytc-pl-sortbox > svg:first-child { left: 11px; }
+        .ytc-pl-sortbox > svg:last-child { right: 8px; width: 20px; height: 20px; }
+        .ytc-pl-sort {
+            height: 32px;
+            border-radius: 16px;
+            padding: 0 30px 0 36px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+        .ytc-pl-sort:hover,
+        .ytc-pl-chip:hover { background: var(--ytc-c-hover); }
+        .ytc-pl-sort:focus-visible { outline: none; border-color: var(--ytc-c-accent); }
+        .ytc-pl-sort option { background: var(--ytc-c-menu); color: var(--ytc-c-text); }
+        .ytc-pl-chip {
+            display: inline-flex;
+            align-items: center;
+            flex: none;
+            gap: 6px;
+            height: 32px;
+            padding: 0 12px;
+            border: 0;
+            border-radius: 16px;
+            background: var(--ytc-c-field);
+            color: inherit;
+            font: 500 13px/1 Roboto, Arial, sans-serif;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: background-color 0.15s, color 0.15s;
+        }
+        .ytc-pl-chip svg { width: 18px; height: 18px; flex: none; }
+        .ytc-pl-chip.ytc-pl-seen { padding-left: 10px; }
+        .ytc-pl-chip.is-on,
+        .ytc-pl-chip.is-on:hover { background: var(--ytc-c-text); color: var(--ytc-c-bg); }
+        /* Contributors: a row of faces that scrolls sideways when long. */
+        .ytc-pl-people {
+            gap: 6px;
+            margin: 0 -12px;
+            padding: 0 12px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .ytc-pl-people[hidden] { display: none; }
+        .ytc-pl-people::-webkit-scrollbar { display: none; }
+        .ytc-pl-people .ytc-pl-chip { height: 28px; font-size: 12px; }
+        .ytc-pl-chip img { width: 22px; height: 22px; border-radius: 50%; }
+        .ytc-pl-chip.is-avatar { gap: 5px; padding: 0 10px 0 3px; font-variant-numeric: tabular-nums; }
+        .ytc-pl-status {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            min-height: 18px;
+            font-size: 12px;
+            line-height: 18px;
+            color: var(--ytc-c-text2);
+        }
+        .ytc-pl-status button {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            margin-left: auto;
+            padding: 0 6px;
+            height: 22px;
+            border: 0;
+            border-radius: 11px;
+            background: none;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+        }
+        .ytc-pl-status button svg { width: 14px; height: 14px; }
+        .ytc-pl-status button:hover { background: var(--ytc-c-hover); color: var(--ytc-c-text); }
+        .ytc-pl-items { padding: 4px 0 12px; }
+        /* Rows off screen skip layout and paint: a list can hold thousands. */
+        .ytc-pl-row {
+            content-visibility: auto;
+            contain-intrinsic-size: auto 75px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0 8px;
+            padding: 6px 8px 6px 0;
+            border-radius: 10px;
+            color: inherit;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .ytc-pl-row:hover { background: var(--ytc-c-field); }
+        .ytc-pl-row.is-current { background: var(--ytc-c-hover); }
+        .ytc-pl-row.is-unplayable { opacity: 0.5; }
+        .ytc-pl-index {
+            display: grid;
+            place-items: center;
+            width: 28px;
+            flex: none;
+            font-size: 12px;
+            color: var(--ytc-c-text2);
+            font-variant-numeric: tabular-nums;
+        }
+        .ytc-pl-row.is-current .ytc-pl-index { color: var(--ytc-c-text); font-weight: 700; }
+        .ytc-pl-thumb {
+            position: relative;
+            width: 112px;
+            height: 63px;
+            flex: none;
+            overflow: hidden;
+            border-radius: 8px;
+            background: var(--ytc-c-hover);
+        }
+        .ytc-pl-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+        .ytc-pl-time {
+            position: absolute;
+            right: 4px;
+            bottom: 4px;
+            padding: 1px 4px;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 500;
+            line-height: 14px;
+        }
+        .ytc-pl-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, 0.4); }
+        .ytc-pl-progress > i { display: block; height: 100%; background: #f00; }
+        .ytc-pl-text { flex: 1; min-width: 0; }
+        .ytc-pl-title {
+            display: -webkit-box;
+            overflow: hidden;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 20px;
+        }
+        .ytc-pl-meta {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 2px;
+            overflow: hidden;
+            font-size: 12px;
+            line-height: 18px;
+            color: var(--ytc-c-text2);
+            white-space: nowrap;
+        }
+        .ytc-pl-meta span { overflow: hidden; text-overflow: ellipsis; }
+        .ytc-pl-meta img { width: 16px; height: 16px; flex: none; border-radius: 50%; }
+        .ytc-pl-empty { padding: 32px 16px; font-size: 13px; color: var(--ytc-c-text2); text-align: center; }
+
+        /* Docked sidebar with a playlist: one view at a time, the playlist
+           or the up-next list, picked from a switch pinned to the top. The
+           sidebar is then a flat column flush with the right edge, from the
+           masthead to the bottom of the screen, not a card inside it. */
+        .ytc-side-switch { display: none; }
+        html.ytc-side-tabs ${FLEXY} #secondary {
+            padding: 0 !important;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary > .ytc-side-switch {
+            position: sticky;
+            top: 0;
+            z-index: 3;
+            display: flex;
+            gap: 4px;
+            flex: none;
+            margin: 0;
+            padding: 8px 12px;
+            background: var(--ytc-page-bg, var(--ytc-c-bg));
+            border-bottom: 1px solid var(--ytc-c-line);
+            font-family: Roboto, Arial, sans-serif;
+        }
+        .ytc-side-switch button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            gap: 8px;
+            min-width: 0;
+            height: 36px;
+            padding: 0 12px;
+            border: 0;
+            border-radius: 18px;
+            background: transparent;
+            color: var(--ytc-c-text2);
+            font: 500 14px/1 Roboto, Arial, sans-serif;
+            cursor: pointer;
+            transition: background-color 0.15s, color 0.15s;
+        }
+        .ytc-side-switch button svg { width: 20px; height: 20px; flex: none; }
+        .ytc-side-switch button:hover { background: var(--ytc-c-field); color: var(--ytc-c-text); }
+        .ytc-side-switch button[aria-selected="true"] {
+            background: var(--ytc-c-hover);
+            color: var(--ytc-c-text);
+        }
+        .ytc-side-switch button:focus-visible { outline: 2px solid var(--ytc-c-accent); outline-offset: -2px; }
+        .ytc-side-count {
+            padding: 2px 7px;
+            border-radius: 9px;
+            background: var(--ytc-c-hover);
+            font-size: 11px;
+            font-weight: 500;
+            line-height: 14px;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        .ytc-side-count:empty { display: none; }
+
+        /* Up-next view: the list scrolls under the switch as before. */
+        html.ytc-side-related ${FLEXY} #secondary #secondary-inner {
+            padding: 12px 12px 0 !important;
+            box-sizing: border-box !important;
+        }
+        html.ytc-side-related ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist {
+            display: none !important;
+        }
+
+        /* Playlist view: the sidebar stops scrolling and the panel fills
+           it; only its list (YouTube's or ours) scrolls. */
+        html.ytc-side-playlist ${FLEXY} #secondary {
+            display: flex !important;
+            flex-direction: column;
+            overflow: hidden !important;
+        }
+        html.ytc-side-playlist ${FLEXY} #secondary #secondary-inner {
+            display: flex !important;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+        html.ytc-side-playlist ${FLEXY} #secondary #related,
+        html.ytc-side-playlist ${FLEXY} #secondary #donation-shelf {
+            display: none !important;
+        }
+        html.ytc-side-playlist ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist {
+            flex: 1 1 auto;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            margin: 0 !important;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist > #container {
+            height: 100%;
+            max-height: none;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background: var(--ytc-page-bg, var(--ytc-c-bg));
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist .ytc-pl {
+            --ytc-pl-bg: var(--ytc-page-bg, var(--ytc-c-bg));
+        }
+        /* Header: the title, owner and position on a quiet background,
+           divided from the list; the close button would only collapse a
+           panel the switch already hides. */
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist .header {
+            padding: 14px 12px 6px 16px !important;
+            background: transparent !important;
+            border-bottom: 1px solid var(--ytc-c-line);
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #trailing-button {
+            display: none !important;
+        }
+        /* The panel no longer collapses, so its header is no button. The
+           menu is lifted beside the title; the row of actions below it
+           folds away when nothing else is left in it (a mix). */
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist .header {
+            position: relative;
+            cursor: default !important;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #header-top-row {
+            display: flex !important;
+            align-items: flex-start;
+            gap: 4px;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #header-description {
+            flex: 1 1 auto;
+            min-width: 0;
+            padding-right: 36px;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #playlist-actions,
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #end-actions {
+            position: static !important;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #end-actions #overflow-menu {
+            position: absolute;
+            top: 10px;
+            right: 6px;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #playlist-actions:not(:has(.ytc-pl-toggle)):not(:has(#start-actions button)) {
+            height: 0 !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #header-description h3 {
+            margin-bottom: 4px;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #header-description h3 yt-attributed-string,
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #header-description h3 a {
+            font-size: 18px !important;
+            font-weight: 700 !important;
+            line-height: 26px !important;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #publisher-container {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            color: var(--ytc-c-text2);
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist .publisher {
+            min-width: 0;
+        }
+        /* The position ("12 / 305") is on the switch, in both views. */
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist .index-message-wrapper {
+            display: none !important;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #playlist-actions {
+            align-items: center;
+            margin-top: 6px;
+        }
+        /* YouTube's own items, when the advanced list is off: rounded rows
+           with room around them, the current one lit, the menu shown on
+           hover only. */
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-renderer#playlist #items {
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: none !important;
+            overflow-y: auto !important;
+            overscroll-behavior: contain;
+            padding: 4px 0 12px !important;
+            scrollbar-width: thin;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer {
+            margin: 0 8px;
+            padding: 6px 0 6px 0 !important;
+            border-radius: 10px;
+            background: transparent !important;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer:hover {
+            background: var(--ytc-c-field) !important;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer[selected] {
+            background: var(--ytc-c-hover) !important;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer #container {
+            align-items: center;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer #index-container {
+            width: 28px;
+            align-self: center;
+            justify-content: center;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer #thumbnail-container,
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer ytd-thumbnail {
+            width: 112px !important;
+            height: 63px !important;
+            flex: none;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer ytd-thumbnail a#thumbnail {
+            border-radius: 8px;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer #video-title {
+            font-size: 14px !important;
+            line-height: 20px !important;
+            font-weight: 500 !important;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer #byline {
+            font-size: 12px !important;
+            color: var(--ytc-c-text2) !important;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer #menu {
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer:is(:hover, :focus-within) #menu,
+        html.ytc-side-tabs ${FLEXY} #secondary ytd-playlist-panel-video-renderer #menu:has([aria-expanded="true"]) {
+            opacity: 1;
         }
 
         /* Playlist previous/next of our own replace YouTube's, which only
@@ -1652,6 +2140,115 @@
     }, { passive: true });
     document.addEventListener('mouseleave', () => setRevealed(false));
 
+    // ---------------------------------------------------------------------
+    //  Docked sidebar with a playlist: the playlist panel and the up-next
+    //  list share the column one at a time, switched from a strip pinned
+    //  to its top (the choice is kept). Without a playlist the up-next
+    //  list is shown alone, with no switch.
+    // ---------------------------------------------------------------------
+    const SIDE_VIEWS = [
+        { id: 'playlist', label: 'Playlist', icon: 'M3 10h11v2H3zm0-4h11v2H3zm0 8h7v2H3zm13-1v8l6-4z' },
+        { id: 'related', label: 'Próximos', icon: 'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z' },
+    ];
+
+    function setSideView(view) {
+        if (state.sideView === view) return;
+        state.sideView = view;
+        setSetting('sideView', view);
+        syncLayout();
+        // A hidden scroller forgets its position: bring the playing video
+        // back into view.
+        if (view === 'playlist') requestAnimationFrame(scrollPlaylistCurrent);
+    }
+
+    // Returns whether the playing video's row was there to scroll to.
+    function scrollPlaylistCurrent() {
+        const panel = document.querySelector('ytd-watch-flexy ytd-playlist-panel-renderer#playlist');
+        const id = currentVideoId();
+        const row = panel?.classList.contains('ytc-pl-on')
+            ? panel.querySelector('.ytc-pl-row.is-current')
+            : panel?.querySelector('#items > ytd-playlist-panel-video-renderer[selected]');
+        const link = row?.matches('a') ? row : row?.querySelector('a#wc-endpoint');
+        if (!row || !id || new URL(link?.href ?? location.href, location.origin).searchParams.get('v') !== id) return false;
+        scrollPlRow(row);
+        return true;
+    }
+
+    // Each new video starts at the top of the list. YouTube scrolls its
+    // own selected item into view a moment later, so it is done again
+    // after that.
+    let sideScrolledFor = '';
+    function scrollPlaylistOnVideo() {
+        const id = currentVideoId();
+        if (!id || sideScrolledFor === id || !scrollPlaylistCurrent()) return;
+        sideScrolledFor = id;
+        setTimeout(scrollPlaylistCurrent, 800);
+    }
+
+    function syncSideView(docked) {
+        const root = document.documentElement;
+        const secondary = document.querySelector('ytd-watch-flexy #secondary');
+        const panel = secondary?.querySelector('ytd-playlist-panel-renderer#playlist');
+        const tabbed = Boolean(docked && playlistParams() && panel && !panel.hidden
+            && panel.querySelector('ytd-playlist-panel-video-renderer'));
+        const wasPlaylist = root.classList.contains('ytc-side-playlist');
+        root.classList.toggle('ytc-side-tabs', tabbed);
+        root.classList.toggle('ytc-side-playlist', tabbed && state.sideView === 'playlist');
+        root.classList.toggle('ytc-side-related', tabbed && state.sideView === 'related');
+        if (!tabbed) return;
+        if (panel.hasAttribute('collapsed')) panel.collapsed = false;
+        // The panel just took the column (a playlist opened, the sidebar
+        // was docked): its list gets a height only now.
+        if (!wasPlaylist && state.sideView === 'playlist') requestAnimationFrame(scrollPlaylistCurrent);
+        if (state.sideView === 'playlist') scrollPlaylistOnVideo();
+        let strip = secondary.querySelector(':scope > .ytc-side-switch');
+        if (!strip) {
+            strip = document.createElement('div');
+            strip.className = 'ytc-side-switch';
+            strip.setAttribute('role', 'tablist');
+            strip.setAttribute('aria-label', 'Barra lateral');
+            for (const view of SIDE_VIEWS) {
+                const tab = document.createElement('button');
+                tab.type = 'button';
+                tab.dataset.view = view.id;
+                tab.setAttribute('role', 'tab');
+                const label = document.createElement('span');
+                label.textContent = view.label;
+                tab.append(icon(view.icon), label);
+                if (view.id === 'playlist') {
+                    const count = document.createElement('span');
+                    count.className = 'ytc-side-count';
+                    tab.append(count);
+                }
+                tab.addEventListener('click', () => setSideView(view.id));
+                strip.append(tab);
+            }
+            // Arrow keys move between the two tabs, as in any tab strip.
+            strip.addEventListener('keydown', event => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                event.preventDefault();
+                event.stopPropagation();
+                const next = state.sideView === 'playlist' ? 'related' : 'playlist';
+                setSideView(next);
+                strip.querySelector(`[data-view="${next}"]`)?.focus();
+            });
+            secondary.prepend(strip);
+        }
+        for (const tab of strip.children) {
+            const selected = tab.dataset.view === state.sideView;
+            if (tab.getAttribute('aria-selected') !== String(selected)) {
+                tab.setAttribute('aria-selected', String(selected));
+                tab.tabIndex = selected ? 0 : -1;
+            }
+        }
+        // "12 / 305", from the panel's own header. A mix has no end (YouTube
+        // writes its total as "NaN") and gets no count.
+        const match = /(\d+)\s*\/\s*(\d+)/.exec(panel.querySelector('.index-message')?.textContent ?? '');
+        const position = match && !playlistParams()?.list.startsWith('RD') ? `${match[1]} / ${match[2]}` : '';
+        const count = strip.querySelector('.ytc-side-count');
+        if (count && count.textContent !== position) count.textContent = position;
+    }
+
     function syncLayout() {
         const flexy = watchFlexy();
         const theater = Boolean(flexy?.hasAttribute('theater'));
@@ -1659,6 +2256,7 @@
         const root = document.documentElement;
         root.classList.toggle('ytc-chat-hidden', theater && chat && !state.chatVisible);
         root.classList.toggle('ytc-related-sidebar', theater && relatedShown());
+        syncSideView(theater && relatedShown());
         setVar(root, '--ytc-chat-size', `${state.sideWidth}px`);
         setVar(root, '--ytc-related-w', `${state.sideWidth || RELATED_WIDTH}px`);
 
@@ -1743,6 +2341,11 @@
     // Returns false while neither the player API nor the panel knows the
     // playlist yet.
     function tryStepPlaylist(step) {
+        const ours = plNeighbour(step);
+        if (ours !== undefined) {
+            if (ours) plWatch(ours);
+            return true;
+        }
         const host = player();
         try {
             if (host?.getPlaylist?.()?.length) {
@@ -2231,6 +2834,9 @@
         else if (event.shiftKey && event.key === 'ArrowUp') setBoostOn(true);
         else if (event.shiftKey && event.key === 'ArrowDown') setBoostOn(false);
         else if (!event.shiftKey && (event.key === 'r' || event.key === 'R')) toggleLoop();
+        // In an advanced playlist's own order, YouTube's next/previous keys
+        // follow it.
+        else if (event.shiftKey && (event.key === 'N' || event.key === 'P') && plNeighbour(1) !== undefined) stepPlaylist(event.key === 'N' ? 1 : -1);
         else handled = false;
         if (!handled) return;
         event.preventDefault();
@@ -2585,6 +3191,16 @@
         }
     }, true);
 
+    // Docked, the playlist panel cannot be collapsed: a click on its
+    // header (outside its buttons and links) stops here.
+    document.addEventListener('click', event => {
+        if (!document.documentElement.classList.contains('ytc-side-tabs') || !(event.target instanceof Element)) return;
+        const header = event.target.closest('#secondary ytd-playlist-panel-renderer#playlist .header');
+        if (!header || event.target.closest('a, button, yt-icon-button, ytd-menu-renderer, tp-yt-paper-item, .ytc-pl-toggle')) return;
+        event.stopPropagation();
+        event.preventDefault();
+    }, true);
+
     // ---------------------------------------------------------------------
     //  Playlist panel open on every video: YouTube sometimes brings it in
     //  collapsed. Done once per video, so collapsing it by hand sticks.
@@ -2598,6 +3214,659 @@
         if (!panel?.querySelector('ytd-playlist-panel-video-renderer')) return;
         if (panel.hasAttribute('collapsed')) panel.collapsed = false;
         expandedFor = videoId;
+    }
+
+    // ---------------------------------------------------------------------
+    //  Advanced playlist, switched on per playlist from its panel header.
+    //  The panel only knows title, channel and length, so the whole list
+    //  is read from its /playlist page (100 a page, then the browse API's
+    //  continuations) for date, views, progress and, in a shared playlist,
+    //  who added each video. Our list then stands in for YouTube's items,
+    //  and its order and filters are the playback order too: right before
+    //  a video ends it is paused and our next one opened, ahead of
+    //  YouTube's own advance; an advance that slips through (a background
+    //  tab, YouTube's own keys) is redirected.
+    // ---------------------------------------------------------------------
+    const PL_ICON = 'M19,9H2V11H19V9M19,5H2V7H19V5M2,15H15V13H2V15M17,13V19L22,16L17,13Z';
+    const PL_ICONS = {
+        search: 'M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
+        sort: 'M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z',
+        chevron: 'M7 10l5 5 5-5z',
+        unseen: 'M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.8 11.8 0 0 0 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z',
+        reload: 'M17.65 6.35A7.96 7.96 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z',
+    };
+    const PL_SORTS = [
+        { id: 'original', label: 'Ordem da playlist' },
+        { id: 'newest', label: 'Mais recentes' },
+        { id: 'oldest', label: 'Mais antigos' },
+        { id: 'shortest', label: 'Mais curtos' },
+        { id: 'longest', label: 'Mais longos' },
+        { id: 'views', label: 'Mais vistos' },
+        { id: 'channel', label: 'Canal (A–Z)' },
+    ];
+    const PL_MAX_PAGES = 100;
+    // Watched this far (YouTube's red bar), a video counts as seen.
+    const PL_SEEN_PERCENT = 90;
+    // How close to the end a video hands over to our next one.
+    const PL_HANDOVER_S = 0.4;
+    // Relative dates ("há 2 anos") in seconds, Portuguese and English.
+    const PL_AGE_UNITS = [
+        [/^(seg|sec)/, 1],
+        [/^min/, 60],
+        [/^(hora|hour)/, 3600],
+        [/^(dia|day)/, 86400],
+        [/^(semana|week)/, 604800],
+        [/^(m[eê]s|meses|month)/, 2629800],
+        [/^(ano|year)/, 31557600],
+    ];
+
+    const plStore = getSetting('playlistAdvanced', {}) || {};
+    const plCache = new Map();
+    const plRows = new WeakMap();
+    const pl = { list: '', query: '', signature: '', view: [], lastVideo: '', lastItem: null, ownNav: '', scrolledTo: '' };
+
+    function savePlPrefs(list, prefs) {
+        if (prefs) plStore[list] = prefs;
+        else delete plStore[list];
+        setSetting('playlistAdvanced', plStore);
+    }
+
+    const plNormalize = text => String(text ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+    const plAvatarKey = url => String(url ?? '').replace(/=s\d+.*$/, '');
+
+    function plAge(text) {
+        const match = /(\d+)\s*([a-zà-ú]+)/i.exec(text ?? '');
+        const unit = match && PL_AGE_UNITS.find(([pattern]) => pattern.test(match[2].toLowerCase()));
+        return unit ? Number(match[1]) * unit[1] : null;
+    }
+
+    // "546 mil", "1,2 mi", "1.2M views", "987 visualizações".
+    function plCount(text) {
+        const match = /([\d.,]+)\s*(bi|mil|mi|k|m|b)?\b/i.exec(text ?? '');
+        if (!match) return null;
+        const scale = { k: 1e3, mil: 1e3, m: 1e6, mi: 1e6, b: 1e9, bi: 1e9 }[(match[2] ?? '').toLowerCase()] ?? 1;
+        const number = Number(scale > 1 ? match[1].replace(',', '.') : match[1].replace(/[.,]/g, ''));
+        return Number.isFinite(number) ? number * scale : null;
+    }
+
+    function plLength(text) {
+        const parts = String(text ?? '').split(':').map(Number);
+        if (parts.length < 2 || parts.some(part => !Number.isFinite(part))) return null;
+        return parts.reduce((total, part) => total * 60 + part, 0);
+    }
+
+    // The metadata after the channel: views and a relative date, in either
+    // order, either missing (an upcoming premiere has no views).
+    function plEntry(item, parts) {
+        const ageText = parts.find(part => plAge(part) !== null) ?? '';
+        const viewsText = parts.find(part => part !== ageText && plCount(part) !== null) ?? '';
+        return {
+            ...item,
+            ageText,
+            age: plAge(ageText),
+            viewsText,
+            views: plCount(viewsText),
+            search: plNormalize(`${item.title} ${item.channel}`),
+        };
+    }
+
+    function plVideo(video, position) {
+        const overlays = video.thumbnailOverlays ?? [];
+        const resume = overlays.find(overlay => overlay.thumbnailOverlayResumePlaybackRenderer)?.thumbnailOverlayResumePlaybackRenderer;
+        const avatar = overlays.find(overlay => overlay.thumbnailOverlayAvatarStackViewModel)?.thumbnailOverlayAvatarStackViewModel
+            ?.avatarStack?.avatarStackViewModel?.avatars?.[0]?.avatarViewModel?.image?.sources?.[0]?.url ?? '';
+        const number = Number(ytText(video.index));
+        const parts = (video.videoInfo?.runs ?? []).map(run => run.text.trim()).filter(text => text && text !== '•');
+        return plEntry({
+            videoId: video.videoId,
+            index: number > 0 ? number - 1 : position,
+            title: ytText(video.title),
+            channel: ytText(video.shortBylineText),
+            seconds: Number(video.lengthSeconds) || null,
+            length: ytText(video.lengthText),
+            watched: Number(resume?.percentDurationWatched) || 0,
+            avatar,
+            by: plAvatarKey(avatar),
+            playable: video.isPlayable !== false,
+        }, parts);
+    }
+
+    // The newer card format, which some playlists (YouTube's own) use.
+    function plLockup(lockup, position) {
+        if (!lockup.contentId || (lockup.contentType && lockup.contentType !== 'LOCKUP_CONTENT_TYPE_VIDEO')) return null;
+        const meta = lockup.metadata?.lockupMetadataViewModel;
+        const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows ?? [];
+        const parts = rows.flatMap(row => (row.metadataParts ?? []).map(part => ytText(part.text).trim()).filter(Boolean));
+        const badge = findNode(lockup.contentImage, 'thumbnailBadgeViewModel')?.text;
+        const length = typeof badge === 'string' ? badge : ytText(badge);
+        const progress = findNode(lockup.contentImage, 'thumbnailOverlayProgressBarViewModel');
+        return plEntry({
+            videoId: lockup.contentId,
+            index: position,
+            title: ytText(meta?.title),
+            channel: parts[0] ?? '',
+            seconds: plLength(length),
+            length,
+            watched: Number(progress?.startPercent) || 0,
+            avatar: '',
+            by: '',
+            playable: true,
+        }, parts.slice(1));
+    }
+
+    // Adds the videos under a node to the list and returns the token of
+    // the next page, if any: the first one, the list's own; the page's
+    // sections carry another that answers nothing.
+    function plCollect(node, items, depth = 0) {
+        if (!node || typeof node !== 'object' || depth > 40) return null;
+        if (node.playlistVideoRenderer) {
+            if (node.playlistVideoRenderer.videoId) items.push(plVideo(node.playlistVideoRenderer, items.length));
+            return null;
+        }
+        if (node.lockupViewModel) {
+            const item = plLockup(node.lockupViewModel, items.length);
+            if (item) items.push(item);
+            return null;
+        }
+        if (node.continuationItemRenderer) return findNode(node.continuationItemRenderer, 'continuationCommand')?.token ?? null;
+        let token = null;
+        for (const value of Object.values(node)) {
+            const found = plCollect(value, items, depth + 1);
+            token ??= found;
+        }
+        return token;
+    }
+
+    // The JSON object right after a marker in a page's source.
+    function jsonAfter(text, marker) {
+        const from = text.indexOf(marker);
+        if (from < 0) return null;
+        const start = from + marker.length;
+        let depth = 0;
+        let quoted = false;
+        let escaped = false;
+        for (let i = start; i < text.length; i++) {
+            const char = text[i];
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (char === '\\') escaped = true;
+                else if (char === '"') quoted = false;
+            } else if (char === '"') quoted = true;
+            else if (char === '{') depth++;
+            else if (char === '}' && --depth === 0) {
+                try {
+                    return JSON.parse(text.slice(start, i + 1));
+                } catch {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    // Signed in, the browse API answers as the account (progress bars,
+    // private playlists) only with the hash YouTube's own requests carry.
+    async function plAuthHeaders() {
+        const sid = /(?:^|;\s*)(?:SAPISID|__Secure-3PAPISID)=([^;]+)/.exec(document.cookie)?.[1];
+        if (!sid || !crypto.subtle) return {};
+        const time = Math.floor(Date.now() / 1000);
+        const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(`${time} ${sid} ${location.origin}`));
+        const hash = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+        return { authorization: `SAPISIDHASH ${time}_${hash}`, 'x-origin': location.origin, 'x-goog-authuser': '0' };
+    }
+
+    // A list read before comes back from storage at once, kept a few
+    // days for the last few playlists; a few minutes old, it is read again
+    // behind the scenes and swapped in once whole.
+    const PL_CACHE_LISTS = 5;
+    const PL_CACHE_KEEP_MS = 3 * 86400000;
+    const PL_CACHE_FRESH_MS = 10 * 60000;
+
+    function storedPlaylist(list) {
+        const saved = (getSetting('playlistCache', {}) || {})[list];
+        if (!saved?.items || Date.now() - saved.at > PL_CACHE_KEEP_MS) return null;
+        const items = saved.items.map(item => ({ ...item, search: plNormalize(`${item.title} ${item.channel}`) }));
+        return { items, total: saved.total, owner: saved.owner, loading: false, refreshing: false, error: '', version: 0, at: saved.at };
+    }
+
+    function storePlaylist(list, entry) {
+        const { [list]: _, ...others } = getSetting('playlistCache', {}) || {};
+        const saved = { at: Date.now(), total: entry.total, owner: entry.owner, items: entry.items.map(({ search, ...item }) => item) };
+        const kept = Object.entries(others).sort((a, b) => b[1].at - a[1].at).slice(0, PL_CACHE_LISTS - 1);
+        setSetting('playlistCache', Object.fromEntries([[list, saved], ...kept]));
+    }
+
+    function openPlaylist(list) {
+        const stored = storedPlaylist(list);
+        if (!stored) {
+            loadPlaylist(list);
+            return;
+        }
+        plCache.set(list, stored);
+        if (Date.now() - stored.at > PL_CACHE_FRESH_MS) loadPlaylist(list, stored);
+    }
+
+    // Reads the whole list. Into a new entry it fills in page by page; into
+    // one already on screen (a stored copy) it swaps in only when complete,
+    // and a failure leaves that copy as it was.
+    async function loadPlaylist(list, shown = null) {
+        const entry = shown ?? { items: [], total: 0, owner: '', loading: true, refreshing: false, error: '', version: 0 };
+        if (!shown) plCache.set(list, entry);
+        const items = shown ? [] : entry.items;
+        const alive = () => plCache.get(list) === entry;
+        const changed = () => {
+            entry.version++;
+            if (alive() && pl.list === list) syncPlaylistAdvanced();
+        };
+        if (shown) {
+            entry.refreshing = true;
+            changed();
+        }
+        try {
+            const response = await fetch(`/playlist?list=${encodeURIComponent(list)}`, { credentials: 'include' });
+            const html = await response.text();
+            const data = parseInitialData(html);
+            if (!data) throw new Error('playlist page');
+            const header = JSON.stringify(data.header ?? {});
+            const total = plCount(/"(\d[\d.,]*) (?:vídeos?|videos?)"/.exec(header)?.[1]) ?? 0;
+            const owner = /"(?:por|by) ([^"]+?)(?: (?:e|and) \d+ [^"]*)?"/.exec(header)?.[1] ?? '';
+            if (!shown) Object.assign(entry, { total, owner });
+            let token = plCollect(data.contents, items);
+            const context = jsonAfter(html, '"INNERTUBE_CONTEXT":');
+            const key = /"INNERTUBE_API_KEY":"([^"]+)"/.exec(html)?.[1];
+            if (!shown) changed();
+            for (let page = 0; token && context && page < PL_MAX_PAGES && alive(); page++) {
+                const next = await fetch(`/youtubei/v1/browse?prettyPrint=false${key ? `&key=${key}` : ''}`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'content-type': 'application/json', ...(await plAuthHeaders()) },
+                    body: JSON.stringify({ context, continuation: token }),
+                });
+                if (!next.ok) throw new Error(`browse ${next.status}`);
+                token = plCollect((await next.json()).onResponseReceivedActions, items);
+                if (!shown) changed();
+            }
+            if (token) throw new Error('unfinished');
+            if (!alive()) return;
+            if (shown) Object.assign(entry, { items, total, owner });
+            storePlaylist(list, entry);
+        } catch {
+            if (!shown) entry.error = 'Não deu para carregar a playlist inteira.';
+        }
+        entry.loading = false;
+        entry.refreshing = false;
+        changed();
+    }
+
+    function plCurrentIn(entry) {
+        const params = new URL(location.href).searchParams;
+        const id = params.get('v');
+        const index = Number(params.get('index')) - 1;
+        return entry.items.find(item => item.videoId === id && item.index === index) ?? entry.items.find(item => item.videoId === id) ?? null;
+    }
+
+    const plCustom = prefs => Boolean(prefs && (prefs.sort !== 'original' || prefs.hideWatched || prefs.by || pl.query));
+
+    const PL_COMPARE = {
+        newest: (a, b) => (a.age ?? Infinity) - (b.age ?? Infinity),
+        oldest: (a, b) => (b.age ?? -Infinity) - (a.age ?? -Infinity),
+        shortest: (a, b) => (a.seconds ?? Infinity) - (b.seconds ?? Infinity),
+        longest: (a, b) => (b.seconds ?? -Infinity) - (a.seconds ?? -Infinity),
+        views: (a, b) => (b.views ?? -1) - (a.views ?? -1),
+        channel: (a, b) => a.channel.localeCompare(b.channel, 'pt', { sensitivity: 'base' }),
+    };
+
+    // The list as shown, which is the playback order too. The video on
+    // screen always stays in it, so "next" has a place to start from.
+    function plOrder(entry, prefs, keep) {
+        const query = plNormalize(pl.query.trim());
+        const items = entry.items.filter(item => item === keep || (
+            (!prefs.hideWatched || item.watched < PL_SEEN_PERCENT)
+            && (!prefs.by || item.by === prefs.by)
+            && (!query || item.search.includes(query))
+        ));
+        const compare = PL_COMPARE[prefs.sort];
+        // Ties (dates come as "há 2 anos") keep the playlist's order, read
+        // backwards for "newest": what was added later is likely newer.
+        const tie = prefs.sort === 'newest' ? (a, b) => b.index - a.index : (a, b) => a.index - b.index;
+        if (compare) items.sort((a, b) => compare(a, b) || tie(a, b));
+        return items;
+    }
+
+    function plContext() {
+        const list = playlistParams()?.list;
+        const prefs = list && plStore[list];
+        const entry = prefs && plCache.get(list);
+        if (!entry) return null;
+        const current = plCurrentIn(entry);
+        return { list, prefs, entry, current, custom: plCustom(prefs) };
+    }
+
+    // The neighbour of the video on screen in our order: an item, null
+    // past either end, or undefined when our order is not in charge.
+    function plNeighbour(step) {
+        const context = plContext();
+        if (!context?.custom || !context.current) return undefined;
+        const order = plOrder(context.entry, context.prefs, context.current);
+        const at = order.indexOf(context.current);
+        return order[at + step] ?? null;
+    }
+
+    function plWatch(item, list = pl.list) {
+        pl.ownNav = item.videoId;
+        const url = `/watch?v=${item.videoId}&list=${encodeURIComponent(list)}&index=${item.index + 1}`;
+        // YouTube's own (hidden) item when it has one, else its router.
+        const anchors = [...document.querySelectorAll('ytd-playlist-panel-renderer#playlist #items a#wc-endpoint')]
+            .filter(anchor => new URL(anchor.href, location.origin).searchParams.get('v') === item.videoId);
+        const anchor = anchors.find(link => new URL(link.href, location.origin).searchParams.get('index') === String(item.index + 1)) ?? anchors[0];
+        if (anchor) anchor.click();
+        else {
+            document.querySelector('ytd-app')?.dispatchEvent(new CustomEvent('yt-navigate', {
+                bubbles: true,
+                composed: true,
+                detail: {
+                    endpoint: {
+                        commandMetadata: { webCommandMetadata: { url, webPageType: 'WEB_PAGE_TYPE_WATCH', rootVe: 3832 } },
+                        watchEndpoint: { videoId: item.videoId, playlistId: list, index: item.index },
+                    },
+                },
+            }));
+        }
+        setTimeout(() => {
+            if (pl.ownNav === item.videoId && new URL(location.href).searchParams.get('v') !== item.videoId) location.assign(url);
+        }, 4000);
+    }
+
+    function onPlaylistTime(event) {
+        const video = event.target;
+        if (state.loop || video.paused || !video.duration || video.duration - video.currentTime > PL_HANDOVER_S) return;
+        if (player()?.classList.contains('ad-showing')) return;
+        const context = plContext();
+        if (!context?.custom || !context.current) return;
+        context.current.watched = 100;
+        const next = plNeighbour(1);
+        // YouTube is going there anyway.
+        if (next && next.index === context.current.index + 1) return;
+        video.pause();
+        if (next) plWatch(next, context.list);
+    }
+
+    // YouTube moved one step ahead in its own order while ours is in
+    // charge: go where ours says instead.
+    function redirectPlaylistAdvance(context) {
+        const id = context.current?.videoId ?? '';
+        if (id === pl.lastVideo) return;
+        const previous = pl.lastItem;
+        pl.lastVideo = id;
+        pl.lastItem = context.current;
+        if (pl.ownNav === id) {
+            pl.ownNav = '';
+            return;
+        }
+        if (!context.custom || !previous || !context.current || context.current.index !== previous.index + 1) return;
+        const order = plOrder(context.entry, context.prefs, previous);
+        const at = order.indexOf(previous);
+        const next = at < 0 ? null : order[at + 1];
+        if (next && next !== context.current) plWatch(next, context.list);
+    }
+
+    function plMake(tag, className, text) {
+        const element = document.createElement(tag);
+        if (className) element.className = className;
+        if (text) element.textContent = text;
+        return element;
+    }
+
+    function plRow(item, list) {
+        const row = plMake('a', 'ytc-pl-row');
+        row.href = `/watch?v=${item.videoId}&list=${encodeURIComponent(list)}&index=${item.index + 1}`;
+        row.dataset.index = String(item.index);
+        row.classList.toggle('is-unplayable', !item.playable);
+        row.addEventListener('click', event => {
+            if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) return;
+            event.preventDefault();
+            plWatch(item, list);
+        });
+        const thumb = plMake('div', 'ytc-pl-thumb');
+        if (item.playable) {
+            const image = plMake('img');
+            image.loading = 'lazy';
+            image.alt = '';
+            image.src = `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`;
+            thumb.append(image);
+        }
+        if (item.length) thumb.append(plMake('span', 'ytc-pl-time', item.length));
+        if (item.watched > 0) {
+            const bar = plMake('div', 'ytc-pl-progress');
+            const fill = plMake('i');
+            fill.style.width = `${Math.min(100, item.watched)}%`;
+            bar.append(fill);
+            thumb.append(bar);
+        }
+        const text = plMake('div', 'ytc-pl-text');
+        const title = plMake('div', 'ytc-pl-title', item.title);
+        title.title = item.title;
+        const meta = plMake('div', 'ytc-pl-meta');
+        if (item.avatar) {
+            const avatar = plMake('img');
+            avatar.src = item.avatar;
+            avatar.alt = '';
+            avatar.title = 'Adicionado por esta pessoa';
+            meta.append(avatar);
+        }
+        meta.append(plMake('span', '', [item.channel, item.viewsText, item.ageText].filter(Boolean).join(' • ')));
+        text.append(title, meta);
+        row.append(plMake('div', 'ytc-pl-index', String(item.index + 1)), thumb, text);
+        return row;
+    }
+
+    // Who added how many, in a shared playlist (more than one face).
+    function plContributors(entry) {
+        const people = new Map();
+        for (const item of entry.items) {
+            if (!item.by) continue;
+            const person = people.get(item.by) ?? { by: item.by, avatar: item.avatar, count: 0 };
+            person.count++;
+            people.set(item.by, person);
+        }
+        return people.size > 1 ? [...people.values()].sort((a, b) => b.count - a.count) : [];
+    }
+
+    function buildPlBar(root, list) {
+        const bar = plMake('div', 'ytc-pl-bar');
+        const search = plMake('input', 'ytc-pl-search');
+        search.type = 'search';
+        search.placeholder = 'Buscar na playlist';
+        search.setAttribute('aria-label', 'Buscar na playlist');
+        search.value = pl.query;
+        search.addEventListener('input', () => {
+            pl.query = search.value;
+            syncPlaylistAdvanced();
+        });
+        // YouTube's shortcuts stay out of the box.
+        search.addEventListener('keydown', event => event.stopPropagation());
+        const sort = plMake('select', 'ytc-pl-sort');
+        sort.title = 'Ordenar';
+        sort.setAttribute('aria-label', 'Ordenar');
+        for (const option of PL_SORTS) sort.append(new Option(option.label, option.id));
+        sort.addEventListener('change', () => {
+            savePlPrefs(list, { ...plStore[list], sort: sort.value });
+            syncPlaylistAdvanced();
+        });
+        const seen = plMake('button', 'ytc-pl-chip ytc-pl-seen');
+        seen.type = 'button';
+        seen.title = `Esconder os vídeos já vistos (${PL_SEEN_PERCENT}% ou mais)`;
+        seen.append(icon(PL_ICONS.unseen), plMake('span', '', 'Ocultar vistos'));
+        seen.addEventListener('click', () => {
+            savePlPrefs(list, { ...plStore[list], hideWatched: !plStore[list]?.hideWatched });
+            syncPlaylistAdvanced();
+        });
+        const people = plMake('div', 'ytc-pl-line ytc-pl-people');
+        const status = plMake('div', 'ytc-pl-status');
+        // The icons are decoration over the real controls: the field and
+        // the select keep their own focus and keyboard handling.
+        const searchBox = plMake('label', 'ytc-pl-searchbox');
+        searchBox.append(icon(PL_ICONS.search), search);
+        const sortBox = plMake('label', 'ytc-pl-sortbox');
+        sortBox.append(icon(PL_ICONS.sort), sort, icon(PL_ICONS.chevron));
+        const searchLine = plMake('div', 'ytc-pl-line');
+        searchLine.append(searchBox);
+        const sortLine = plMake('div', 'ytc-pl-line');
+        sortLine.append(sortBox, seen);
+        bar.append(searchLine, sortLine, people, status);
+        root.append(bar, plMake('div', 'ytc-pl-items'));
+    }
+
+    function syncPlBar(root, list, entry, prefs, shown) {
+        const sort = root.querySelector('.ytc-pl-sort');
+        if (sort.value !== prefs.sort) sort.value = prefs.sort;
+        const seen = root.querySelector('.ytc-pl-seen');
+        seen.classList.toggle('is-on', Boolean(prefs.hideWatched));
+        seen.setAttribute('aria-pressed', String(Boolean(prefs.hideWatched)));
+        const people = root.querySelector('.ytc-pl-people');
+        const contributors = plContributors(entry);
+        people.hidden = !contributors.length;
+        people.replaceChildren();
+        if (contributors.length) {
+            const all = plMake('button', `ytc-pl-chip${prefs.by ? '' : ' is-on'}`, 'Todos');
+            all.type = 'button';
+            all.setAttribute('aria-pressed', String(!prefs.by));
+            all.addEventListener('click', () => {
+                savePlPrefs(list, { ...plStore[list], by: '' });
+                syncPlaylistAdvanced();
+            });
+            people.append(all);
+            contributors.forEach((person, rank) => {
+                const chip = plMake('button', `ytc-pl-chip is-avatar${prefs.by === person.by ? ' is-on' : ''}`);
+                chip.type = 'button';
+                chip.setAttribute('aria-pressed', String(prefs.by === person.by));
+                // The header names only the owner, who added the most.
+                chip.title = rank === 0 && entry.owner ? `Adicionados por ${entry.owner}` : 'Adicionados por esta pessoa';
+                const face = plMake('img');
+                face.src = person.avatar;
+                face.alt = '';
+                chip.append(face, document.createTextNode(String(person.count)));
+                chip.addEventListener('click', () => {
+                    savePlPrefs(list, { ...plStore[list], by: prefs.by === person.by ? '' : person.by });
+                    syncPlaylistAdvanced();
+                });
+                people.append(chip);
+            });
+        }
+        const status = root.querySelector('.ytc-pl-status');
+        const total = Math.max(entry.total, entry.items.length);
+        const parts = [shown === entry.items.length ? `${entry.items.length} vídeos` : `Mostrando ${shown} de ${entry.items.length}`];
+        if (entry.loading) parts.push(`carregando ${entry.items.length} de ${total || '…'}`);
+        if (entry.refreshing) parts.push('atualizando…');
+        if (entry.error) parts.push(entry.error);
+        status.replaceChildren(plMake('span', '', parts.join(' · ')));
+        if (!entry.loading && !entry.refreshing) {
+            const reload = plMake('button');
+            reload.type = 'button';
+            reload.title = 'Ler a playlist de novo';
+            reload.append(icon(PL_ICONS.reload), plMake('span', '', 'Recarregar'));
+            reload.addEventListener('click', () => loadPlaylist(list));
+            status.append(reload);
+        }
+    }
+
+    function syncPlToggle(panel, list, on) {
+        let toggle = panel.querySelector('.ytc-pl-toggle');
+        if (!toggle) {
+            const host = panel.querySelector('#playlist-actions') ?? panel.querySelector('.header, #header-contents');
+            if (!host) return;
+            toggle = plMake('button', 'ytc-pl-toggle');
+            toggle.type = 'button';
+            toggle.append(icon(PL_ICON), plMake('span', '', 'Avançado'));
+            toggle.addEventListener('click', event => {
+                event.stopPropagation();
+                const current = playlistParams()?.list;
+                if (!current) return;
+                savePlPrefs(current, plStore[current] ? null : { sort: 'original', hideWatched: false, by: '' });
+                pl.signature = '';
+                syncPlaylistAdvanced();
+            });
+            host.append(toggle);
+        }
+        toggle.classList.toggle('is-on', on);
+        toggle.title = on ? 'Voltar à lista do YouTube' : 'Busca, ordem e filtros nesta playlist';
+    }
+
+    function syncPlaylistAdvanced() {
+        const list = playlistParams()?.list ?? '';
+        const panel = document.querySelector('ytd-watch-flexy ytd-playlist-panel-renderer#playlist');
+        // Mixes never end, so they have no whole list to read.
+        const usable = Boolean(list && panel && !list.startsWith('RD'));
+        const prefs = usable ? plStore[list] : null;
+        if (list !== pl.list) {
+            pl.list = list;
+            pl.query = '';
+            pl.signature = '';
+            pl.lastVideo = '';
+            pl.lastItem = null;
+        }
+        if (usable) syncPlToggle(panel, list, Boolean(prefs));
+        panel?.classList.toggle('ytc-pl-on', Boolean(prefs));
+        let root = panel?.querySelector('.ytc-pl');
+        if (!prefs) {
+            root?.remove();
+            return;
+        }
+        if (!plCache.has(list)) openPlaylist(list);
+        const entry = plCache.get(list);
+        const items = panel.querySelector('#items');
+        if (!root && items) {
+            root = plMake('div', 'ytc-pl');
+            buildPlBar(root, list);
+            items.before(root);
+            pl.signature = '';
+        }
+        if (!root) return;
+        const context = plContext();
+        if (context) redirectPlaylistAdvance(context);
+        const current = context?.current ?? null;
+        const video = player()?.querySelector('video');
+        if (video && !video.ytcPlaylistHook) {
+            video.ytcPlaylistHook = true;
+            video.addEventListener('timeupdate', onPlaylistTime);
+        }
+        const signature = [list, entry.version, prefs.sort, prefs.hideWatched, prefs.by, pl.query, current?.index].join('|');
+        if (signature === pl.signature) return;
+        pl.signature = signature;
+        const order = plOrder(entry, prefs, current);
+        syncPlBar(root, list, entry, prefs, order.length);
+        const box = root.querySelector('.ytc-pl-items');
+        // Rows are built once per item and only reordered after that, so a
+        // long playlist costs little on every new video or filter.
+        box.replaceChildren(...order.map(item => {
+            let row = plRows.get(item);
+            if (!row) {
+                row = plRow(item, list);
+                plRows.set(item, row);
+            }
+            return row;
+        }));
+        if (!order.length && !entry.loading) box.append(plMake('div', 'ytc-pl-empty', 'Nenhum vídeo com esses filtros.'));
+        for (const lit of box.querySelectorAll('.ytc-pl-row.is-current')) lit.classList.remove('is-current');
+        const row = current && box.querySelector(`.ytc-pl-row[data-index="${current.index}"]`);
+        row?.classList.add('is-current');
+        if (row && pl.scrolledTo !== `${list}:${current.index}`) {
+            pl.scrolledTo = `${list}:${current.index}`;
+            scrollPlRow(row);
+        }
+    }
+
+    // Brings a row to the top of the panel's own scroller (below the
+    // advanced toolbar stuck there), leaving the page where it is; near
+    // the end of the list the scroller stops short of it.
+    function scrollPlRow(row) {
+        let scroller = row.parentElement;
+        while (scroller && scroller !== document.body && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+        if (!scroller || scroller === document.body) return;
+        const bar = scroller.querySelector('.ytc-pl-bar');
+        const covered = bar && getComputedStyle(bar).position === 'sticky' ? bar.offsetHeight : 0;
+        const offset = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+        scroller.scrollTop += offset - covered - 4;
     }
 
     // ---------------------------------------------------------------------
@@ -4131,6 +5400,21 @@
                 box.append(menu);
                 return box;
             },
+            playlist() {
+                const box = make('div', 'ytc-ob-stage');
+                const menu = make('div', 'ytc-ob-menu is-player');
+                for (const [path, label, value] of [
+                    [SIDE_VIEWS[0].icon, 'Playlist', '12 / 305'],
+                    [SIDE_VIEWS[1].icon, 'Próximos', ''],
+                    [PL_ICON, 'Avançado', 'Busca, ordem, filtros'],
+                ]) {
+                    const row = make('div', 'ytc-ob-row is-ours');
+                    row.append(glyph(path), make('span', '', label), make('span', 'ytc-ob-value', value));
+                    menu.append(row);
+                }
+                box.append(menu);
+                return box;
+            },
             quality() {
                 const box = make('div', 'ytc-ob-form');
                 const field = (label, key) => {
@@ -4171,10 +5455,11 @@
             },
         };
         const steps = [
-            { art: 'welcome', title: 'Bem-vindo ao YouTube Enhancer', text: 'Modo teatro com chat e próximos vídeos nas laterais, controles extras no player e ajustes que o YouTube não tem. Em quatro passos, onde fica cada coisa.' },
+            { art: 'welcome', title: 'Bem-vindo ao YouTube Enhancer', text: 'Modo teatro com chat e próximos vídeos nas laterais, controles extras no player e ajustes que o YouTube não tem. Em cinco passos, onde fica cada coisa.' },
             { art: 'bar', title: 'Na barra do player', text: 'Loop, amplificador de áudio, velocidade (role a roda do mouse sobre ela) e os botões do chat e dos próximos vídeos ficam junto dos controles do YouTube.' },
             { art: 'gear', title: 'Na engrenagem do player', text: 'Player e Áudio abrem as opções do player: largura das laterais, cortar faixas pretas, volume padrão e o nível do amplificador.' },
             { art: 'account', title: 'No menu da sua foto', text: 'Configurações avançadas reúne o resto: qualidade, filtros de vídeo, cards, onde esconder Shorts e a seção Ao vivo do menu lateral.' },
+            { art: 'playlist', title: 'Nas playlists', text: 'Com os próximos vídeos ao lado, o topo da lateral alterna entre a playlist e os próximos. Avançado, no cabeçalho da playlist, lê a lista inteira com busca, ordem e filtros, e toca na ordem escolhida.' },
             { art: 'quality', title: 'Qualidade padrão', text: 'Vem desligada: o YouTube escolhe sozinho. Ligue para abrir todo vídeo na qualidade que você quer — dá pra mudar depois em Configurações avançadas.' },
         ];
 
@@ -4285,6 +5570,7 @@
         enhancePlayer();
         syncSettingsMenu();
         expandPlaylist();
+        syncPlaylistAdvanced();
         placeChat();
         syncPlaylistButtons();
         syncBarControls();
