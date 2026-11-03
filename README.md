@@ -149,7 +149,7 @@ X/Twitter control panel for a wider layout, decluttered sidebars, live preferenc
 <td align="center" width="96"><img src="https://cdn.simpleicons.org/youtube" width="48" height="48" alt="YouTube"></td>
 <td>
 
-### YouTube Enhancer <img src="https://img.shields.io/badge/v1.3.0-555?style=flat-square" alt="v1.3.0">
+### YouTube Enhancer <img src="https://img.shields.io/badge/v1.3.1-555?style=flat-square" alt="v1.3.1">
 
 <sub>youtube.com</sub>
 

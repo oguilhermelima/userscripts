@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Enhancer
 // @namespace    youtube-cinema
-// @version      1.3.0
+// @version      1.3.1
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/youtube.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/youtube.user.js
 // @author       oguilhermelima
@@ -2101,6 +2101,7 @@
     //  at the very top.
     // ---------------------------------------------------------------------
     const REVEAL_EDGE = 8;
+    const REVEAL_LEFT_ZONE = 0.5;
     let revealed = false;
     let hideTimer = 0;
 
@@ -2128,7 +2129,9 @@
         if (!document.documentElement.classList.contains('ytc-masthead-autohide')) return;
         const masthead = document.querySelector('#masthead-container');
         const bottom = masthead?.getBoundingClientRect().height || 56;
-        if (event.clientY <= REVEAL_EDGE || (revealed && event.clientY <= bottom)) {
+        const inTopLeftZone = event.clientX <= window.innerWidth * REVEAL_LEFT_ZONE
+            && event.clientY <= bottom;
+        if (event.clientY <= REVEAL_EDGE || inTopLeftZone || (revealed && event.clientY <= bottom)) {
             setRevealed(true);
         } else if (revealed && !hideTimer) {
             // A little grace so a quick dip below the bar does not close it,
