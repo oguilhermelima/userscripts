@@ -9,11 +9,11 @@
 Theater layouts, smarter sidebars, player controls and less clutter,
 installed in your browser with a userscript manager.
 
-<a href="#scripts"><img src="https://cdn.simpleicons.org/immich" width="36" height="36" alt="Immich"></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#scripts"><img src="https://cdn.simpleicons.org/instagram" width="36" height="36" alt="Instagram"></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#scripts"><img src="https://cdn.simpleicons.org/reddit" width="36" height="36" alt="Reddit"></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#scripts"><img src="https://cdn.simpleicons.org/twitch" width="36" height="36" alt="Twitch"></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#scripts"><img src="https://cdn.simpleicons.org/x/000000/ffffff" width="36" height="36" alt="X"></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#scripts"><img src="https://cdn.simpleicons.org/youtube" width="36" height="36" alt="YouTube"></a>
+<a href="#scripts"><img src="https://cdn.simpleicons.org/globo" width="36" height="36" alt="Globo"></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#scripts"><img src="https://cdn.simpleicons.org/immich" width="36" height="36" alt="Immich"></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#scripts"><img src="https://cdn.simpleicons.org/instagram" width="36" height="36" alt="Instagram"></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#scripts"><img src="https://cdn.simpleicons.org/reddit" width="36" height="36" alt="Reddit"></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#scripts"><img src="https://cdn.simpleicons.org/twitch" width="36" height="36" alt="Twitch"></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#scripts"><img src="https://cdn.simpleicons.org/x/000000/ffffff" width="36" height="36" alt="X"></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#scripts"><img src="https://cdn.simpleicons.org/youtube" width="36" height="36" alt="YouTube"></a>
 
 <br>
 
-<a href="#install"><img src="https://img.shields.io/badge/Get%20started-2ea44f?style=for-the-badge" alt="Get started"></a> <a href="#scripts"><img src="https://img.shields.io/badge/6%20scripts-555?style=for-the-badge" alt="6 scripts"></a> <img src="https://img.shields.io/badge/Auto--updates-1f6feb?style=for-the-badge" alt="Auto-updates">
+<a href="#install"><img src="https://img.shields.io/badge/Get%20started-2ea44f?style=for-the-badge" alt="Get started"></a> <a href="#scripts"><img src="https://img.shields.io/badge/7%20scripts-555?style=for-the-badge" alt="7 scripts"></a> <img src="https://img.shields.io/badge/Auto--updates-1f6feb?style=for-the-badge" alt="Auto-updates">
 
 </div>
 
@@ -61,6 +61,20 @@ installed in your browser with a userscript manager.
 ## Scripts
 
 <table>
+<tr>
+<td align="center" width="96"><img src="https://cdn.simpleicons.org/globo" width="48" height="48" alt="Globo"></td>
+<td>
+
+### Globo — Dark Mode, Ad-Free <img src="https://img.shields.io/badge/v1.9.3-555?style=flat-square" alt="v1.9.3">
+
+<sub>globo.com · www.globo.com · ge.globo.com · g1.globo.com · gshow.globo.com</sub>
+
+Removes advertising slots and applies a dark theme on Globo, g1, ge and gshow.
+
+<a href="https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/globo.user.js"><img src="https://img.shields.io/badge/Install%20Globo-0669DE?style=for-the-badge&logo=globo&logoColor=white" alt="Install Globo — Dark Mode, Ad-Free"></a>
+
+</td>
+</tr>
 <tr>
 <td align="center" width="96"><img src="https://cdn.simpleicons.org/immich" width="48" height="48" alt="Immich"></td>
 <td>

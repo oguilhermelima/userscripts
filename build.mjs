@@ -106,6 +106,7 @@ const cards = parsed.map(item => ({
 // Each site's real logo (Simple Icons) and brand colour, for the cards
 // and their install buttons.
 const BRANDS = {
+  globo: { icon: "globo", color: "0669DE" },
   immich: { icon: "immich", color: "4250AF" },
   instagram: { icon: "instagram", color: "E4405F" },
   reddit: { icon: "reddit", color: "FF4500" },
