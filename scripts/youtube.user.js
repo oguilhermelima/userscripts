@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Enhancer
 // @namespace    youtube-cinema
-// @version      1.3.1
+// @version      1.3.3
 // @author       oguilhermelima
 // @description  Full-screen theater by default with an auto-hiding masthead, live chat and up-next as switchable sidebars, black-bar crop, loop, audio boost, speed and quality controls in the player bar, a live-now section with a TV mode, a "Live now" filter on channel live tabs, an advanced playlist mode (search, sort, filters by watched and by who added, followed in playback), and advanced settings for playback quality, video filters, info cards and Shorts.
 // @match        https://www.youtube.com/*
@@ -24,14 +24,10 @@
     // list (#secondary) normally sits in the columns below the player; with
     // the sidebar on it is pinned to the right of the player instead.
     const FLEXY = 'ytd-watch-flexy[theater]:not([fullscreen])';
-    const RELATED_WIDTH = 420;
-    // Sidebar widths offered in the player settings; "Normal" leaves the
-    // chat at YouTube's own width.
-    const SIDE_WIDTHS = [
-        { label: 'Normal', width: 0 },
-        { label: 'Média', width: 360 },
-        { label: 'Estreita', width: 300 },
-    ];
+    const RELATED_WIDTH_DEFAULT = 420;
+    const CHAT_WIDTH_DEFAULT = 360;
+    const SIDEBAR_WIDTH_MIN = 280;
+    const SIDEBAR_WIDTH_MAX = 640;
 
     const BOOST_ICON = { viewBox: '4.77 4.77 26.46 26.46', transform: 'matrix(0,-1.6,1.6,0,-14.800104,37.2)' };
 
@@ -67,6 +63,13 @@
         try {
             GM_setValue(key, value);
         } catch {}
+    }
+
+    const legacySideWidth = Number(getSetting('sideWidth', 0)) || 0;
+    function sidebarWidthSetting(key, fallback, min, max) {
+        const value = Number(getSetting(key, legacySideWidth || fallback));
+        if (!Number.isFinite(value)) return fallback;
+        return Math.min(max, Math.max(min, Math.round(value / 10) * 10));
     }
 
     // Custom properties are rewritten from the 1s refresh; writing one even
@@ -120,8 +123,9 @@
         tvChat: Boolean(getSetting('tvChat', true)),
         tvGroups: getSetting('tvGroups', {}) || {},
         liveNowFilter: Boolean(getSetting('liveNowFilter', true)),
-        cropBars: Boolean(getSetting('cropBars', true)),
-        sideWidth: Number(getSetting('sideWidth', 0)) || 0,
+        cropBars: Boolean(getSetting('cropBars', false)),
+        chatWidth: sidebarWidthSetting('chatWidth', CHAT_WIDTH_DEFAULT, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX),
+        relatedWidth: sidebarWidthSetting('relatedWidth', RELATED_WIDTH_DEFAULT, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX),
         // Docked sidebar with a playlist: which of the two views is shown.
         sideView: getSetting('sideView', 'playlist') === 'related' ? 'related' : 'playlist',
         rate: Number(getSetting('rate', 1)) || 1,
@@ -188,7 +192,7 @@
     // ---------------------------------------------------------------------
     GM_addStyle(`
         :root {
-            --ytc-related-w: ${RELATED_WIDTH}px;
+            --ytc-related-w: ${RELATED_WIDTH_DEFAULT}px;
             --ytc-chat-w: 0px;
             --ytc-masthead-h: 56px;
             --ytc-page-bg: #0f0f0f;
@@ -282,8 +286,8 @@
             width: 45% !important;
         }
 
-        /* Narrower chat, chosen in the player settings: the frame and the
-           column YouTube reserves for it beside the player shrink together. */
+        /* The chat width is chosen in player settings: its frame and the
+           column YouTube reserves beside the player stay in sync. */
         html.ytc-chat-sized ${FLEXY} ytd-live-chat-frame#chat,
         html.ytc-chat-sized ${FLEXY} #panels-full-bleed-container {
             width: var(--ytc-chat-size) !important;
@@ -868,6 +872,13 @@
            HD badge. */
         #movie_player .ytp-settings-button.ytp-hd-quality-badge::after { display: none !important; }
 
+        /* The Delhi player experiment leaves the native autoplay control in
+           the DOM but hides it with an inline display:none. */
+        #movie_player button.ytp-autonav-toggle,
+        #movie_player button[data-tooltip-target-id="ytp-autonav-toggle-button"] {
+            display: inline-block !important;
+        }
+
         /* Bold and clear of the icon's lines, like YouTube's HD badge. */
         .ytc-quality-badge {
             top: 3px;
@@ -920,6 +931,11 @@
         .ytc-option.ytc-stacked { flex-direction: column; align-items: stretch; gap: 8px; padding: 8px 16px; }
         .ytc-option.ytc-sub { padding-left: 32px; }
         .ytc-option.is-disabled { opacity: 0.4; pointer-events: none; }
+        .ytc-option-label { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+        .ytc-option-hint { color: #aaa; font-size: 12px; line-height: 16px; }
+        .ytc-width-control { display: flex; align-items: center; gap: 10px; width: 100%; }
+        .ytc-width-control input[type="range"] { flex: 1; min-width: 0; accent-color: #f00; }
+        .ytc-width-control output { min-width: 52px; color: #aaa; text-align: right; font-variant-numeric: tabular-nums; }
         .ytc-switch {
             appearance: none;
             position: relative;
@@ -2260,8 +2276,8 @@
         root.classList.toggle('ytc-chat-hidden', theater && chat && !state.chatVisible);
         root.classList.toggle('ytc-related-sidebar', theater && relatedShown());
         syncSideView(theater && relatedShown());
-        setVar(root, '--ytc-chat-size', `${state.sideWidth}px`);
-        setVar(root, '--ytc-related-w', `${state.sideWidth || RELATED_WIDTH}px`);
+        setVar(root, '--ytc-chat-size', `${state.chatWidth}px`);
+        setVar(root, '--ytc-related-w', `${state.relatedWidth}px`);
 
         // The up-next sidebar sits left of YouTube's pinned chat.
         const chatContainer = flexy?.querySelector('#chat-container');
@@ -2271,7 +2287,7 @@
         setVar(root, '--ytc-chat-w', `${chatWidth}px`);
         // Only a chat actually on screen is resized and given room: a
         // collapsed chat replay has no width and must not reserve any.
-        root.classList.toggle('ytc-chat-sized', theater && state.sideWidth > 0 && chatWidth > 0);
+        root.classList.toggle('ytc-chat-sized', theater && state.chatWidth > 0 && chatWidth > 0);
         syncMasthead(flexy);
         // The pinned sidebar takes the page's own background, light or dark.
         const pageBg = getComputedStyle(document.querySelector('ytd-app') ?? document.body).backgroundColor;
@@ -2302,7 +2318,7 @@
         }
 
         // The player sizes its video from its container only on resize.
-        const layout = [theater, chat, state.chatVisible, relatedShown(), state.sideWidth, chatWidth].join();
+        const layout = [theater, chat, state.chatVisible, relatedShown(), state.chatWidth, state.relatedWidth, chatWidth].join();
         if (layout !== lastLayout) {
             lastLayout = layout;
             requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
@@ -3002,14 +3018,23 @@
         syncCinemaPanel();
     }
 
-    function optionRow(label, control, className = '') {
+    function optionRow(label, control, className = '', hint = '') {
         // A label only around a switch: around buttons, a click on the text
         // would press the first one.
         const row = document.createElement(control instanceof HTMLInputElement ? 'label' : 'div');
         row.className = `ytc-option ${className}`;
         const text = document.createElement('span');
         text.className = 'ytc-option-label';
-        text.textContent = label;
+        if (hint) {
+            const title = document.createElement('span');
+            title.textContent = label;
+            const detail = document.createElement('span');
+            detail.className = 'ytc-option-hint';
+            detail.textContent = hint;
+            text.append(title, detail);
+        } else {
+            text.textContent = label;
+        }
         row.append(text, control);
         return row;
     }
@@ -3049,6 +3074,32 @@
         return group;
     }
 
+    function pixelSlider(key, label, min, max) {
+        const control = document.createElement('div');
+        control.className = 'ytc-width-control';
+        const range = document.createElement('input');
+        range.type = 'range';
+        range.min = String(min);
+        range.max = String(max);
+        range.step = '10';
+        range.value = String(state[key]);
+        range.setAttribute('aria-label', label);
+        range.setAttribute('aria-valuetext', `${state[key]} pixels`);
+        const output = document.createElement('output');
+        output.textContent = `${state[key]} px`;
+        range.addEventListener('input', () => {
+            output.textContent = `${range.value} px`;
+            range.setAttribute('aria-valuetext', `${range.value} pixels`);
+        });
+        range.addEventListener('change', () => {
+            state[key] = Number(range.value);
+            setSetting(key, state[key]);
+            syncLayout();
+        });
+        control.append(range, output);
+        return control;
+    }
+
     function sectionTitle(text) {
         const title = document.createElement('div');
         title.className = 'ytc-panel-section';
@@ -3064,11 +3115,11 @@
                 optionRow('Cortar faixas pretas', switchInput('cropBars', () => {
                     cropBlackBars();
                     syncLayout();
-                })),
+                }), '', 'Recomendado para telas ultrawide; pode cortar as bordas da imagem.'),
                 sectionTitle('Layout'),
                 optionRow('Abrir chat automaticamente', switchInput('autoChat')),
-                optionRow('Largura das laterais', choiceGroup('sideWidth', SIDE_WIDTHS.map(option => option.width),
-                    width => SIDE_WIDTHS.find(option => option.width === width).label, syncLayout), 'ytc-stacked'),
+                optionRow('Largura do chat', pixelSlider('chatWidth', 'Largura do chat', SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX), 'ytc-stacked'),
+                optionRow('Largura da playlist e dos recomendados', pixelSlider('relatedWidth', 'Largura da playlist e dos recomendados', SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX), 'ytc-stacked'),
             ],
         },
         audio: {
