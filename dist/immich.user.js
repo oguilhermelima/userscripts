@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Immich — YouTube-Style Player, Cards & Album Sidebar
 // @namespace    immich-player
-// @version      2.5.0
+// @version      2.5.1
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/immich.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/immich.user.js
 // @author       oguilhermelima
@@ -1564,6 +1564,8 @@
                 html.iv-album-nav #iv-cards { left: 16rem; }
             }
             @media (max-width: 1023px) {
+                /* The mobile drawer must paint above the card view layered over main. */
+                html.iv-cards-on #sidebar { z-index: 1000 !important; }
                 #iv-nav { display: none; }
             }
 

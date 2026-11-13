@@ -79,7 +79,7 @@ Removes advertising slots and applies a dark theme on Globo, g1, ge and gshow.
 <td align="center" width="96"><img src="https://cdn.simpleicons.org/immich" width="48" height="48" alt="Immich"></td>
 <td>
 
-### Immich — YouTube-Style Player, Cards & Album Sidebar <img src="https://img.shields.io/badge/v2.5.0-555?style=flat-square" alt="v2.5.0">
+### Immich — YouTube-Style Player, Cards & Album Sidebar <img src="https://img.shields.io/badge/v2.5.1-555?style=flat-square" alt="v2.5.1">
 
 <sub>Immich (self-hosted)</sub>
 

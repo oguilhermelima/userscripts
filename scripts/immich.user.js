@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Immich — YouTube-Style Player, Cards & Album Sidebar
 // @namespace    immich-player
-// @version      2.5.0
+// @version      2.5.1
 // @author       oguilhermelima
 // @description  YouTube-style video player for Immich: original quality with automatic fallback, 0.25x–5x speed, one-click audio boost, seek keys, J/K/L shortcuts, picture-in-picture and video marks (moments and intervals, pasted in bulk, stored on the server); a YouTube-style card view with title, date and duration, grouping and sorting; and an album sidebar that follows the same order. Add your own server as a user @match in your userscript manager.
 // @match        https://demo.immich.app/*
@@ -1563,6 +1563,8 @@
                 html.iv-album-nav #iv-cards { left: 16rem; }
             }
             @media (max-width: 1023px) {
+                /* The mobile drawer must paint above the card view layered over main. */
+                html.iv-cards-on #sidebar { z-index: 1000 !important; }
                 #iv-nav { display: none; }
             }
 
