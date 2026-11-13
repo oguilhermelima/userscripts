@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit — Control Panel, Ad-Free
 // @namespace    reddit-tweaks
-// @version      2.80.0
+// @version      2.81.0
 // @author       oguilhermelima
 // @description  Custom Reddit control panel with layout controls, ad cleanup, video autoplay, and sorting tabs.
 // @match        https://www.reddit.com/*
@@ -235,7 +235,7 @@
             items: [
                 { key: "autoplay", label: "Autoplay videos", hint: "Plays/pauses videos (muted) as they scroll in/out of view. Experimental.", def: true },
                 { key: "galleryPlayer", label: "Custom gallery nav", hint: "On gallery posts in the feed, swaps Reddit's carousel for ours: a bottom ‹ 2/5 › bar + one-image-per-gesture scroll. Always on inside the TikTok feed.", def: true },
-                { key: "imageViewer", label: "Custom image viewer", hint: "Clicking a single image opens it in our own full-screen viewer (max size, open-raw button) instead of Reddit's media page.", def: true },
+                { key: "imageViewer", label: "Custom media viewer", hint: "Clicking a single post image or a comment image/GIF/video opens our own full-screen viewer instead of Reddit's media page.", def: true },
                 { key: "maxQuality", label: "Always max video quality", hint: "Locks Reddit videos to the highest resolution (no adaptive downscaling). Uses more data on slow connections. Off = Auto/adaptive; the quality button still lets you pick.", def: true },
                 { key: "nsfwUnblur", label: "Unblur NSFW / spoilers", hint: "Removes the blur on flagged media. Reload the page to blur it again.", def: true, hide: true },
             ],
@@ -402,10 +402,12 @@
         .rx-rg-galwrap .rx-tok-gallery { touch-action: pan-y; }
         /* lightbox PRÓPRIO (maximizar imagem no clique) — imagem ocupa o máximo; controles flutuam por cima */
         .rx-lb { position: fixed; inset: 0; z-index: 2147483647; background: rgba(0, 0, 0, .94); display: flex; align-items: center; justify-content: center; touch-action: none; }
+        html:has(.rx-lb), html:has(.rx-lb) body { overflow: hidden !important; overscroll-behavior: none; }
         .rx-lb::after { content: ""; position: absolute; width: 42px; height: 42px; border: 3px solid rgba(255,255,255,.2); border-top-color: #ff4500; border-radius: 50%; opacity: 0; pointer-events: none; }
         .rx-lb.rx-lb-loading::after { opacity: 1; animation: rx-tok-spin .8s linear infinite; }
-        .rx-lb.rx-lb-error::after { content: "Image unavailable"; width: auto; height: auto; border: 0; color: rgba(255,255,255,.72); font: 600 13px/1 -apple-system, sans-serif; animation: none; }
+        .rx-lb.rx-lb-error::after { content: "Media unavailable"; width: auto; height: auto; border: 0; color: rgba(255,255,255,.72); font: 600 13px/1 -apple-system, sans-serif; animation: none; }
         .rx-lb-img { position: relative; z-index: 0; max-width: 100vw; max-height: 100vh; width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; opacity: 0; cursor: zoom-in; transform-origin: center center; will-change: transform, opacity; transition: opacity .16s ease, transform .18s ease; touch-action: none; }
+        .rx-lb-video { position: relative; z-index: 0; max-width: 100vw; max-height: 100vh; width: 100%; height: 100%; object-fit: contain; background: #000; }
         .rx-lb.rx-lb-ready .rx-lb-img { opacity: 1; }
         .rx-lb.rx-lb-zoomed .rx-lb-img { cursor: grab; }
         .rx-lb.rx-lb-zoomed.rx-lb-dragging .rx-lb-img { cursor: grabbing !important; transition: none !important; }
@@ -2414,10 +2416,87 @@
         if (!rxGalIO) rxGalIO = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) galProcess(e.target, 0); }), { rootMargin: "600px" });
         gals.forEach((g) => { g.dataset.rxGal = "queued"; rxGalIO.observe(g); });
     }
-    // Imagem individual (site): clique abre o NOSSO lightbox em vez da página /media do Reddit. Listener delegado (capture).
+    // URLs de mídia nos comentários podem vir por /media?url=… ou direto do host original.
+    const VIDEO_MEDIA_RE = /\.(?:mp4|m4v|webm|mov|m3u8|gifv)(?:$|[?#])/i;
+    const IMAGE_MEDIA_RE = /\.(?:jpe?g|png|gif|webp|avif|bmp)(?:$|[?#])/i;
+    function commentMediaUrl(value) {
+        if (!value) return "";
+        try {
+            const url = new URL(value, location.href);
+            if (url.protocol !== "https:") return "";
+            if (/^(?:www\.|sh\.)?reddit\.com$/i.test(url.hostname) && url.pathname === "/media") {
+                const embedded = url.searchParams.get("url");
+                if (!embedded) return "";
+                const media = new URL(embedded);
+                return media.protocol === "https:" ? media.href : "";
+            }
+            return url.href;
+        } catch (e) { return ""; }
+    }
+    function isCommentVideoUrl(src) {
+        if (!src) return false;
+        try {
+            const url = new URL(src);
+            return VIDEO_MEDIA_RE.test(url.pathname) || url.hostname === "v.redd.it";
+        } catch (e) { return false; }
+    }
+    function isCommentImageUrl(src) {
+        if (!src) return false;
+        try {
+            const url = new URL(src);
+            return IMAGE_MEDIA_RE.test(url.pathname) || /^(?:i|preview|external-preview)\.redd\.it$/i.test(url.hostname);
+        } catch (e) { return false; }
+    }
+    function commentMediaFromTarget(target) {
+        const mediaEl = target.closest("img, video, shreddit-player, shreddit-player-2");
+        const anchor = target.closest("a[href]");
+        if (anchor && /\/(?:user|u)\//i.test(anchor.pathname || "")) return null; // não sequestra clique no avatar/autor
+        const linkedSrc = anchor ? commentMediaUrl(anchor.href) : "";
+        const imageEl = mediaEl && mediaEl.tagName === "IMG" ? mediaEl : null;
+        const videoEl = mediaEl && mediaEl.tagName === "VIDEO" ? mediaEl : null;
+        const playerEl = mediaEl && mediaEl.matches("shreddit-player, shreddit-player-2") ? mediaEl : null;
+        const imageSrc = imageEl ? commentMediaUrl(bestSrc(imageEl)) : "";
+        const playerPreview = playerEl ? commentMediaUrl(playerEl.getAttribute("preview")) : "";
+        const playerHls = playerEl ? commentMediaUrl(playerEl.getAttribute("src")) : "";
+        const videoSrc = videoEl
+            ? commentMediaUrl(videoEl.currentSrc) || commentMediaUrl(videoEl.getAttribute("src"))
+            : "";
+        const nestedVideoSrc = videoEl && !videoSrc ? commentMediaUrl(videoEl.querySelector("source[src]")?.getAttribute("src")) : "";
+        const linkedVideo = isCommentVideoUrl(linkedSrc) ? linkedSrc : "";
+        const videoSources = [playerPreview, videoSrc, nestedVideoSrc, playerHls, linkedVideo]
+            .filter((src, i, all) => src && all.indexOf(src) === i);
+        if ((videoEl || playerEl || linkedVideo) && videoSources.length) {
+            return { kind: "video", sources: videoSources, poster: commentMediaUrl(playerEl?.getAttribute("poster")) || imageSrc };
+        }
+
+        const linkedImage = isCommentImageUrl(linkedSrc);
+        const imageSource = linkedImage ? linkedSrc : imageSrc;
+        const isInlineImage = imageEl && (
+            imageEl.matches(".media-lightbox-img") || linkedImage || isCommentImageUrl(imageSrc)
+        );
+        if (isInlineImage && imageSource) return { kind: "image", src: imageSource };
+
+        // Também abre links diretos para arquivos de mídia dentro do comentário.
+        if (!mediaEl && linkedSrc) {
+            if (isCommentVideoUrl(linkedSrc)) return { kind: "video", sources: [linkedSrc], poster: "" };
+            if (isCommentImageUrl(linkedSrc)) return { kind: "image", src: linkedSrc };
+        }
+        return null;
+    }
+    // Imagem individual (site) e mídia dos comentários: abre o viewer interno. Listener delegado (capture).
     function rxImgClick(e) {
         if (!settings.imageViewer || e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return; // respeita ctrl/cmd-click (abrir em nova guia)
-        const img = e.target.closest && e.target.closest("img.media-lightbox-img");
+        const target = e.target;
+        const comment = target.closest && target.closest("shreddit-comment");
+        if (comment && !target.closest(".rx-lb, .rx-tok, .rx-rg-galwrap")) {
+            const media = commentMediaFromTarget(target);
+            if (!media) return;
+            e.preventDefault(); e.stopPropagation();
+            if (media.kind === "video") openCommentVideoLightbox(media);
+            else openLightbox([rawImg(media.src)], 0);
+            return;
+        }
+        const img = target.closest && target.closest("img.media-lightbox-img");
         if (!img || img.closest("gallery-carousel") || img.closest(".rx-lb, .rx-tok, .rx-rg-galwrap")) return; // pula galeria e nossos overlays
         const src = bestSrc(img);
         if (!src || !/(redd\.it|redditmedia)/.test(src)) return;
@@ -2621,7 +2700,58 @@
     }
     // Lightbox PRÓPRIO: imagem ocupa o máximo; contador em cima; abrir-direto+fechar no canto sup. direito; ‹ ›/setas/scroll-h.
     let rxLbKey = null;
-    function closeLb() { document.querySelector(".rx-lb")?.remove(); if (rxLbKey) { document.removeEventListener("keydown", rxLbKey, true); rxLbKey = null; } }
+    let rxLbCleanup = null;
+    function closeLb() {
+        document.querySelector(".rx-lb")?.remove();
+        if (rxLbCleanup) { rxLbCleanup(); rxLbCleanup = null; }
+        if (rxLbKey) { document.removeEventListener("keydown", rxLbKey, true); rxLbKey = null; }
+    }
+    function openCommentVideoLightbox(media) {
+        closeLb();
+        const video = el("video", { className: "rx-lb-video", controls: "", autoplay: "", playsinline: "", preload: "auto", poster: media.poster || "" });
+        const openA = el("a", { className: "rx-lb-btn", target: "_blank", rel: "noopener", title: "Open video in a new tab", "aria-label": "Open video in a new tab" }, icon(PATH.external, 24));
+        openA.addEventListener("click", (e) => e.stopPropagation());
+        const close = el("button", { className: "rx-lb-btn", type: "button", title: "Close (Esc)", "aria-label": "Close", onClick: closeLb }, icon(PATH.close, 20));
+        const lb = el("div", { className: "rx-lb rx-lb-loading", role: "dialog", "aria-label": "Video viewer" }, video);
+        lb.appendChild(el("div", { className: "rx-lb-top" }, openA, close));
+        lb.addEventListener("click", (e) => { if (e.target === lb) closeLb(); });
+        let hls = null, attempt = 0;
+        const cleanup = () => { video.pause(); if (hls) { hls.destroy(); hls = null; } };
+        rxLbCleanup = cleanup;
+        const sources = media.sources || [];
+        const loadSource = (index) => {
+            const token = ++attempt;
+            if (hls) { hls.destroy(); hls = null; }
+            if (index >= sources.length) {
+                lb.classList.remove("rx-lb-loading", "rx-lb-ready");
+                lb.classList.add("rx-lb-error");
+                return;
+            }
+            const src = sources[index];
+            openA.href = src;
+            video.onerror = () => { if (token === attempt) loadSource(index + 1); };
+            video.onloadeddata = () => {
+                if (token !== attempt) return;
+                lb.classList.remove("rx-lb-loading", "rx-lb-error");
+                lb.classList.add("rx-lb-ready");
+            };
+            if (/\.m3u8(?:$|[?#])/i.test(src) && !video.canPlayType("application/vnd.apple.mpegurl") && typeof Hls !== "undefined" && Hls.isSupported()) {
+                hls = new Hls();
+                hls.on(Hls.Events.ERROR, (_event, data) => { if (token === attempt && data.fatal) loadSource(index + 1); });
+                hls.loadSource(src);
+                hls.attachMedia(video);
+            } else {
+                video.src = src;
+                video.load();
+            }
+        };
+        (document.body || document.documentElement).appendChild(lb);
+        loadSource(0);
+        rxLbKey = (e) => {
+            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeLb(); }
+        };
+        document.addEventListener("keydown", rxLbKey, true);
+    }
     function openLightbox(srcs, start) {
         closeLb();
         let idx = start || 0;

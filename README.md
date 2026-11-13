@@ -107,7 +107,7 @@ Native video controls, unified mosaic feed, responsive grids, lightbox viewer, a
 <td align="center" width="96"><img src="https://cdn.simpleicons.org/reddit" width="48" height="48" alt="Reddit"></td>
 <td>
 
-### Reddit — Control Panel, Ad-Free <img src="https://img.shields.io/badge/v2.80.0-555?style=flat-square" alt="v2.80.0">
+### Reddit — Control Panel, Ad-Free <img src="https://img.shields.io/badge/v2.81.0-555?style=flat-square" alt="v2.81.0">
 
 <sub>reddit.com</sub>
 
