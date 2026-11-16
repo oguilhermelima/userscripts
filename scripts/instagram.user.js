@@ -655,6 +655,10 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 /* página de publicação aberta em rota própria: amplia o post e mantém More posts alinhado ao grid. */
 .igm-postpage{ width:100% !important; max-width:var(--igm-maxw) !important; }
 .igm-postpage article{ width:100% !important; max-width:none !important; }
+.igm-postdetail{ box-sizing:border-box !important; width:min(var(--igm-maxw), calc(100vw - var(--igm-navw) - 48px)) !important;
+  max-width:none !important; margin-left:auto !important; margin-right:auto !important; }
+.igm-postdetail.igm-gridnav{ width:min(calc(var(--igm-maxw) + var(--igm-navw)), calc(100vw - 24px)) !important;
+  padding-left:var(--igm-navw) !important; }
 /* HEADER DO PERFIL — ocupa mais espaço via zoom (amplia o bloco inteiro sem tocar na estrutura).
    NÃO mexer em flex/min-width/max-width dos filhos: a v3.16 fez isso e quebrou feio — o min-width:0
    caiu num wrapper errado e o texto passou a quebrar UMA LETRA POR LINHA, com o avatar solto no meio.
@@ -710,12 +714,17 @@ ${ariaHas("searchPart", ".igm-gridcol:not(.igm-postpage) input")}{ max-width:non
 .igf-feed.igf-shadow .igf-card{ box-shadow:var(--igf-shadow); }
 .igf-feed.igf-shadow .igf-card:hover{ transform:translateY(-4px); box-shadow:var(--igf-shadow-hov); }
 .igf-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; padding:7px 11px; height:var(--igf-headh); box-sizing:border-box; }
-.igf-identity{ display:flex; flex:1 1 auto; flex-direction:column; gap:3px; min-width:0; max-width:calc(100% - 90px); }
+.igf-identity{ display:flex; flex:1 1 auto; align-items:center; gap:10px; min-width:0; max-width:calc(100% - 90px); }
+.igf-avatar{ display:flex; align-items:center; justify-content:center; flex:0 0 42px; width:42px; height:42px; overflow:hidden;
+  border-radius:50%; background:var(--igf-avatar-bg); }
+.igf-avatar:focus-visible{ outline:2px solid var(--igf-accent); outline-offset:2px; }
+.igf-avatar img{ width:100%; height:100%; object-fit:cover; }
+.igf-profilemeta{ display:flex; flex:1 1 auto; flex-direction:column; align-items:flex-start; justify-content:center; gap:4px; min-width:0; }
 .igf-userline{ display:flex; align-items:center; gap:3px; min-width:0; }
-.igf-who{ display:flex; align-items:center; gap:8px; min-width:0; text-decoration:none; }
-.igf-head img{ width:30px; height:30px; border-radius:50%; object-fit:cover; flex:0 0 auto; background:var(--igf-avatar-bg); }
+.igf-who{ display:flex; align-items:center; min-width:0; text-decoration:none; }
+.igf-head img{ width:42px; height:42px; border-radius:50%; object-fit:cover; flex:0 0 auto; background:var(--igf-avatar-bg); }
 .igf-head b{ font-size:15px; font-weight:650; color:var(--igf-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.igf-pubtime{ flex:0 0 auto; margin-left:auto; color:var(--igf-text-2); font-size:14px; font-weight:650; font-variant-numeric:tabular-nums;
+.igf-pubtime{ flex:0 0 auto; margin-left:auto; color:var(--igf-text-2); font-size:14px; font-weight:400; font-variant-numeric:tabular-nums;
   line-height:20px; white-space:nowrap; text-decoration:none; }
 .igf-copyuser{ flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; margin-left:-2px;
   padding:0; border:0; border-radius:7px; background:transparent; color:var(--igf-muted); cursor:pointer; opacity:.7;
@@ -724,14 +733,15 @@ ${ariaHas("searchPart", ".igm-gridcol:not(.igm-postpage) input")}{ max-width:non
 .igf-copyuser:hover{ opacity:1; background:var(--igf-hover-bg); color:var(--igf-text); }
 .igf-copyuser.igf-copied{ color:var(--igf-accent); opacity:1; }
 .igf-who:has(b:empty) + .igf-copyuser{ display:none; }
-.igf-follow{ display:block; margin:0 0 0 38px; flex:0 0 auto; background:none; border:0; cursor:pointer; padding:2px 5px; border-radius:7px;
-  color:var(--igf-accent); font:inherit; font-size:12px; font-weight:700; line-height:16px; text-align:left;
+.igf-follow{ display:inline-flex; align-self:flex-start; align-items:center; justify-content:center; box-sizing:border-box; width:max-content; min-width:74px; height:24px;
+  margin:0; padding:0 10px; border:1px solid var(--igf-accent); border-radius:999px; background:var(--igf-accent); color:#fff;
+  cursor:pointer; font:inherit; font-size:12px; font-weight:700; line-height:1; text-align:center; white-space:nowrap;
   transition:background .15s ease, color .15s ease, transform .15s ease; }
 .igf-follow:focus-visible{ outline:2px solid var(--igf-accent); outline-offset:1px; }
-.igf-follow:hover{ background:var(--igf-hover-bg); }
-.igf-follow.on{ color:var(--igf-muted); font-weight:600; }
+.igf-follow:hover{ background:color-mix(in srgb, var(--igf-accent) 82%, #000); border-color:color-mix(in srgb, var(--igf-accent) 82%, #000); transform:translateY(-1px); }
+.igf-follow.on{ border-color:var(--igf-line); background:var(--igf-hover-bg); color:var(--igf-text-2); font-weight:650; }
 .igf-follow-hover{ display:none; }
-.igf-follow.on:hover, .igf-follow.on:focus-visible{ color:var(--igf-danger); background:color-mix(in srgb, var(--igf-danger) 10%, transparent); }
+.igf-follow.on:hover, .igf-follow.on:focus-visible{ border-color:color-mix(in srgb, var(--igf-danger) 35%, transparent); color:var(--igf-danger); background:color-mix(in srgb, var(--igf-danger) 12%, transparent); transform:none; }
 .igf-follow.on:hover .igf-follow-label, .igf-follow.on:focus-visible .igf-follow-label{ display:none; }
 .igf-follow.on:hover .igf-follow-hover, .igf-follow.on:focus-visible .igf-follow-hover{ display:inline; }
 .igf-follow.igf-follow-success{ animation:igf-follow-pop .36s cubic-bezier(.2,.8,.2,1); }
@@ -838,12 +848,13 @@ ${ariaHas("searchPart", ".igm-gridcol:not(.igm-postpage) input")}{ max-width:non
 .igf-feed.igf-dense.igf-nocap{ --igf-caph:0px; }
 .igf-feed.igf-dense .igf-card{ border-radius:12px; }
 .igf-feed.igf-dense .igf-head{ padding:5px 9px; }
-.igf-feed.igf-dense .igf-head img{ width:26px; height:26px; }
+.igf-feed.igf-dense .igf-head img{ width:36px; height:36px; }
+.igf-feed.igf-dense .igf-avatar{ flex-basis:36px; width:36px; height:36px; }
 .igf-feed.igf-dense .igf-skel-head{ padding:5px 9px; }
-.igf-feed.igf-dense .igf-skel-avatar{ width:26px; height:26px; }
+.igf-feed.igf-dense .igf-skel-avatar{ width:36px; height:36px; }
 .igf-feed.igf-dense .igf-head b{ font-size:14px; }
 .igf-feed.igf-dense .igf-pubtime{ font-size:13px; }
-.igf-feed.igf-dense .igf-follow{ margin-left:34px; font-size:11px; line-height:15px; }
+.igf-feed.igf-dense .igf-follow{ min-width:68px; height:22px; padding:0 8px; font-size:11px; }
 .igf-feed.igf-dense .igf-actions{ padding:0 5px; }
 .igf-feed.igf-dense .igf-act{ padding:5px 6px; font-size:12px; }
 .igf-feed.igf-dense .igf-act svg{ width:20px; height:20px; }
@@ -872,7 +883,7 @@ ${ariaHas("searchPart", ".igm-gridcol:not(.igm-postpage) input")}{ max-width:non
   pointer-events:none; overflow:hidden; background:var(--igf-card-bg); }
 .igf-skel-head{ display:flex; align-items:flex-start; gap:8px; height:var(--igf-headh); padding:7px 11px; box-sizing:border-box; }
 .igf-skel-avatar, .igf-skel-name, .igf-skel-chip, .igf-skel-time, .igf-skel-media, .igf-skel-line{ display:block; background:rgba(128,128,128,.14); }
-.igf-skel-avatar{ width:30px; height:30px; border-radius:50%; flex:0 0 auto; }
+.igf-skel-avatar{ width:42px; height:42px; border-radius:50%; flex:0 0 auto; }
 .igf-skel-identity{ display:flex; flex:1 1 auto; flex-direction:column; gap:5px; min-width:0; }
 .igf-skel-name{ width:31%; max-width:110px; height:9px; border-radius:8px; }
 .igf-skel-chip{ width:50px; height:7px; border-radius:8px; }
@@ -1753,14 +1764,16 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (isExplore() && prefs.gridExplore) return "explore";
         if (isSaved() && (prefs.gridSaved || prefs.gridProfile)) return "saved";   // salvos: flag própria OU junto do perfil
         if (isProfile() && prefs.gridProfile) return "profile";
+        // A live own feed means Instagram opened a post as a modal; preserve that surface.
         if (isPostRoute()) {
-            if (postRecommendationTiles().length >= 2) return "post";
-            if (feedEl && feedEl.isConnected) return mountedSurface;              // modal por cima → mantém
+            if (feedEl && feedEl.isConnected) return mountedSurface;
+            return "post";
         }
         return null;
     }
     const GRID_SEL = 'a[role="link"][href*="/p/"], a[role="link"][href*="/reel/"]';   // tile do explore/profile
-    const itemsIn = (root) => root.querySelectorAll(surface === "home" ? "article" : GRID_SEL);
+    const POST_GRID_SEL = 'a[href*="/p/"], a[href*="/reel/"]';
+    const itemsIn = (root) => root.querySelectorAll(surface === "home" ? "article" : surface === "post" ? POST_GRID_SEL : GRID_SEL);
     const harvestOne = (node) => surface === "home" ? harvestPost(node) : harvestTile(node);
     const keyOf = (node) => surface === "home" ? postKey(node) : tileKey(node);
 
@@ -3067,20 +3080,23 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const profHref = p.author ? "/" + p.author + "/" : p.href;
         const head = el("div", { class: "igf-head" });
         const identity = el("div", { class: "igf-identity" });
+        const avatar = el(p.author ? "a" : "div", { class: "igf-avatar", href: p.author ? profHref : null, "aria-label": p.author ? "Abrir perfil @" + p.author : null });
+        if (p.avatar) avatar.appendChild(el("img", { src: p.avatar, loading: "lazy", alt: "" }));
+        const profileMeta = el("div", { class: "igf-profilemeta" });
         const userline = el("div", { class: "igf-userline" });
-        const who = el("a", { class: "igf-who", href: profHref });   // nome/avatar → PERFIL
-        if (p.avatar) who.appendChild(el("img", { src: p.avatar, loading: "lazy", alt: "" }));
+        const who = el("a", { class: "igf-who", href: profHref });   // nome → PERFIL
         who.appendChild(el("b", {}, p.author || ""));
         // copiar o @ (sem a arroba) — fora do <a> do perfil; some enquanto o autor não chegou (CSS :empty)
         userline.append(who, el("button", { class: "igf-copyuser", type: "button", "data-act": "copyuser", title: "Copiar @", "aria-label": "Copiar nome de usuário", icon: ICO_COPY }));
-        identity.appendChild(userline);
+        profileMeta.appendChild(userline);
         // Em posts de outras superfícies, o controle persiste nos dois estados: Seguir e Seguindo.
         // No perfil ele continua fora dos cards, pois o header da página já tem o controle do autor.
         if (p.author && surface !== "profile") {
             const fb = el("button", { class: "igf-follow", type: "button", "data-act": "follow" });
             renderFollowButton(fb, p.following === true, p.author);
-            identity.appendChild(fb);
+            profileMeta.appendChild(fb);
         }
+        identity.append(avatar, profileMeta);
         const pubtime = el("time", { class: "igf-pubtime" });
         updatePublishDate(pubtime, p.publishedAt);
         head.append(identity, pubtime);
@@ -3445,10 +3461,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         let btn = card.querySelector(".igf-follow");
         if (surface === "profile" || !p.author) { if (btn) btn.remove(); return; }
         if (!btn) {
-            const identity = card.querySelector(".igf-identity");
-            if (!identity) return;
+            const profileMeta = card.querySelector(".igf-profilemeta");
+            if (!profileMeta) return;
             btn = el("button", { class: "igf-follow", type: "button", "data-act": "follow" });
-            identity.appendChild(btn);
+            profileMeta.appendChild(btn);
         }
         renderFollowButton(btn, p.following === true, p.author);
     }
@@ -3482,10 +3498,27 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (p.caption || (rec && rec.captionKnown)) metaPending.delete(card);
             else metaPending.add(card);
         }
+        let avatar = card.querySelector(".igf-avatar");
+        if (avatar && p.author) {
+            if (avatar.tagName !== "A") {
+                const link = el("a", { class: "igf-avatar", href: "/" + p.author + "/", "aria-label": "Abrir perfil @" + p.author });
+                while (avatar.firstChild) link.appendChild(avatar.firstChild);
+                avatar.replaceWith(link);
+                avatar = link;
+            } else {
+                avatar.setAttribute("href", "/" + p.author + "/");
+                avatar.setAttribute("aria-label", "Abrir perfil @" + p.author);
+            }
+        }
+        if (avatar && p.avatar) {
+            const image = avatar.querySelector("img");
+            if (image) {
+                if (image.getAttribute("src") !== p.avatar) image.src = p.avatar;
+            } else avatar.appendChild(el("img", { src: p.avatar, loading: "lazy", alt: "" }));
+        }
         const who = card.querySelector(".igf-who");
         if (who && p.author) {
             who.setAttribute("href", "/" + p.author + "/");
-            if (p.avatar && !who.querySelector("img")) who.insertBefore(el("img", { src: p.avatar, loading: "lazy", alt: "" }), who.firstChild);
             const b = who.querySelector("b"); if (b && b.textContent !== p.author) b.textContent = p.author;
         }
         setFollowButton(card, p);
@@ -3818,9 +3851,17 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             const text = (value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
             return text.includes("more posts") || text.includes("mais publicacoes") || text.includes("mais posts") || text.includes("posts recomendados");
         };
-        const headings = [...main.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')];
+        let headings = [...main.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')];
         const labelled = [...main.querySelectorAll("[aria-label]")].filter((node) => isRecommendationsHeading(node.getAttribute("aria-label")));
-        const anchorsIn = (node) => [...node.querySelectorAll(GRID_SEL)].filter((anchor) => anchor.querySelector("img,svg,video"));
+        if (!headings.some((node) => isRecommendationsHeading(node.textContent)) && !labelled.length) {
+            headings = [...main.querySelectorAll("div,span")]
+                .filter((node) => {
+                    const text = (node.textContent || "").trim();
+                    return text.length <= 120 && isRecommendationsHeading(text);
+                })
+                .sort((a, b) => a.textContent.length - b.textContent.length);
+        }
+        const anchorsIn = (node) => [...node.querySelectorAll(POST_GRID_SEL)].filter((anchor) => anchor.querySelector("img,svg,video"));
         for (const heading of [...headings, ...labelled]) {
             if (!isRecommendationsHeading(heading.textContent || heading.getAttribute("aria-label"))) continue;
             for (let node = heading; node && node !== main; node = node.parentElement) {
@@ -3829,6 +3870,25 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             }
         }
         return [];
+    }
+    function postDetailBranches() {
+        const main = document.querySelector("main");
+        const tiles = postRecommendationTiles();
+        if (!main) return [];
+        let detail = [...main.querySelectorAll('article,[role="article"]')].find((article) => !tiles.some((tile) => article.contains(tile)));
+        if (!detail) {
+            const media = [...main.querySelectorAll("img,video")]
+                .filter((node) => !tiles.some((tile) => tile.contains(node)))
+                .sort((a, b) => {
+                    const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+                    return rb.width * rb.height - ra.width * ra.height;
+                })[0];
+            if (media) detail = media;
+        }
+        if (!detail) return [];
+        let branch = detail;
+        while (branch.parentElement && branch.parentElement !== main && !tiles.some((tile) => branch.parentElement.contains(tile))) branch = branch.parentElement;
+        return [branch];
     }
     function gridContainer() {
         const minTiles = surface === "post" ? 2 : 4;
@@ -3889,7 +3949,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     function applyGrid() {
         const grid = gridContainer();
-        if (!grid || !grid.parentElement) return;   // grade ainda não montou (ou estrutura desconhecida)
+        if (!grid || !grid.parentElement) {
+            if (surface === "post") applyPostDetailLayout();
+            return;   // grade ainda não montou (ou estrutura desconhecida)
+        }
         const cwrap = grid.parentElement;
         // COLUNA = ancestral mais alto logo abaixo do <main> → engloba o HEADER do perfil + o grid.
         let col = grid;
@@ -3902,6 +3965,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         syncNavWidth(navBox, navW);
         const underNav = navW > 0 && main && main.getBoundingClientRect().left < navW - 4;
         const marks = [];
+        if (surface === "post") for (const branch of postDetailBranches()) {
+            branch.classList.add("igm-content", "igm-postdetail");
+            branch.classList.toggle("igm-gridnav", underNav);
+        }
         for (let n = grid; n && n !== col; n = n.parentElement) { n.classList.add("igm-wide"); marks.push([n, "igm-wide"]); }   // tira os caps internos do IG
         // a COLUNA inteira (header + grid) ganha a MESMA largura/centragem do feed da home (--igm-maxw)
         col.classList.add("igm-content", "igm-gridcol");
@@ -3911,6 +3978,22 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         marks.push([col, "igm-content"]);
         setChromeMarks(marks, null);
         mountOwnFeed(grid, cwrap);   // grid vira .igf-src (off-screen, vivo) + renderiza nosso mosaico
+    }
+    function applyPostDetailLayout() {
+        const main = document.querySelector("main");
+        const branches = postDetailBranches();
+        if (!main || !branches.length) return;
+        const navBox = leftNavWidthBox();
+        const navW = navBox ? (navBox.getBoundingClientRect().width || 72) : 0;
+        syncNavWidth(navBox, navW);
+        const underNav = navW > 0 && main.getBoundingClientRect().left < navW - 4;
+        for (const branch of branches) {
+            branch.classList.add("igm-content", "igm-postdetail");
+            branch.classList.toggle("igm-gridnav", underNav);
+        }
+        mountedChrome = branches[0];
+        chromeApplied = true;
+        setChromeMarks(branches.map((branch) => [branch, "igm-postdetail"]), null);
     }
     /* SKELETON de carregamento — DENTRO da página (v3.14). Era um overlay `position:fixed` cobrindo
      * a tela inteira desde o document-start; agora são cards fantasmas no PRÓPRIO grid, no lugar
@@ -3964,6 +4047,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (const e of document.querySelectorAll(".igm-gridnav")) e.classList.remove("igm-gridnav");
         for (const e of document.querySelectorAll(".igm-gridcol")) e.classList.remove("igm-gridcol");
         for (const e of document.querySelectorAll(".igm-postpage")) e.classList.remove("igm-postpage");
+        for (const e of document.querySelectorAll(".igm-postdetail")) e.classList.remove("igm-postdetail");
         for (const e of document.querySelectorAll(".igm-col")) e.classList.remove("igm-col");
         for (const e of document.querySelectorAll(".igm-stories")) e.classList.remove("igm-stories");
         for (const e of document.querySelectorAll(".igm-norail")) e.classList.remove("igm-norail");
@@ -4093,6 +4177,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const surf = targetSurface();
         if (surf !== mountedSurface) return false;
         if (!surf) return true;
+        if (surf === "post" && postRecommendationTiles().length < 2) {
+            return !!(mountedChrome && mountedChrome.isConnected && mountedChrome.classList.contains("igm-postdetail") && chromeIntact());
+        }
         return !!(feedEl && feedEl.isConnected && igSrc && igSrc.isConnected &&
             mountedChrome && mountedChrome.isConnected && mountedChrome.classList.contains("igm-content") && chromeIntact());
     }
@@ -4110,7 +4197,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (coreHealthy()) extrasTries++; else routeTries++;
         applyTheme();
         syncMasonry();                                          // monta/re-assegura a superfície + pino do nav
-        if (feedEl && feedEl.isConnected) routeMounted = true;
+        if ((feedEl && feedEl.isConnected) || (surface === "post" && mountedChrome && mountedChrome.classList.contains("igm-postdetail"))) routeMounted = true;
         if (isProfile() || isSaved()) enhanceProfileHeader();   // copiar @ vale mesmo com o grid do perfil off
         schedulePanel();                                        // FAB do painel, fora do primeiro paint
     }
