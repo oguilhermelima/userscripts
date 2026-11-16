@@ -68,8 +68,9 @@ const instagramPublishHeaderStyle = section(instagram, ".igf-pubtime{", ".igf-co
 assert.match(instagramPublishHeaderStyle, /font-weight:\s*(400|500)/);
 const instagramFollowStyle = section(instagram, ".igf-follow{", ".igf-follow:focus-visible");
 assert.match(instagramFollowStyle, /display:\s*inline-flex/);
-assert.match(instagramFollowStyle, /width:\s*max-content/);
-assert.match(instagramFollowStyle, /border-radius:\s*999px/);
+assert.match(instagramFollowStyle, /background:\s*transparent/);
+assert.match(instagramFollowStyle, /border:\s*0/);
+assert.doesNotMatch(instagramFollowStyle, /border-radius:\s*999px/);
 const instagramIdentityStyle = section(instagram, ".igf-identity{", ".igf-userline{");
 assert.match(instagramIdentityStyle, /align-items:\s*center/);
 
@@ -142,6 +143,13 @@ const instagramPostLayout = section(instagram, "function applyGrid()", "\/\* SKE
 assert.match(instagramPostLayout, /if \(!grid[\s\S]*applyPostDetailLayout\(\)/);
 assert.match(instagram, /igm-postpage|surface === "post"/);
 assert.match(instagram, /\.igm-postdetail\{/);
+const instagramPostDetailStyle = section(instagram, ".igm-postdetail{", ".igm-postdetail.igm-gridnav");
+assert.match(instagramPostDetailStyle, /width:min\(1440px/);
+assert.doesNotMatch(instagramPostDetailStyle, /var\(--igm-maxw\)/);
+assert.match(instagram, /html\.igf-dark\s*\{[^}]*--ig-background:\s*0,\s*0,\s*0/);
+assert.match(instagram, /html\.igf-dark body\s*\{\s*background-color:#000 !important/);
+const instagramRouteTransition = section(instagram, "function onNav()", "for (const m of");
+assert.match(instagramRouteTransition, /setTimeout\(\(\) => routeWork\(\), 450\)/);
 
 // Cenário Reddit: CSS/classes críticas ficam disponíveis cedo, mas o pipeline
 // que varre shadow roots e posts só roda fora do caminho crítico do paint.
