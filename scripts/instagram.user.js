@@ -320,26 +320,27 @@
     const apiFeedCodes = [];
     const apiFeedSet = new Set();
     const FEED_KEY = /timeline|feed_items/i;
-    function walkForMedia(node, depth, inFeed, changedCodes) {    // varre o JSON inteiro atrás de itens de mídia (schema aninhado/variável)
+    const isHomeRoutePath = () => location.pathname === "/" || location.pathname === "";
+    function walkForMedia(node, depth, inFeed, changedCodes, collectFeedOrder) {    // varre o JSON inteiro atrás de itens de mídia (schema aninhado/variável)
         // o HTML server-rendered embrulha os dados em camadas de require/__bbox: os posts iniciais ficam
         // além de 12 níveis, e com o limite antigo eles nunca entravam no igMedia (card sem legenda/vídeo)
         if (!node || typeof node !== "object" || depth > 64) return;
-        if (Array.isArray(node)) { for (const x of node) walkForMedia(x, depth + 1, inFeed, changedCodes); return; }
+        if (Array.isArray(node)) { for (const x of node) walkForMedia(x, depth + 1, inFeed, changedCodes, collectFeedOrder); return; }
         if (node.code && (node.video_versions || node.image_versions2 || node.carousel_media)) {
             ingestNode(node);
             if (igMedia.has(node.code)) changedCodes.add(node.code);
-            if (inFeed && !apiFeedSet.has(node.code) && igMedia.has(node.code)) { apiFeedSet.add(node.code); apiFeedCodes.push(node.code); }
+            if (collectFeedOrder && inFeed && !apiFeedSet.has(node.code) && igMedia.has(node.code)) { apiFeedSet.add(node.code); apiFeedCodes.push(node.code); }
             inFeed = false;                     // slides de carrossel / filhos não são posts do feed
         }
         if (node.collection_id && node.collection_name) igCollections.set(String(node.collection_id), String(node.collection_name));   // coleções de salvos
-        for (const k in node) { const v = node[k]; if (v && typeof v === "object") walkForMedia(v, depth + 1, inFeed || FEED_KEY.test(k), changedCodes); }
+        for (const k in node) { const v = node[k]; if (v && typeof v === "object") walkForMedia(v, depth + 1, inFeed || FEED_KEY.test(k), changedCodes, collectFeedOrder); }
     }
-    function ingestText(text) {
+    function ingestText(text, collectFeedOrder) {
         if (!text || text.length < 40 || (text.indexOf("video_versions") < 0 && text.indexOf("image_versions2") < 0 && text.indexOf("collection_id") < 0)) return;
         let j; try { j = JSON.parse(text); } catch (_) { return false; }
         const feedBefore = apiFeedCodes.length;
         const changedCodes = new Set();
-        try { walkForMedia(j, 0, false, changedCodes); } catch (_) { /**/ }
+        try { walkForMedia(j, 0, false, changedCodes, collectFeedOrder); } catch (_) { /**/ }
         try { queueMetaUpdate(changedCodes); } catch (_) { /**/ }   // metadados atualizados → sincroniza apenas os cards dos posts tocados
         if (apiFeedCodes.length > feedBefore) { try { onApiFeed(); } catch (_) { /**/ } }   // posts novos do feed → cards já
         return true;
@@ -347,9 +348,9 @@
     // PERF: respostas interceptadas chegam no MEIO do scroll (paginação) — o 2º JSON.parse (centenas de KB)
     // + walk recursivo na main thread viravam spike de jank empilhado no parse do próprio IG. igMedia só é
     // consultado no hover/build do card → algumas centenas de ms de atraso são de graça.
-    const ingestSoon = (text) => {
-        if (typeof requestIdleCallback === "function") requestIdleCallback(() => ingestText(text), { timeout: 500 });   // timeout menor → metadados (autor/legenda) chegam mais cedo
-        else setTimeout(() => ingestText(text), 120);
+    const ingestSoon = (text, collectFeedOrder) => {
+        if (typeof requestIdleCallback === "function") requestIdleCallback(() => ingestText(text, collectFeedOrder), { timeout: 500 });   // timeout menor → metadados (autor/legenda) chegam mais cedo
+        else setTimeout(() => ingestText(text, collectFeedOrder), 120);
     };
     // intercepta fetch + XHR no contexto da PÁGINA p/ ler as respostas da API (graphql/feed)
     function installInterceptors() {
@@ -359,6 +360,7 @@
             const of = W.fetch;
             if (typeof of === "function" && !of.__igPatched) {
                 W.fetch = function (...a) {
+                    const collectFeedOrder = isHomeRoutePath();
                     try {   // captura o X-IG-App-ID das chamadas do IG → usado no unsave direto da página de salvos
                         const h = a[1] && a[1].headers;
                         if (h) { const g = h.get ? (k) => h.get(k) : (k) => h[k] || h[String(k).toLowerCase()]; const id = g("x-ig-app-id") || g("X-IG-App-ID"); if (id) igAppId = id; }
@@ -366,7 +368,9 @@
                     const pr = of.apply(this, a);
                     try {
                         pr.then((res) => {
-                            try { if (res && wanted(res.url)) res.clone().text().then(ingestSoon).catch(() => {}); } catch (_) { /**/ }
+                            try {
+                                if (res && wanted(res.url)) res.clone().text().then((text) => ingestSoon(text, collectFeedOrder)).catch(() => {});
+                            } catch (_) { /**/ }
                         }).catch(() => {});
                     } catch (_) { /**/ }
                     return pr;
@@ -380,7 +384,8 @@
                 const oOpen = XHR.prototype.open, oSend = XHR.prototype.send;
                 XHR.prototype.open = function (m, u) { this.__igUrl = u; return oOpen.apply(this, arguments); };
                 XHR.prototype.send = function () {
-                    try { this.addEventListener("load", () => { try { if (wanted(this.__igUrl) && (!this.responseType || this.responseType === "text")) ingestSoon(this.responseText); } catch (_) { /**/ } }); } catch (_) { /**/ }
+                    const collectFeedOrder = isHomeRoutePath();
+                    try { this.addEventListener("load", () => { try { if (wanted(this.__igUrl) && (!this.responseType || this.responseType === "text")) ingestSoon(this.responseText, collectFeedOrder); } catch (_) { /**/ } }); } catch (_) { /**/ }
                     return oSend.apply(this, arguments);
                 };
                 XHR.prototype.__igPatched = true;
@@ -394,7 +399,7 @@
         if (inlineSeen.has(s)) return;
         const t = s.textContent || "";
         // texto curto/sem mídia = nada a ler (marca); JSON que não parseia ainda pode estar chegando do parser → tenta de novo
-        if (t.length < 40 || (t.indexOf("image_versions2") < 0 && t.indexOf("video_versions") < 0 && t.indexOf("collection_id") < 0) || ingestText(t) !== false) inlineSeen.add(s);
+        if (t.length < 40 || (t.indexOf("image_versions2") < 0 && t.indexOf("video_versions") < 0 && t.indexOf("collection_id") < 0) || ingestText(t, isHomeRoutePath()) !== false) inlineSeen.add(s);
     }
     function ingestInlineJSON() {
         try { for (const s of document.querySelectorAll('script[type="application/json"]')) ingestInlineScript(s); } catch (_) { /**/ }
@@ -671,18 +676,15 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 /* página de publicação aberta em rota própria: amplia o post e mantém More posts alinhado ao grid. */
 .igm-postpage{ width:100% !important; max-width:var(--igm-maxw) !important; }
 .igm-postpage article{ width:100% !important; max-width:none !important; }
-.igm-postdetail{ box-sizing:border-box !important; display:flex !important; align-items:center !important; justify-content:center !important;
-  width:min(1440px, calc(100vw - var(--igm-navw) - 48px)) !important; height:calc(100vh - 32px) !important; height:calc(100dvh - 32px) !important;
-  max-width:none !important; max-height:calc(100vh - 32px)!important; max-height:calc(100dvh - 32px)!important;
+.igm-postdetail{ box-sizing:border-box !important; width:min(1440px, calc(100vw - var(--igm-navw) - 48px)) !important;
+  max-width:none !important; max-height:calc(100vh - 64px)!important; max-height:calc(100dvh - 64px)!important;
   min-height:0 !important; margin-left:auto !important; margin-right:auto !important; overflow:hidden !important;
   overscroll-behavior:none !important; }
-.igm-postitem{ box-sizing:border-box !important; height:calc(100vh - 64px)!important; height:calc(100dvh - 64px)!important;
-  max-height:100% !important; min-height:0 !important; overflow:hidden !important; }
-.igm-postitem > *{ min-height:0 !important; max-height:100% !important; }
-.igm-postmediabox{ display:flex !important; flex:1 1 auto !important; align-items:center !important; justify-content:center !important;
-  min-width:0 !important; min-height:0 !important; height:100% !important; max-height:100% !important; overflow:hidden !important; }
-.igm-postmedia{ display:block !important; flex:0 1 auto !important; width:auto !important; height:auto !important; min-width:0 !important; min-height:0 !important;
-  max-width:100% !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important; object-fit:contain !important; }
+.igm-postitem{ box-sizing:border-box !important; max-height:calc(100vh - 64px)!important; max-height:calc(100dvh - 64px)!important;
+  min-height:0 !important; overflow:hidden !important; }
+.igm-postmediabox{ min-height:0 !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important; overflow:hidden !important; }
+.igm-postmedia{ max-width:100% !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important;
+  object-fit:contain !important; }
 .igm-postdetail.igm-gridnav{ width:min(calc(1440px + var(--igm-navw)), calc(100vw - 24px)) !important;
   padding-left:var(--igm-navw) !important; }
 /* HEADER DO PERFIL — ocupa mais espaço via zoom (amplia o bloco inteiro sem tocar na estrutura).
@@ -3887,6 +3889,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     // cria o NOSSO feed (+ loader) dentro de `parent`: o cwrap da superfície, ou o shell do boot da home
     function createFeed(parent) {
+        unmountSkeleton();
+        if (nativeHideTimer) { clearTimeout(nativeHideTimer); nativeHideTimer = null; }
+        resetFeedItems();
         feedEl = el("div", { class: "igf-feed" });
         bindFeedEvents(feedEl);
         applyFeedClasses();                      // sombra/densidade/legenda/contadores desde o 1º paint
@@ -3904,7 +3909,6 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             loadMore();
         });
         parent.appendChild(loaderEl);             // estado e retry ficam visíveis no fim do feed
-        rendered.clear(); renderedUpTo = 0; cardsByCode.clear(); metaPending.clear(); pendingMetaCodes.clear(); feedNcols = 0; feedColw = 0;   // feed novo (React pode ter removido) → re-renderiza tudo
         scheduleInlineJSON();                    // parse server-rendered fora do caminho crítico do primeiro paint
         // (o header/legenda que chegam DEPOIS vêm pelo queueMetaUpdate do ingestText — sem poll aqui)
         layoutFeed();                            // colunas + altura do card ANTES do skeleton (ele usa --igf-cardh)
@@ -3924,8 +3928,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         let src = list;                              // igSrc = branch dos cards (filho do cwrap que contém a lista)
         while (src.parentElement && src.parentElement !== cwrap) src = src.parentElement;
         if (src === document.body || src === document.documentElement || !cwrap.contains(src)) return;
-        igSrc = src;
         const firstMount = !feedEl || !feedEl.isConnected;
+        if (firstMount && feedEl) teardownOwnFeed();   // React destacou o feed: elimina os dados e observers da montagem anterior
+        igSrc = src;
         // home: esconde a nativa JÁ (harvest confiável, o skeleton cobre). GRID (explore/profile): só esconde
         // DEPOIS que renderizar o 1º card (em syncOwnFeed) → se o harvest falhar, a grade NATIVA continua à
         // mostra em vez de tela preta.
@@ -3951,7 +3956,12 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (boot) endBoot();                         // a lista nativa já está fora de vista → o <main> pode aparecer
         if (typeof MutationObserver !== "undefined" && srcMOTarget !== igSrc) {   // re-aponta o observer quando a grade muda (React re-render)
             if (!srcMO) srcMO = new MutationObserver(queueSyncFeed); else srcMO.disconnect();
-            srcMO.observe(igSrc, { childList: true, subtree: true });
+            const observeOptions = { childList: true, subtree: true };
+            if (surface !== "home") {
+                observeOptions.attributes = true;
+                observeOptions.attributeFilter = ["src", "srcset", "poster", "href"];
+            }
+            srcMO.observe(igSrc, observeOptions);
             srcMOTarget = igSrc;
         }
         if (!resizeBound && typeof window.addEventListener === "function") {
@@ -3999,22 +4009,27 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // pra a lógica da própria grade; matar o play travava o render (grade some → só o spinner).
         for (const v of igSrc.querySelectorAll("video")) { v.muted = true; if (!v.paused) { try { v.pause(); } catch (_) { /**/ } } }
     }
+    function resetFeedItems() {
+        posts.clear(); order.length = 0; rendered.clear(); renderedUpTo = 0;
+        cardsByCode.clear(); metaPending.clear(); pendingMetaCodes.clear(); carouselWait.clear(); liveCodes.clear();
+        lastHarvestSig = ""; feedNcols = 0; feedColw = 0; loading = false; feedExhausted = false;
+    }
     function teardownOwnFeed() {
+        closeProfilePopover();
         cancelInlineJSON();
         if (srcMO) { srcMO.disconnect(); srcMO = null; } srcMOTarget = null;
         if (loaderIO) { loaderIO.disconnect(); loaderIO = null; }
         if (videoIO) { videoIO.disconnect(); videoIO = null; }
         if (farIO) { farIO.disconnect(); farIO = null; }
         clearTimeout(hoverT); hoverNext = null;
-        visVids.clear(); playCard = null; previewCard = null; videoState.clear(); liveCodes.clear();
+        visVids.clear(); playCard = null; previewCard = null; videoState.clear();
         if (igSrc) { igSrc.classList.remove("igf-src"); igSrc = null; }
         if (feedEl) { feedEl.remove(); feedEl = null; }
         if (loaderEl) { loaderEl.remove(); loaderEl = null; }
         if (nativeHideTimer) { clearTimeout(nativeHideTimer); nativeHideTimer = null; }
         if (savedToolbar) { savedToolbar.remove(); savedToolbar = null; savedToolbarSync = null; }
         savedSelectMode = false; savedSelected.clear(); batchStop = true; savedBusy = false;   // sair da página aborta o lote
-        posts.clear(); order.length = 0; rendered.clear(); renderedUpTo = 0; cardsByCode.clear(); metaPending.clear(); pendingMetaCodes.clear(); carouselWait.clear(); lastHarvestSig = "";
-        feedNcols = 0; feedColw = 0; loading = false; feedExhausted = false;
+        resetFeedItems();
     }
 
     // wrapper comum que contém stories + cards = o filho do col que contém a lista
@@ -4117,7 +4132,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const tiles = postRecommendationTiles();
         if (!main) return [];
         const media = [...main.querySelectorAll("img,video")]
-            .filter((node) => !tiles.some((tile) => tile.contains(node)))
+            .filter((node) => !node.closest(".igf-src, .igf-feed") && !tiles.some((tile) => tile.contains(node)))
             .sort((a, b) => {
                 const area = (node) => {
                     const rect = node.getBoundingClientRect();
@@ -4125,7 +4140,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                 };
                 return area(b) - area(a);
             })[0];
-        const articles = [...main.querySelectorAll('article,[role="article"]')].filter((article) => !tiles.some((tile) => article.contains(tile)));
+        const articles = [...main.querySelectorAll('article,[role="article"]')]
+            .filter((article) => !article.closest(".igf-src, .igf-feed") && !tiles.some((tile) => article.contains(tile)));
         let detail = media && articles.find((article) => article.contains(media));
         if (!detail) detail = articles[0];
         if (!detail) detail = media;
@@ -4217,6 +4233,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (surface === "post") for (const branch of postDetailBranches()) {
             branch.classList.add("igm-content", "igm-postdetail");
             branch.classList.toggle("igm-gridnav", underNav);
+            marks.push([branch, "igm-postdetail"]);
         }
         for (let n = grid; n && n !== col; n = n.parentElement) { n.classList.add("igm-wide"); marks.push([n, "igm-wide"]); }   // tira os caps internos do IG
         // a COLUNA inteira (header + grid) ganha a MESMA largura/centragem do feed da home (--igm-maxw)
@@ -4276,6 +4293,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (const s of feedEl.querySelectorAll(".igf-skel")) s.remove();
     }
     function syncMasonry() {
+        if (routeSettling) return;
         const surf = targetSurface();
         if (surf !== mountedSurface) { unmasonry(); lastHarvestSig = ""; mountedSurface = surf; }   // trocou de superfície → limpa tudo (sig inclusive)
         applyNavPin();   // gating próprio (masonry && pinNav)
@@ -4437,6 +4455,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             mountedChrome && mountedChrome.isConnected && mountedChrome.classList.contains("igm-content") && chromeIntact());
     }
     function needsRouteWork() {
+        if (routeSettling) return false;
         // quebrou DEPOIS de montar (React re-renderizou) → sempre conserta; nunca montou → até ROUTE_MAX
         if (!coreHealthy() && (routeMounted || routeTries < ROUTE_MAX)) return true;
         if (extrasTries >= EXTRAS_MAX) return false;
@@ -4447,6 +4466,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     function routeWork() {
         if (routeQ) { clearTimeout(routeQ); routeQ = null; }
+        if (routeSettling) return;
         if (coreHealthy()) extrasTries++; else routeTries++;
         applyTheme();
         syncMasonry();                                          // monta/re-assegura a superfície + pino do nav
