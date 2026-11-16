@@ -213,14 +213,15 @@
 
         // Choices from the settings dialog.
         const COVER_SIZES = { small: 'Pequenas', medium: 'Médias', large: 'Grandes' };
-        const NAV_ALBUM_MAX = 8;
+        const NAV_ALBUM_PINNED_MAX = 20;
+        const NAV_ALBUM_RECENT_LIMIT = 8;
         const prefs = {
             resume: Boolean(getSetting('resume', true)),
             touchGestures: Boolean(getSetting('touchGestures', true)),
             seekPreview: Boolean(getSetting('seekPreview', true)),
             albumNav: Boolean(getSetting('albumNav', false)),
             albumCovers: COVER_SIZES[getSetting('albumCovers', 'small')] ? getSetting('albumCovers', 'small') : 'small',
-            pinnedAlbums: [].concat(getSetting('pinnedAlbums', []) ?? []).filter(id => typeof id === 'string').slice(0, NAV_ALBUM_MAX),
+            pinnedAlbums: [].concat(getSetting('pinnedAlbums', []) ?? []).filter(id => typeof id === 'string').slice(0, NAV_ALBUM_PINNED_MAX),
         };
 
         function clampRate(value) {
@@ -5298,7 +5299,8 @@
             const recent = [...albums.values()]
                 .filter(album => !prefs.pinnedAlbums.includes(album.id))
                 .sort((a, b) => compareText(b.updatedAt ?? '', a.updatedAt ?? ''));
-            const shown = [...pinned, ...recent].slice(0, NAV_ALBUM_MAX);
+            const recentToShow = recent.slice(0, Math.max(0, NAV_ALBUM_RECENT_LIMIT - pinned.length));
+            const shown = [...pinned, ...recentToShow];
             const key = [current, ...shown.map(album => `${album.id}:${album.albumName}:${album.albumThumbnailAssetId}:${prefs.pinnedAlbums.includes(album.id)}`)].join('|');
             let ours = sub.querySelector(':scope > .iv-nav-albums');
             if (ours?.dataset.key === key && native.classList.contains('iv-nav-hidden')) return;
@@ -5813,7 +5815,7 @@
         }
 
         // Pinned albums lead the "Albums" list in Immich's sidebar, in this
-        // order; recent ones fill the rest, up to NAV_ALBUM_MAX.
+        // order; recent ones fill the list up to NAV_ALBUM_RECENT_LIMIT.
         function pinnedAlbumsCard() {
             const list = document.createElement('ol');
             list.className = 'iv-pin-list';
@@ -5845,7 +5847,7 @@
                     empty.textContent = 'Nenhum fixado: a barra mostra os álbuns mais recentes.';
                     list.append(empty);
                 }
-                add.disabled = prefs.pinnedAlbums.length >= NAV_ALBUM_MAX;
+                add.disabled = prefs.pinnedAlbums.length >= NAV_ALBUM_PINNED_MAX;
             };
             list.addEventListener('click', event => {
                 const row = event.target.closest('.iv-pin-row');
@@ -5871,20 +5873,20 @@
                 openPopup(add, albums.map(album => ({
                     label: album.albumName || 'Sem nome',
                     onClick: () => {
-                        setPref('pinnedAlbums', [...prefs.pinnedAlbums, album.id].slice(0, NAV_ALBUM_MAX));
+                        setPref('pinnedAlbums', [...prefs.pinnedAlbums, album.id].slice(0, NAV_ALBUM_PINNED_MAX));
                         draw();
                     },
                 })), { search: true });
             });
             draw();
-            const card = settingsCard(`Álbuns fixados (até ${NAV_ALBUM_MAX})`, [list, add]);
+            const card = settingsCard(`Álbuns fixados (até ${NAV_ALBUM_PINNED_MAX})`, [list, add]);
             return card;
         }
 
         function togglePinned(albumId) {
             const pinned = prefs.pinnedAlbums.includes(albumId);
-            if (!pinned && prefs.pinnedAlbums.length >= NAV_ALBUM_MAX) {
-                showToast(`Já há ${NAV_ALBUM_MAX} álbuns fixados`);
+            if (!pinned && prefs.pinnedAlbums.length >= NAV_ALBUM_PINNED_MAX) {
+                showToast(`Já há ${NAV_ALBUM_PINNED_MAX} álbuns fixados`);
                 return;
             }
             setPref('pinnedAlbums', pinned ? prefs.pinnedAlbums.filter(id => id !== albumId) : [...prefs.pinnedAlbums, albumId]);
