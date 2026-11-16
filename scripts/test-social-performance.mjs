@@ -31,12 +31,28 @@ assert.doesNotMatch(twitterMedia, /observeVideos|autoplay/);
 // server-rendered, e cards novos entram numa inserção em lote sem reflow por item.
 assert.match(instagram, /content-visibility:auto/);
 assert.match(instagram, /document\.createDocumentFragment\(\)/);
+const instagramCreateFeed = section(instagram, "function createFeed", "function mountOwnFeed");
+assert.match(instagramCreateFeed, /scheduleInlineJSON/);
 const instagramMount = section(instagram, "function mountOwnFeed", "function pauseNativeVideos");
-assert.match(instagramMount, /scheduleInlineJSON/);
 assert.match(instagramMount, /queueSyncFeed\(\)/);
 assert.doesNotMatch(instagramMount, /\bingestInlineJSON\(\)/);
-const instagramDomReady = section(instagram, "DOMContentLoaded", "window.addEventListener(\"load\"");
+const instagramDomReady = section(instagram, "window.addEventListener(\"DOMContentLoaded\"", "window.addEventListener(\"load\"");
 assert.doesNotMatch(instagramDomReady, /\bingestInlineJSON\(\)/);
+
+// Instagram: late metadata updates the rendered card, and its fixed caption
+// band also shows the publication date without losing the complete caption.
+assert.match(instagram, /publishedAt:\s*normalizePublishTime\(m\.taken_at_timestamp\s*\?\?\s*m\.taken_at\)/);
+assert.match(instagram, /class:\s*["']igf-capdate["']/);
+assert.match(instagram, /cardsByCode/);
+const instagramCardMeta = section(instagram, "function updateCardMeta", "function waitForNewPosts");
+assert.match(instagramCardMeta, /setCaption\(card, p\.caption\)/);
+assert.match(instagramCardMeta, /setPublishDate\(card, p\.publishedAt\)/);
+
+// Instagram: treat a follow as successful only when the API confirms it, and
+// show a follow action when the API omits the current relationship state.
+const instagramApiPost = section(instagram, "function igApiPost", "const selectedPks");
+assert.match(instagramApiPost, /data\.status\s*===\s*["']ok["']/);
+assert.match(instagram, /follow:\s*r\.following\s*!==\s*true/);
 
 // Cenário Reddit: CSS/classes críticas ficam disponíveis cedo, mas o pipeline
 // que varre shadow roots e posts só roda fora do caminho crítico do paint.
