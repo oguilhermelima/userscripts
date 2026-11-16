@@ -672,13 +672,18 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 /* página de publicação aberta em rota própria: amplia o post e mantém More posts alinhado ao grid. */
 .igm-postpage{ width:100% !important; max-width:var(--igm-maxw) !important; }
 .igm-postpage article{ width:100% !important; max-width:none !important; }
-.igm-postdetail{ box-sizing:border-box !important; width:min(1440px, calc(100vw - var(--igm-navw) - 48px)) !important;
-  max-width:none !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important;
-  min-height:0 !important; margin-left:auto !important; margin-right:auto !important; overflow:hidden !important; overflow-y:auto !important;
-  overscroll-behavior:contain !important; }
-.igm-postitem{ box-sizing:border-box !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important; min-height:0 !important; }
-.igm-postmedia{ max-width:100% !important; max-height:calc(100vh - 144px)!important; max-height:calc(100dvh - 144px)!important;
-  object-fit:contain !important; }
+.igm-postdetail{ box-sizing:border-box !important; display:flex !important; align-items:center !important; justify-content:center !important;
+  width:min(1440px, calc(100vw - var(--igm-navw) - 48px)) !important; height:calc(100vh - 32px) !important; height:calc(100dvh - 32px) !important;
+  max-width:none !important; max-height:calc(100vh - 32px)!important; max-height:calc(100dvh - 32px)!important;
+  min-height:0 !important; margin-left:auto !important; margin-right:auto !important; overflow:hidden !important;
+  overscroll-behavior:none !important; }
+.igm-postitem{ box-sizing:border-box !important; height:calc(100vh - 64px)!important; height:calc(100dvh - 64px)!important;
+  max-height:100% !important; min-height:0 !important; overflow:hidden !important; }
+.igm-postitem > *{ min-height:0 !important; max-height:100% !important; }
+.igm-postmediabox{ display:flex !important; flex:1 1 auto !important; align-items:center !important; justify-content:center !important;
+  min-width:0 !important; min-height:0 !important; height:100% !important; max-height:100% !important; overflow:hidden !important; }
+.igm-postmedia{ display:block !important; flex:0 1 auto !important; width:auto !important; height:auto !important; min-width:0 !important; min-height:0 !important;
+  max-width:100% !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important; object-fit:contain !important; }
 .igm-postdetail.igm-gridnav{ width:min(calc(1440px + var(--igm-navw)), calc(100vw - 24px)) !important;
   padding-left:var(--igm-navw) !important; }
 /* HEADER DO PERFIL — ocupa mais espaço via zoom (amplia o bloco inteiro sem tocar na estrutura).
@@ -769,6 +774,28 @@ ${ariaHas("searchPart", ".igm-gridcol:not(.igm-postpage) input")}{ max-width:non
 .igf-follow.igf-follow-success{ animation:igf-follow-pop .36s cubic-bezier(.2,.8,.2,1); }
 .igf-follow.igf-busy{ opacity:.55; pointer-events:none; }
 @keyframes igf-follow-pop{ 45%{ transform:scale(1.12); color:var(--igf-accent); } 100%{ transform:scale(1); } }
+.igf-profile-popover{ position:fixed; z-index:2147483000; width:min(360px, calc(100vw - 24px)); box-sizing:border-box; padding:16px;
+  border:1px solid var(--igf-line); border-radius:16px; background:var(--igf-card-bg); color:var(--igf-text); box-shadow:0 14px 44px rgba(0,0,0,.38);
+  opacity:0; visibility:hidden; pointer-events:none; transform:translateY(5px); transition:opacity .14s ease, transform .14s ease, visibility .14s; }
+.igf-profile-popover:not([hidden]){ opacity:1; visibility:visible; pointer-events:auto; transform:none; }
+.igf-profile-popover-head{ display:flex; align-items:center; gap:12px; min-width:0; }
+.igf-profile-popover-avatar{ width:58px; height:58px; flex:0 0 58px; border-radius:50%; object-fit:cover; background:var(--igf-avatar-bg); }
+.igf-profile-popover-meta{ flex:1 1 auto; min-width:0; }
+.igf-profile-popover-name{ display:flex; align-items:center; gap:4px; min-width:0; overflow:hidden; color:var(--igf-text); font-size:15px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; text-decoration:none; }
+.igf-profile-popover-name span:first-child{ min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.igf-profile-verified{ display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; flex:0 0 14px; border-radius:50%; background:#3797f0; color:#fff; font-size:10px; line-height:1; }
+.igf-profile-popover-fullname{ margin-top:3px; color:var(--igf-text-2); font-size:13px; line-height:1.35; overflow-wrap:anywhere; }
+.igf-profile-popover-stats{ display:flex; justify-content:space-between; gap:8px; margin:15px 0 12px; padding:12px 0; border-block:1px solid var(--igf-line); }
+.igf-profile-stat{ color:var(--igf-text-2); font-size:12px; white-space:nowrap; }
+.igf-profile-stat b{ color:var(--igf-text); font-size:13px; }
+.igf-profile-popover-bio{ margin:0 0 14px; color:var(--igf-text); font-size:13px; line-height:1.4; overflow-wrap:anywhere; white-space:pre-wrap; }
+.igf-profile-popover-actions{ display:flex; gap:8px; }
+.igf-profile-popover .igf-follow, .igf-profile-view{ display:flex; flex:1 1 0; align-items:center; justify-content:center; min-height:36px; box-sizing:border-box; padding:0 12px;
+  border:0; border-radius:9px; background:var(--igf-hover-bg); color:var(--igf-text); font:inherit; font-size:13px; font-weight:650; text-decoration:none; cursor:pointer; }
+.igf-profile-popover .igf-follow:not(.on){ background:var(--igf-accent); color:#fff; }
+.igf-profile-popover .igf-follow.on{ background:var(--igf-hover-bg); color:var(--igf-text); }
+.igf-profile-view:hover, .igf-profile-popover .igf-follow:hover{ filter:brightness(1.08); text-decoration:none; transform:none; }
+@media (prefers-reduced-motion:reduce){ .igf-profile-popover{ transition:none; } }
 /* aspect-ratio FIXO (não a proporção real do post) = a fonte da uniformidade. "contain" isola o
    layout da mídia do resto: a imagem chegando não invalida o layout do feed inteiro. */
 .igf-media{ display:block; position:relative; width:100%; aspect-ratio:var(--igf-ar);
@@ -1780,6 +1807,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     };
     let surface = "home";          // 'home' | 'explore' | 'profile' | 'saved' | 'post'
     let mountedSurface = null;     // o que está montado agora (pra trocar = teardown + remount)
+    let routeSettling = false;     // não desmonta o feed enquanto o React decide entre modal e rota própria
+    function isPostModal() {
+        return [...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.querySelector("article"));
+    }
     // qual superfície DEVE estar montada agora (considerando os toggles + post aberto em modal por cima)
     function targetSurface() {
         if (isHome() && prefs.masonry) return "home";
@@ -1788,7 +1819,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (isProfile() && prefs.gridProfile) return "profile";
         // A live own feed means Instagram opened a post as a modal; preserve that surface.
         if (isPostRoute()) {
-            if (feedEl && feedEl.isConnected) return mountedSurface;
+            if (routeSettling && feedEl && feedEl.isConnected) return mountedSurface;
+            if (feedEl && feedEl.isConnected && isPostModal()) return mountedSurface;
             return "post";
         }
         return null;
@@ -2309,21 +2341,156 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     const userPkCache = new Map();   // username -> { pk, following }
     async function resolveUser(username) {
         if (!username) return null;
-        if (userPkCache.has(username)) return userPkCache.get(username);
+        const cached = userPkCache.get(username);
+        if (cached && cached.profileLoaded) return cached;
         try {
             const r = await fetch("/api/v1/users/web_profile_info/?username=" + encodeURIComponent(username),
                 { credentials: "include", headers: { "X-IG-App-ID": igAppId, "X-Requested-With": "XMLHttpRequest" } });
-            if (!r.ok) return null;
+            if (!r.ok) return cached || null;
             const j = await r.json();
             const u = j && j.data && j.data.user;
-            if (!u || !u.id) return null;
+            if (!u || !u.id) return cached || null;
             const state = u.friendship_status && u.friendship_status.following;
             const following = typeof state === "boolean" ? state
                 : typeof u.followed_by_viewer === "boolean" ? u.followed_by_viewer : undefined;
-            const rec = { pk: String(u.id), following };
+            const rec = {
+                pk: String(u.id), following, profileLoaded: true,
+                fullName: u.full_name || "", avatar: u.profile_pic_url_hd || u.profile_pic_url || "",
+                biography: u.biography || "", verified: !!u.is_verified,
+                mediaCount: u.edge_owner_to_timeline_media && u.edge_owner_to_timeline_media.count != null
+                    ? u.edge_owner_to_timeline_media.count : u.media_count,
+                followerCount: u.edge_followed_by && u.edge_followed_by.count != null
+                    ? u.edge_followed_by.count : u.follower_count,
+                followingCount: u.edge_follow && u.edge_follow.count != null
+                    ? u.edge_follow.count : u.following_count,
+            };
             userPkCache.set(username, rec);
             return rec;
-        } catch (_) { return null; }
+        } catch (_) { return cached || null; }
+    }
+    let profilePopoverView = null, profilePopoverAnchor = null, profilePopoverKey = "";
+    let profilePopoverOpenTimer = 0, profilePopoverCloseTimer = 0, profilePopoverRequest = 0;
+    let profilePopoverViewportHandler = null;
+    let profilePopoverSkipFocus = null;
+    function ensureProfilePopover() {
+        if (profilePopoverView) return profilePopoverView;
+        const pop = el("div", { id: "igf-profile-popover", class: "igf-profile-popover", role: "dialog", tabindex: "-1", "aria-label": "Prévia do perfil", hidden: "" });
+        const avatar = el("img", { class: "igf-profile-popover-avatar", alt: "", loading: "lazy" });
+        const nameText = el("span");
+        const verified = el("span", { class: "igf-profile-verified", "aria-label": "Conta verificada", hidden: "" }, "✓");
+        const name = el("a", { class: "igf-profile-popover-name" }, nameText, verified);
+        const fullName = el("div", { class: "igf-profile-popover-fullname" });
+        const head = el("div", { class: "igf-profile-popover-head" }, avatar, el("div", { class: "igf-profile-popover-meta" }, name, fullName));
+        const stat = (label) => el("div", { class: "igf-profile-stat" }, el("b"), el("span", {}, " " + label));
+        const postsStat = stat("publicações"), followersStat = stat("seguidores"), followingStat = stat("seguindo");
+        const stats = el("div", { class: "igf-profile-popover-stats" }, postsStat, followersStat, followingStat);
+        const bio = el("p", { class: "igf-profile-popover-bio" });
+        const follow = el("button", { class: "igf-follow igf-profile-follow", type: "button" });
+        const view = el("a", { class: "igf-profile-view" }, "Ver perfil");
+        const actions = el("div", { class: "igf-profile-popover-actions" }, follow, view);
+        pop.append(head, stats, bio, actions);
+        pop.addEventListener("pointerenter", () => clearTimeout(profilePopoverCloseTimer));
+        pop.addEventListener("pointerleave", scheduleProfilePopoverClose);
+        pop.addEventListener("focusin", () => clearTimeout(profilePopoverCloseTimer));
+        pop.addEventListener("focusout", scheduleProfilePopoverClose);
+        pop.addEventListener("click", (event) => {
+            if (!event.target.closest(".igf-profile-follow")) return;
+            event.preventDefault(); event.stopPropagation();
+            const post = posts.get(profilePopoverKey);
+            if (post) followUser(post, follow);
+        });
+        pop.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") {
+                event.stopPropagation();
+                const anchor = profilePopoverAnchor;
+                profilePopoverSkipFocus = anchor;
+                closeProfilePopover();
+                if (anchor) anchor.focus();
+            }
+        });
+        document.body.appendChild(pop);
+        profilePopoverView = { pop, avatar, name, nameText, verified, fullName, postsStat, followersStat, followingStat, bio, follow, view };
+        return profilePopoverView;
+    }
+    function positionProfilePopover() {
+        if (!profilePopoverView || !profilePopoverAnchor || profilePopoverView.pop.hidden) return;
+        const anchor = profilePopoverAnchor.getBoundingClientRect(), pop = profilePopoverView.pop;
+        const width = pop.getBoundingClientRect().width || Math.min(360, innerWidth - 24);
+        const height = pop.getBoundingClientRect().height || 260;
+        const left = clamp(anchor.left, 12, Math.max(12, innerWidth - width - 12));
+        let top = anchor.bottom + 8;
+        if (top + height > innerHeight - 12) top = anchor.top - height - 8;
+        pop.style.left = Math.round(left) + "px";
+        pop.style.top = Math.round(clamp(top, 12, Math.max(12, innerHeight - height - 12))) + "px";
+    }
+    function renderProfilePopover(author, post, profile, loading = false) {
+        const view = ensureProfilePopover();
+        view.nameText.textContent = author;
+        view.name.href = "/" + author + "/";
+        view.verified.hidden = !(profile && profile.verified);
+        view.fullName.textContent = profile && profile.fullName || (loading ? "Carregando perfil…" : "");
+        const avatarUrl = profile && profile.avatar || post && post.avatar || "";
+        if (avatarUrl) view.avatar.src = avatarUrl; else view.avatar.removeAttribute("src");
+        const setStat = (node, value) => { node.querySelector("b").textContent = value == null ? "—" : fmtCountNum(value); };
+        setStat(view.postsStat, profile && profile.mediaCount);
+        setStat(view.followersStat, profile && profile.followerCount);
+        setStat(view.followingStat, profile && profile.followingCount);
+        view.bio.textContent = profile && profile.biography || (loading ? "" : "");
+        view.bio.hidden = !view.bio.textContent;
+        if (post) renderFollowButton(view.follow, post.following === true, author);
+        view.view.href = "/" + author + "/";
+        positionProfilePopover();
+    }
+    function showProfilePopover(anchor, card) {
+        const author = anchor.dataset.author || "";
+        const post = posts.get(card && card.dataset.key || "");
+        if (!author || !post) return;
+        clearTimeout(profilePopoverOpenTimer); clearTimeout(profilePopoverCloseTimer);
+        if (profilePopoverAnchor && profilePopoverAnchor !== anchor) profilePopoverAnchor.setAttribute("aria-expanded", "false");
+        profilePopoverAnchor = anchor; profilePopoverKey = post.key;
+        anchor.setAttribute("aria-expanded", "true");
+        const view = ensureProfilePopover();
+        view.pop.dataset.author = author;
+        view.pop.hidden = false;
+        const request = ++profilePopoverRequest;
+        renderProfilePopover(author, post, userPkCache.get(author) || null, true);
+        if (!profilePopoverViewportHandler) {
+            profilePopoverViewportHandler = () => closeProfilePopover();
+            window.addEventListener("scroll", profilePopoverViewportHandler, true);
+            window.addEventListener("resize", positionProfilePopover, { passive: true });
+        }
+        requestAnimationFrame(positionProfilePopover);
+        resolveUser(author).then((profile) => {
+            if (!profile || request !== profilePopoverRequest || profilePopoverAnchor !== anchor) {
+                if (!profile && request === profilePopoverRequest) renderProfilePopover(author, post, null, false);
+                return;
+            }
+            post.authorPk = post.authorPk || profile.pk;
+            if (typeof profile.following === "boolean" && !post.followTouched) post.following = profile.following;
+            if (profile.avatar) post.avatar = profile.avatar;
+            renderProfilePopover(author, post, profile, false);
+            requestAnimationFrame(positionProfilePopover);
+        });
+    }
+    function closeProfilePopover() {
+        clearTimeout(profilePopoverOpenTimer); clearTimeout(profilePopoverCloseTimer);
+        if (profilePopoverAnchor) profilePopoverAnchor.setAttribute("aria-expanded", "false");
+        profilePopoverAnchor = null; profilePopoverKey = ""; profilePopoverRequest++;
+        if (profilePopoverViewportHandler) {
+            window.removeEventListener("scroll", profilePopoverViewportHandler, true);
+            window.removeEventListener("resize", positionProfilePopover);
+            profilePopoverViewportHandler = null;
+        }
+        if (profilePopoverView) profilePopoverView.pop.hidden = true;
+    }
+    function scheduleProfilePopoverClose() {
+        clearTimeout(profilePopoverCloseTimer);
+        profilePopoverCloseTimer = setTimeout(() => {
+            const view = profilePopoverView;
+            if (!view || view.pop.matches(":hover") || view.pop.contains(document.activeElement) ||
+                (profilePopoverAnchor && (profilePopoverAnchor.matches(":hover") || profilePopoverAnchor === document.activeElement))) return;
+            closeProfilePopover();
+        }, 180);
     }
     // clica o botão nativo do post (último recurso quando a API recusa). null se não achar.
     function nativeFollowBtn(key) {
@@ -2395,6 +2562,13 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             }
             else setFollowButton(card, p);
         }
+        if (profilePopoverView && !profilePopoverView.pop.hidden && profilePopoverView.pop.dataset.author === author) {
+            const post = posts.get(profilePopoverKey);
+            if (post) {
+                renderFollowButton(profilePopoverView.follow, following, author);
+                if (touched && following) animateFollowButton(profilePopoverView.follow);
+            }
+        }
     }
     async function followUser(p, btn) {
         if (btn.dataset.busy) return;
@@ -2415,7 +2589,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (pk) {
                 renderFollowButton(btn, next, p.author);   // otimista
                 if (await igApiPost("/api/v1/friendships/" + (next ? "create" : "destroy") + "/" + pk + "/", "", true)) {
-                    if (p.author) userPkCache.set(p.author, { pk, following: next });
+                    if (p.author) userPkCache.set(p.author, { ...(userPkCache.get(p.author) || {}), pk, following: next });
                     p.following = next; p.followTouched = true;
                     const rec = igMedia.get(p.code || codeOf(p.key)); if (rec) rec.following = next;
                     syncFollowButtons(p.author, next);
@@ -3106,7 +3280,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (p.avatar) avatar.appendChild(el("img", { src: p.avatar, loading: "lazy", alt: "" }));
         const profileMeta = el("div", { class: "igf-profilemeta" });
         const userline = el("div", { class: "igf-userline" });
-        const who = el("a", { class: "igf-who", href: profHref });   // nome → PERFIL
+        const who = el("a", { class: "igf-who", href: profHref, "data-author": p.author || null,
+            "aria-haspopup": p.author ? "dialog" : null, "aria-expanded": p.author ? "false" : null,
+            "aria-controls": p.author ? "igf-profile-popover" : null });   // nome → PERFIL + prévia no hover
         who.appendChild(el("b", {}, p.author || ""));
         // copiar o @ (sem a arroba) — fora do <a> do perfil; some enquanto o autor não chegou (CSS :empty)
         userline.append(who, el("button", { class: "igf-copyuser", type: "button", "data-act": "copyuser", title: "Copiar @", "aria-label": "Copiar nome de usuário", icon: ICO_COPY }));
@@ -3163,8 +3339,47 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         return card;
     }
 
+    function bindProfilePopover(feed) {
+        ensureProfilePopover();
+        const usernameLink = (target) => target && target.closest ? target.closest(".igf-who") : null;
+        feed.addEventListener("pointerover", (event) => {
+            if (event.pointerType && event.pointerType !== "mouse" && event.pointerType !== "pen") return;
+            const who = usernameLink(event.target);
+            if (!who || !feed.contains(who) || (event.relatedTarget && who.contains(event.relatedTarget))) return;
+            clearTimeout(profilePopoverCloseTimer); clearTimeout(profilePopoverOpenTimer);
+            profilePopoverOpenTimer = setTimeout(() => showProfilePopover(who, who.closest(".igf-card")), 280);
+        });
+        feed.addEventListener("pointerout", (event) => {
+            const who = usernameLink(event.target);
+            if (!who || !feed.contains(who) || (event.relatedTarget && who.contains(event.relatedTarget))) return;
+            clearTimeout(profilePopoverOpenTimer);
+            scheduleProfilePopoverClose();
+        });
+        feed.addEventListener("focusin", (event) => {
+            const who = usernameLink(event.target);
+            if (who && feed.contains(who)) {
+                if (profilePopoverSkipFocus === who) { profilePopoverSkipFocus = null; return; }
+                profilePopoverSkipFocus = null;
+                showProfilePopover(who, who.closest(".igf-card"));
+                ensureProfilePopover().pop.focus({ preventScroll: true });
+            }
+            else if (profilePopoverView && profilePopoverView.pop.contains(event.target)) clearTimeout(profilePopoverCloseTimer);
+        });
+        feed.addEventListener("focusout", (event) => {
+            const who = usernameLink(event.target);
+            if (who && feed.contains(who)) scheduleProfilePopoverClose();
+        });
+        feed.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            const who = usernameLink(event.target);
+            if (!who || who !== profilePopoverAnchor) return;
+            event.stopPropagation(); closeProfilePopover();
+        });
+    }
+
     /* HANDLERS DELEGADOS do feed — um conjunto por feed montado, no próprio container. */
     function bindFeedEvents(feed) {
+        bindProfilePopover(feed);
         const cardOf = (t) => t && t.closest ? t.closest(".igf-card") : null;
         feed.addEventListener("click", (e) => {
             const t = e.target;
@@ -3541,6 +3756,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const who = card.querySelector(".igf-who");
         if (who && p.author) {
             who.setAttribute("href", "/" + p.author + "/");
+            who.dataset.author = p.author;
+            who.setAttribute("aria-haspopup", "dialog");
+            who.setAttribute("aria-controls", "igf-profile-popover");
+            if (!who.hasAttribute("aria-expanded")) who.setAttribute("aria-expanded", "false");
             const b = who.querySelector("b"); if (b && b.textContent !== p.author) b.textContent = p.author;
         }
         setFollowButton(card, p);
@@ -3673,7 +3892,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         bindFeedEvents(feedEl);
         applyFeedClasses();                      // sombra/densidade/legenda/contadores desde o 1º paint
         parent.appendChild(feedEl);              // meu feed depois das stories
-        apiFeedUsed = boot ? 0 : apiFeedCodes.length;   // boot: o payload inline já lido vira card; depois, só o que chegar
+        apiFeedUsed = surface === "home" ? 0 : apiFeedCodes.length;   // ao remontar a home, reaproveita os posts já capturados
         if (surface === "saved") { savedToolbar = buildSavedToolbar(); parent.insertBefore(savedToolbar, feedEl); }   // toolbar de multisseleção ACIMA do mosaico
         const retry = el("button", { class: "igf-retry", type: "button", "data-act": "retry", hidden: "" }, "Tentar novamente");
         loaderEl = el("div", { class: "igf-loader", "data-state": "loading" },
@@ -3698,6 +3917,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             loaderIO = new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) loadMore(); }, { rootMargin: surface === "home" ? "1800px" : "1200px" });
             loaderIO.observe(loaderEl);          // perto do fim (ou feed curto no início) → puxa páginas
         }
+        if (surface === "home") onApiFeed();   // repõe os dados da API já capturados ao remontar a home
     }
     function mountOwnFeed(list, cwrap) {
         // Never hide an ancestor of the own feed: a bad column match must leave the native fallback visible.
@@ -3912,7 +4132,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (!detail) detail = media;
         if (!detail) return [];
         detail.classList.add("igm-postitem");
-        if (media) media.classList.add("igm-postmedia");
+        if (media) {
+            media.classList.add("igm-postmedia");
+            if (media.parentElement) media.parentElement.classList.add("igm-postmediabox");
+        }
         let branch = detail;
         while (branch.parentElement && branch.parentElement !== main && !tiles.some((tile) => branch.parentElement.contains(tile))) branch = branch.parentElement;
         return [branch];
@@ -4064,6 +4287,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function unmasonry() {
         if (boot) endBoot();
         unmountSkeleton();
+        closeProfilePopover();
         // sem nada aplicado, não há o que limpar — sem este flag os 5 querySelectorAll full-doc rodavam
         // a CADA burst de mutação em reels/stories (as superfícies mais churnentas do IG), sempre vazios
         if (!chromeApplied) return;
@@ -4077,6 +4301,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (const e of document.querySelectorAll(".igm-postdetail")) e.classList.remove("igm-postdetail");
         for (const e of document.querySelectorAll(".igm-postitem")) e.classList.remove("igm-postitem");
         for (const e of document.querySelectorAll(".igm-postmedia")) e.classList.remove("igm-postmedia");
+        for (const e of document.querySelectorAll(".igm-postmediabox")) e.classList.remove("igm-postmediabox");
         for (const e of document.querySelectorAll(".igm-col")) e.classList.remove("igm-col");
         for (const e of document.querySelectorAll(".igm-stories")) e.classList.remove("igm-stories");
         for (const e of document.querySelectorAll(".igm-norail")) e.classList.remove("igm-norail");
@@ -4321,16 +4546,23 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
 
     // SPA: patch no history + popstate → trabalho de rota (IG troca de tela sem reload)
     let lastPath = location.pathname;
+    let routeSettleTimer = null;
     function onNav() {
         if (location.pathname !== lastPath) {
             lastPath = location.pathname;
             navBoxCache = null; routeTries = 0; extrasTries = 0; routeMounted = false;   // caches e limites são POR ROTA
+            routeSettling = true;
+            if (routeSettleTimer) clearTimeout(routeSettleTimer);
+            routeSettleTimer = setTimeout(() => {
+                routeSettleTimer = null;
+                routeSettling = false;
+                routeWork();
+            }, 450);
+            closeProfilePopover();
             if (boot && !isHome()) unmasonry();      // saiu da home antes do feed montar → sem shell
             scheduleDockTag();
         }
         routeSoon();
-        // Instagram updates history before its React tree settles; reconcile once more after the new view mounts.
-        setTimeout(() => routeWork(), 450);
     }
     for (const m of ["pushState", "replaceState"]) {
         const orig = history[m];
