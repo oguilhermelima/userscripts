@@ -675,6 +675,9 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
   max-width:none !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important;
   min-height:0 !important; margin-left:auto !important; margin-right:auto !important; overflow:hidden !important; overflow-y:auto !important;
   overscroll-behavior:contain !important; }
+.igm-postitem{ box-sizing:border-box !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important; min-height:0 !important; }
+.igm-postmedia{ max-width:100% !important; max-height:calc(100vh - 144px)!important; max-height:calc(100dvh - 144px)!important;
+  object-fit:contain !important; }
 .igm-postdetail.igm-gridnav{ width:min(calc(1440px + var(--igm-navw)), calc(100vw - 24px)) !important;
   padding-left:var(--igm-navw) !important; }
 /* HEADER DO PERFIL — ocupa mais espaço via zoom (amplia o bloco inteiro sem tocar na estrutura).
@@ -3893,17 +3896,22 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const main = document.querySelector("main");
         const tiles = postRecommendationTiles();
         if (!main) return [];
-        let detail = [...main.querySelectorAll('article,[role="article"]')].find((article) => !tiles.some((tile) => article.contains(tile)));
-        if (!detail) {
-            const media = [...main.querySelectorAll("img,video")]
-                .filter((node) => !tiles.some((tile) => tile.contains(node)))
-                .sort((a, b) => {
-                    const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
-                    return rb.width * rb.height - ra.width * ra.height;
-                })[0];
-            if (media) detail = media;
-        }
+        const media = [...main.querySelectorAll("img,video")]
+            .filter((node) => !tiles.some((tile) => tile.contains(node)))
+            .sort((a, b) => {
+                const area = (node) => {
+                    const rect = node.getBoundingClientRect();
+                    return rect.width * rect.height || (node.naturalWidth || node.videoWidth || 0) * (node.naturalHeight || node.videoHeight || 0);
+                };
+                return area(b) - area(a);
+            })[0];
+        const articles = [...main.querySelectorAll('article,[role="article"]')].filter((article) => !tiles.some((tile) => article.contains(tile)));
+        let detail = media && articles.find((article) => article.contains(media));
+        if (!detail) detail = articles[0];
+        if (!detail) detail = media;
         if (!detail) return [];
+        detail.classList.add("igm-postitem");
+        if (media) media.classList.add("igm-postmedia");
         let branch = detail;
         while (branch.parentElement && branch.parentElement !== main && !tiles.some((tile) => branch.parentElement.contains(tile))) branch = branch.parentElement;
         return [branch];
@@ -4066,6 +4074,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (const e of document.querySelectorAll(".igm-gridcol")) e.classList.remove("igm-gridcol");
         for (const e of document.querySelectorAll(".igm-postpage")) e.classList.remove("igm-postpage");
         for (const e of document.querySelectorAll(".igm-postdetail")) e.classList.remove("igm-postdetail");
+        for (const e of document.querySelectorAll(".igm-postitem")) e.classList.remove("igm-postitem");
+        for (const e of document.querySelectorAll(".igm-postmedia")) e.classList.remove("igm-postmedia");
         for (const e of document.querySelectorAll(".igm-col")) e.classList.remove("igm-col");
         for (const e of document.querySelectorAll(".igm-stories")) e.classList.remove("igm-stories");
         for (const e of document.querySelectorAll(".igm-norail")) e.classList.remove("igm-norail");
