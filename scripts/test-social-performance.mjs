@@ -42,23 +42,24 @@ assert.doesNotMatch(instagramDomReady, /\bingestInlineJSON\(\)/);
 // Instagram: late metadata updates the rendered card, and its fixed caption
 // band also shows the publication date without losing the complete caption.
 assert.match(instagram, /publishedAt:\s*normalizePublishTime\(m\.taken_at_timestamp\s*\?\?\s*m\.taken_at\)/);
-assert.match(instagram, /class:\s*["']igf-capdate["']/);
+assert.match(instagram, /class:\s*["']igf-pubtime["']/);
 const instagramPublishTime = section(instagram, "const PUBLISH_DATE_FORMAT", "function smallestVideo");
 assert.match(instagramPublishTime, /hour:\s*["']2-digit["']/);
 assert.match(instagramPublishTime, /minute:\s*["']2-digit["']/);
-const instagramPublishStyle = section(instagram, ".igf-capdate{", ".igf-capmore");
+const instagramPublishStyle = section(instagram, ".igf-pubtime{", ".igf-copyuser{");
 assert.match(instagramPublishStyle, /font-size:\s*14px/);
 assert.match(instagram, /cardsByCode/);
 const instagramCardMeta = section(instagram, "function updateCardMeta", "function waitForNewPosts");
 assert.match(instagramCardMeta, /setCaption\(card, p\.caption\)/);
 assert.match(instagramCardMeta, /setPublishDate\(card, p\.publishedAt\)/);
 
-// Instagram: publication date and time lead the caption and remain readable.
-const instagramCaptionStyle = section(instagram, ".igf-capdate{", ".igf-tag");
-assert.match(instagramCaptionStyle, /top:\s*0/);
-assert.match(instagramCaptionStyle, /font-size:\s*14px/);
-const instagramCaptionMarkup = section(instagram, "function buildCaption", "function toggleCaption");
-assert.match(instagramCaptionMarkup, /wrap\.append\(date, cap,/);
+// Instagram: relative time stays in the card header; hover retains the exact timestamp.
+const instagramRelativeTime = section(instagram, "function formatRelativePublishTime", "function smallestVideo");
+assert.match(instagramRelativeTime, /RelativeTimeFormat/);
+assert.match(instagramRelativeTime, /formatPublishTime/);
+const instagramPublishMarkup = section(instagram, "function buildCard(p)", "function bindFeedEvents");
+assert.match(instagramPublishMarkup, /igf-pubtime/);
+assert.match(instagramPublishMarkup, /igf-identity/);
 
 // Instagram: keep media URLs separate from post permalinks, including the active carousel slide.
 assert.match(instagram, /originalImageUrl/);
@@ -80,13 +81,15 @@ assert.doesNotMatch(instagramModalWait, /go\(cleanPostUrl\(p\)\)/);
 assert.match(instagram, /target:\s*["']_blank["']/);
 assert.doesNotMatch(instagram, /data-act:\s*["']open["']/);
 
-// Instagram: incremental loading has skeletons, a visible end state, and a retry action.
+// Instagram: incremental loading keeps skeleton feedback and offers a useful retry state.
 const instagramLoaderStyle = section(instagram, ".igf-loader{", "@keyframes igf-rot");
 assert.match(instagramLoaderStyle, /igf-retry/);
 assert.doesNotMatch(instagramLoaderStyle, /igf-done\{\s*display:\s*none/);
 const instagramLoadMore = section(instagram, "async function loadMore", "\/\/ gatilho redundante por SCROLL");
 assert.match(instagramLoadMore, /mountSkeleton\(3/);
 assert.match(instagramLoadMore, /setLoaderState\(/);
+assert.doesNotMatch(instagramLoadMore, /Não foi possível carregar mais publicações/);
+assert.match(instagramLoadMore, /Aguardando novas publicações/);
 assert.match(instagram, /["']data-act["']:\s*["']retry["']/);
 
 // Instagram: successful follow actions confirm the result to the user.
@@ -94,11 +97,35 @@ const instagramFollow = section(instagram, "async function followUser", "\/\* ==
 assert.match(instagramFollow, /toast\(next\s*\?/);
 assert.match(instagram, /igf-follow-pop/);
 
-// Instagram: treat a follow as successful only when the API confirms it, and
-// show a follow action when the API omits the current relationship state.
+// Instagram: keep follow controls available for followed users and expose unfollow on hover.
 const instagramApiPost = section(instagram, "function igApiPost", "const selectedPks");
 assert.match(instagramApiPost, /data\.status\s*===\s*["']ok["']/);
-assert.match(instagram, /follow:\s*r\.following\s*!==\s*true/);
+const instagramFollowRender = section(instagram, "function renderFollowButton", "async function followUser");
+assert.match(instagramFollowRender, /Deixar de seguir/);
+assert.match(instagramFollowRender, /aria-pressed/);
+assert.doesNotMatch(instagramFollowRender, /if \(!p\.follow\).*remove/);
+assert.match(instagram, /follow:\s*true/);
+assert.match(instagram, /\.igf-follow\.on:hover/);
+
+// Instagram: media shortcuts are compact at the media's upper-left; actionbar share copies,
+// while the post permalink is last and stays neutral after visiting.
+const instagramMediaToolsStyle = section(instagram, ".igf-media-tools{", ".igf-media-tool.igf-busy");
+assert.match(instagramMediaToolsStyle, /top:\s*8px;\s*left:\s*8px/);
+assert.match(instagramMediaToolsStyle, /width:\s*26px;\s*height:\s*26px/);
+const instagramCardMarkup = section(instagram, "function buildCard(p)", "function bindFeedEvents");
+assert.match(instagramCardMarkup, /ICO\.share/);
+assert.ok(instagramCardMarkup.indexOf("ICO.save") < instagramCardMarkup.indexOf("ICO.open"));
+assert.match(instagram, /\.igf-openpost:visited\{[^}]*color:\s*inherit/);
+
+// Instagram: standalone post pages widen their content and scope the custom grid to More posts.
+const instagramPostRoute = section(instagram, "function targetSurface()", "const itemsIn");
+assert.match(instagramPostRoute, /postRecommendationTiles\(\)/);
+assert.match(instagramPostRoute, /return "post"/);
+const instagramRecommendations = section(instagram, "function postRecommendationTiles", "function gridContainer");
+assert.match(instagramRecommendations, /More posts|Mais publica/);
+const instagramPostGrid = section(instagram, "function gridContainer()", "\/\* botão de COPIAR o username");
+assert.match(instagramPostGrid, /surface === "post"/);
+assert.match(instagram, /igm-postpage|surface === "post"/);
 
 // Cenário Reddit: CSS/classes críticas ficam disponíveis cedo, mas o pipeline
 // que varre shadow roots e posts só roda fora do caminho crítico do paint.
