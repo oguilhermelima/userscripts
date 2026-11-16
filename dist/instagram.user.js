@@ -473,6 +473,7 @@
   --igf-shadow-pop:0 12px 34px var(--igf-shade);
 }
 html.igf-dark{
+  --ig-background:0,0,0 !important;
   --igf-card-bg:#0e0e10;  --igf-elev:#1c1c1e;  --igf-input:#000000;
   --igf-media-bg:#0b0b0b; --igf-avatar-bg:#222222;
   --igf-line:rgba(255,255,255,.10); --igf-line-hov:rgba(255,255,255,.26); --igf-border:#363638;
@@ -480,7 +481,10 @@ html.igf-dark{
   --igf-text:#f4f4f5; --igf-text-2:#b9b9c0; --igf-muted:#8e8e93;
   --igf-shade:rgba(0,0,0,.6);
   --igf-shadow:0 1px 2px rgba(0,0,0,.55); --igf-shadow-hov:0 18px 44px rgba(0,0,0,.64);
+  background-color:#000 !important;
 }
+html.igf-dark body{ background-color:#000 !important; }
+html.igf-dark body > div{ background-color:#000 !important; }
 `);
 
     /* ------------------------------------------------------------------ *
@@ -656,9 +660,9 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 /* página de publicação aberta em rota própria: amplia o post e mantém More posts alinhado ao grid. */
 .igm-postpage{ width:100% !important; max-width:var(--igm-maxw) !important; }
 .igm-postpage article{ width:100% !important; max-width:none !important; }
-.igm-postdetail{ box-sizing:border-box !important; width:min(var(--igm-maxw), calc(100vw - var(--igm-navw) - 48px)) !important;
+.igm-postdetail{ box-sizing:border-box !important; width:min(1440px, calc(100vw - var(--igm-navw) - 48px)) !important;
   max-width:none !important; margin-left:auto !important; margin-right:auto !important; }
-.igm-postdetail.igm-gridnav{ width:min(calc(var(--igm-maxw) + var(--igm-navw)), calc(100vw - 24px)) !important;
+.igm-postdetail.igm-gridnav{ width:min(calc(1440px + var(--igm-navw)), calc(100vw - 24px)) !important;
   padding-left:var(--igm-navw) !important; }
 /* HEADER DO PERFIL — ocupa mais espaço via zoom (amplia o bloco inteiro sem tocar na estrutura).
    NÃO mexer em flex/min-width/max-width dos filhos: a v3.16 fez isso e quebrou feio — o min-width:0
@@ -734,15 +738,15 @@ ${ariaHas("searchPart", ".igm-gridcol:not(.igm-postpage) input")}{ max-width:non
 .igf-copyuser:hover{ opacity:1; background:var(--igf-hover-bg); color:var(--igf-text); }
 .igf-copyuser.igf-copied{ color:var(--igf-accent); opacity:1; }
 .igf-who:has(b:empty) + .igf-copyuser{ display:none; }
-.igf-follow{ display:inline-flex; align-self:flex-start; align-items:center; justify-content:center; box-sizing:border-box; width:max-content; min-width:74px; height:24px;
-  margin:0; padding:0 10px; border:1px solid var(--igf-accent); border-radius:999px; background:var(--igf-accent); color:#fff;
-  cursor:pointer; font:inherit; font-size:12px; font-weight:700; line-height:1; text-align:center; white-space:nowrap;
-  transition:background .15s ease, color .15s ease, transform .15s ease; }
-.igf-follow:focus-visible{ outline:2px solid var(--igf-accent); outline-offset:1px; }
-.igf-follow:hover{ background:color-mix(in srgb, var(--igf-accent) 82%, #000); border-color:color-mix(in srgb, var(--igf-accent) 82%, #000); transform:translateY(-1px); }
-.igf-follow.on{ border-color:var(--igf-line); background:var(--igf-hover-bg); color:var(--igf-text-2); font-weight:650; }
+.igf-follow{ display:inline-flex; align-self:flex-start; align-items:center; justify-content:flex-start; box-sizing:border-box;
+  margin:0; padding:0; border:0; border-radius:0; background:transparent; color:var(--igf-accent);
+  cursor:pointer; font:inherit; font-size:12px; font-weight:700; line-height:1.2; text-align:left; white-space:nowrap;
+  transition:color .15s ease, transform .15s ease; }
+.igf-follow:focus-visible{ outline:2px solid var(--igf-accent); outline-offset:3px; }
+.igf-follow:hover{ background:transparent; transform:translateY(-1px); text-decoration:underline; }
+.igf-follow.on{ border:0; background:transparent; color:var(--igf-text-2); font-weight:600; }
 .igf-follow-hover{ display:none; }
-.igf-follow.on:hover, .igf-follow.on:focus-visible{ border-color:color-mix(in srgb, var(--igf-danger) 35%, transparent); color:var(--igf-danger); background:color-mix(in srgb, var(--igf-danger) 12%, transparent); transform:none; }
+.igf-follow.on:hover, .igf-follow.on:focus-visible{ color:var(--igf-danger); background:transparent; transform:none; }
 .igf-follow.on:hover .igf-follow-label, .igf-follow.on:focus-visible .igf-follow-label{ display:none; }
 .igf-follow.on:hover .igf-follow-hover, .igf-follow.on:focus-visible .igf-follow-hover{ display:inline; }
 .igf-follow.igf-follow-success{ animation:igf-follow-pop .36s cubic-bezier(.2,.8,.2,1); }
@@ -855,7 +859,7 @@ ${ariaHas("searchPart", ".igm-gridcol:not(.igm-postpage) input")}{ max-width:non
 .igf-feed.igf-dense .igf-skel-avatar{ width:36px; height:36px; }
 .igf-feed.igf-dense .igf-head b{ font-size:14px; }
 .igf-feed.igf-dense .igf-pubtime{ font-size:13px; }
-.igf-feed.igf-dense .igf-follow{ min-width:68px; height:22px; padding:0 8px; font-size:11px; }
+.igf-feed.igf-dense .igf-follow{ font-size:11px; }
 .igf-feed.igf-dense .igf-actions{ padding:0 5px; }
 .igf-feed.igf-dense .igf-act{ padding:5px 6px; font-size:12px; }
 .igf-feed.igf-dense .igf-act svg{ width:20px; height:20px; }
@@ -4301,7 +4305,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             scheduleDockTag();
         }
         routeSoon();
-        setTimeout(() => { if (needsRouteWork()) routeWork(); }, 450);   // o IG costuma renderizar a tela nova logo depois do push
+        // Instagram updates history before its React tree settles; reconcile once more after the new view mounts.
+        setTimeout(() => routeWork(), 450);
     }
     for (const m of ["pushState", "replaceState"]) {
         const orig = history[m];
