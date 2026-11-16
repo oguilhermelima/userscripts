@@ -47,7 +47,7 @@ const instagramPublishTime = section(instagram, "const PUBLISH_DATE_FORMAT", "fu
 assert.match(instagramPublishTime, /hour:\s*["']2-digit["']/);
 assert.match(instagramPublishTime, /minute:\s*["']2-digit["']/);
 const instagramPublishStyle = section(instagram, ".igf-capdate{", ".igf-capmore");
-assert.match(instagramPublishStyle, /font-size:\s*12px/);
+assert.match(instagramPublishStyle, /font-size:\s*14px/);
 assert.match(instagram, /cardsByCode/);
 const instagramCardMeta = section(instagram, "function updateCardMeta", "function waitForNewPosts");
 assert.match(instagramCardMeta, /setCaption\(card, p\.caption\)/);
@@ -87,7 +87,7 @@ assert.doesNotMatch(instagramLoaderStyle, /igf-done\{\s*display:\s*none/);
 const instagramLoadMore = section(instagram, "async function loadMore", "\/\/ gatilho redundante por SCROLL");
 assert.match(instagramLoadMore, /mountSkeleton\(3/);
 assert.match(instagramLoadMore, /setLoaderState\(/);
-assert.match(instagram, /data-act:\s*["']retry["']/);
+assert.match(instagram, /["']data-act["']:\s*["']retry["']/);
 
 // Instagram: successful follow actions confirm the result to the user.
 const instagramFollow = section(instagram, "async function followUser", "\/\* === VÍDEO NOS CARDS");
