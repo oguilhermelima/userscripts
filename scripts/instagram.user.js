@@ -473,6 +473,9 @@
 }
 html.igf-dark{
   --ig-background:0,0,0 !important;
+  --ig-primary-background:0,0,0 !important;
+  --ig-secondary-background:0,0,0 !important;
+  --ig-tertiary-background:0,0,0 !important;
   --igf-card-bg:#0e0e10;  --igf-elev:#1c1c1e;  --igf-input:#000000;
   --igf-media-bg:#0b0b0b; --igf-avatar-bg:#222222;
   --igf-line:rgba(255,255,255,.10); --igf-line-hov:rgba(255,255,255,.26); --igf-border:#363638;
@@ -484,6 +487,15 @@ html.igf-dark{
 }
 html.igf-dark body{ background-color:#000 !important; }
 html.igf-dark body > div{ background-color:#000 !important; }
+html.igf-dark [id^="mount_0"]{
+  --ig-background:0,0,0 !important;
+  --ig-primary-background:0,0,0 !important;
+  --ig-secondary-background:0,0,0 !important;
+  --ig-tertiary-background:0,0,0 !important;
+  background-color:#000 !important;
+}
+html.igf-dark [id^="mount_0"] > div{ background-color:#000 !important; }
+html.igf-dark main{ background-color:#000 !important; }
 `);
 
     /* ------------------------------------------------------------------ *
@@ -660,7 +672,9 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igm-postpage{ width:100% !important; max-width:var(--igm-maxw) !important; }
 .igm-postpage article{ width:100% !important; max-width:none !important; }
 .igm-postdetail{ box-sizing:border-box !important; width:min(1440px, calc(100vw - var(--igm-navw) - 48px)) !important;
-  max-width:none !important; margin-left:auto !important; margin-right:auto !important; }
+  max-width:none !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important;
+  min-height:0 !important; margin-left:auto !important; margin-right:auto !important; overflow:hidden !important; overflow-y:auto !important;
+  overscroll-behavior:contain !important; }
 .igm-postdetail.igm-gridnav{ width:min(calc(1440px + var(--igm-navw)), calc(100vw - 24px)) !important;
   padding-left:var(--igm-navw) !important; }
 /* HEADER DO PERFIL — ocupa mais espaço via zoom (amplia o bloco inteiro sem tocar na estrutura).
