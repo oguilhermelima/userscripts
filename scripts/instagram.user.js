@@ -342,6 +342,7 @@
         const changedCodes = new Set();
         try { walkForMedia(j, 0, false, changedCodes, collectFeedOrder); } catch (_) { /**/ }
         try { queueMetaUpdate(changedCodes); } catch (_) { /**/ }   // metadados atualizados → sincroniza apenas os cards dos posts tocados
+        try { queueUnharvestedGridTiles(changedCodes); } catch (_) { /**/ }
         if (apiFeedCodes.length > feedBefore) { try { onApiFeed(); } catch (_) { /**/ } }   // posts novos do feed → cards já
         return true;
     }
@@ -674,7 +675,7 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 /* coluna do grid (explore/profile) que nasce SOB o nav fixo: maxw + padding do nav → conteúdo maxw centrado em (viewport − nav), igual à home */
 .igm-gridnav{ max-width:calc(var(--igm-maxw) + var(--igm-navw)) !important; padding-left:var(--igm-navw) !important; }
 /* página de publicação aberta em rota própria: amplia o post e mantém More posts alinhado ao grid. */
-.igm-postpage{ width:100% !important; max-width:var(--igm-maxw) !important; }
+.igm-postpage{ width:100% !important; max-width:min(1560px, calc(100vw - var(--igm-navw) - 24px)) !important; }
 .igm-postpage article{ width:100% !important; max-width:none !important; }
 .igm-postdetail{ box-sizing:border-box !important; width:min(1440px, calc(100vw - var(--igm-navw) - 48px)) !important;
   max-width:none !important; max-height:calc(100vh - 64px)!important; max-height:calc(100dvh - 64px)!important;
@@ -682,11 +683,21 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
   overscroll-behavior:none !important; }
 .igm-postitem{ box-sizing:border-box !important; max-height:calc(100vh - 64px)!important; max-height:calc(100dvh - 64px)!important;
   min-height:0 !important; overflow:hidden !important; }
-.igm-postmediabox{ min-height:0 !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important; overflow:hidden !important; }
-.igm-postmedia{ max-width:100% !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important;
+.igm-postmediabox{ display:flex !important; flex:1 1 60% !important; align-items:center !important; justify-content:center !important;
+  min-width:0 !important; min-height:0 !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important; overflow:hidden !important; }
+.igm-postmedia{ display:block !important; flex:0 1 auto !important; width:auto !important; height:auto !important;
+  min-width:0 !important; min-height:0 !important; max-width:100% !important; max-height:calc(100vh - 96px)!important; max-height:calc(100dvh - 96px)!important;
   object-fit:contain !important; }
 .igm-postdetail.igm-gridnav{ width:min(calc(1440px + var(--igm-navw)), calc(100vw - 24px)) !important;
   padding-left:var(--igm-navw) !important; }
+@media (min-width: 1000px){
+  .igm-postmediabox{ height:min(calc(100vh - 112px), 920px) !important; height:min(calc(100dvh - 112px), 920px) !important; }
+  .igm-postmedia{ width:100% !important; height:100% !important; max-height:100% !important; object-fit:contain !important; }
+  .igm-postmediabox ~ *:last-child{ flex:0 1 420px !important; min-width:min(360px, 34vw) !important; max-width:520px !important; }
+}
+.igm-dialog-zoomable{ transform-origin:center center !important; cursor:zoom-in !important; transition:transform .18s ease !important; }
+.igm-dialog-zoomable.igm-dialog-zoomed{ cursor:grab !important; touch-action:none !important; will-change:transform; }
+.igm-dialog-zoomable.igm-dialog-zoomed.igm-dialog-dragging{ cursor:grabbing !important; transition:none !important; }
 /* HEADER DO PERFIL — ocupa mais espaço via zoom (amplia o bloco inteiro sem tocar na estrutura).
    NÃO mexer em flex/min-width/max-width dos filhos: a v3.16 fez isso e quebrou feio — o min-width:0
    caiu num wrapper errado e o texto passou a quebrar UMA LETRA POR LINHA, com o avatar solto no meio.
@@ -917,6 +928,7 @@ ${ariaHas("searchPart", ".igm-gridcol:not(.igm-postpage) input")}{ max-width:non
   margin:4px auto 34px; padding:18px 22px; min-height:64px; box-sizing:border-box; border:1px solid var(--igf-line); border-radius:16px;
   background:var(--igf-card-bg); color:var(--igf-muted); font-size:13px; box-shadow:var(--igf-shadow);
   transition:border-color .18s ease, box-shadow .18s ease, background .18s ease; }
+.igf-loader[hidden]{ display:none !important; }
 .igf-loader[data-state="loading"]{ border-color:var(--igf-line-hov); box-shadow:var(--igf-shadow-hov); }
 .igf-loader-msg{ line-height:1.4; }
 .igf-spin{ flex:0 0 auto; width:20px; height:20px; border:2px solid rgba(128,128,128,.25); border-top-color:var(--igf-accent); border-radius:50%; animation:igf-rot .8s linear infinite; }
@@ -1808,7 +1820,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     };
     let surface = "home";          // 'home' | 'explore' | 'profile' | 'saved' | 'post'
     let mountedSurface = null;     // o que está montado agora (pra trocar = teardown + remount)
+    let mountedPostPath = "";      // as recomendações pertencem à URL do post, não só à superfície
     let routeSettling = false;     // não desmonta o feed enquanto o React decide entre modal e rota própria
+    let pendingHomePostCode = "";  // shortcode do post antigo enquanto o React monta a lista da home
     function isPostModal() {
         return [...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.querySelector("article"));
     }
@@ -1835,7 +1849,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function feedArticleList() {
         // A lista = o pai que segura MAIS <article> (não o pai do 1º: um post solto fora da lista enganava).
         // A home pode começar com um só; as outras superfícies exigem dois irmãos.
-        const arts = document.querySelectorAll("main article");
+        const arts = [...document.querySelectorAll("main article")]
+            .filter((article) => !(pendingHomePostCode &&
+                (article.classList.contains("igm-postitem") || postKey(article) === "/p/" + pendingHomePostCode)));
         const minArticles = isHome() ? 1 : 2;
         if (arts.length < minArticles) return null;
         const count = new Map();
@@ -1846,6 +1862,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (n > bestN) { bestN = n; best = p; }
         }
         return bestN >= minArticles ? best : null;
+    }
+    function homeRouteReady() {
+        if (!pendingHomePostCode) return true;
+        if (document.querySelector('main input[type="password"]')) { pendingHomePostCode = ""; return true; }
+        return !!feedArticleList();
     }
 
     // coluna do feed + a(s) rail(s) irmã(s). ESTRUTURA primeiro: a coluna = o ancestral mais EXTERNO
@@ -3549,6 +3570,27 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function queueSyncFeed() { if (syncFeedQ) return; syncFeedQ = true; raf(() => { syncFeedQ = false; syncOwnFeed(); }); }
     // harvest da lista do IG → renderiza os cards novos (append-only, sem re-layout)
     let lastHarvestSig = "";
+    function queueGridSync(records) {
+        for (const record of records || []) {
+            const target = record.target;
+            if ((record.type === "attributes" || record.type === "childList") && target && target.closest && target.closest(POST_GRID_SEL)) {
+                lastHarvestSig = "";   // miniatura carregada dentro de tile existente: força novo harvest
+                break;
+            }
+        }
+        queueSyncFeed();
+    }
+    function queueUnharvestedGridTiles(codes) {
+        if (surface === "home" || !igSrc || !codes || !codes.size) return;
+        for (const tile of itemsIn(igSrc)) {
+            const key = keyOf(tile);
+            if (key && !posts.has(key) && codes.has(key.slice(3))) {
+                lastHarvestSig = "";
+                queueSyncFeed();
+                return;
+            }
+        }
+    }
     /* CARD DIRETO DA API (home): os posts da timeline lidos do payload (inline do HTML ou graphql)
      * viram card sem esperar o <article> do IG — no boot isso é o que tira o skeleton. Mesma chave
      * canônica do harvest (/p/CODE): quando o <article> chega, o harvest só reconhece o post. */
@@ -3624,6 +3666,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (igSrc && !igSrc.classList.contains("igf-src")) { igSrc.classList.add("igf-src"); pauseNativeVideos(); }
         }   // 1º card real → tira o skeleton + esconde a grade nativa (grid: só agora, pra não dar tela preta)
         else if (surface !== "home" && igSrc) igSrc.classList.remove("igf-src");           // GRID vazio → mostra a grade NATIVA (nunca deixa só o spinner numa tela vazia)
+        if (surface === "post" && loaderEl) loaderEl.hidden = !rendered.size;
+        else if (loaderEl) loaderEl.hidden = false;
         updateCardsMeta(fresh); // aplica dados que já chegaram antes do card ser montado
         updatePendingHomeCaptions(); // o <h1> nativo pode aparecer depois do harvest
         layoutFeed();
@@ -3902,6 +3946,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         loaderEl = el("div", { class: "igf-loader", "data-state": "loading" },
             el("div", { class: "igf-spin", "aria-hidden": "true" }),
             el("span", { class: "igf-loader-msg" }, "Preparando o feed…"), retry);
+        if (surface === "post") loaderEl.hidden = true;
         retry.addEventListener("click", (e) => {
             e.preventDefault(); e.stopPropagation();
             feedExhausted = false;
@@ -3928,8 +3973,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         let src = list;                              // igSrc = branch dos cards (filho do cwrap que contém a lista)
         while (src.parentElement && src.parentElement !== cwrap) src = src.parentElement;
         if (src === document.body || src === document.documentElement || !cwrap.contains(src)) return;
-        const firstMount = !feedEl || !feedEl.isConnected;
-        if (firstMount && feedEl) teardownOwnFeed();   // React destacou o feed: elimina os dados e observers da montagem anterior
+        const firstMount = !feedEl;
+        if (igSrc && igSrc !== src) igSrc.classList.remove("igf-src");
         igSrc = src;
         // home: esconde a nativa JÁ (harvest confiável, o skeleton cobre). GRID (explore/profile): só esconde
         // DEPOIS que renderizar o 1º card (em syncOwnFeed) → se o harvest falhar, a grade NATIVA continua à
@@ -3946,16 +3991,16 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                 }, 2500);
             }
         }
-        if (firstMount) createFeed(cwrap);
+        if (!feedEl) createFeed(cwrap);
         else if (feedEl.parentElement !== cwrap) {
-            // o React re-renderizou o cwrap (grade nova) e ÓRFÃO o nosso feed — ou o feed nasceu no SHELL do
-            // boot — → MOVE p/ o cwrap atual (mantém os cards, sem recriar)
+            // O React pode destacar e remontar o wrapper durante a navegação. Reanexa o mesmo feed e seus
+            // cards ao wrapper atual para evitar skeletons e recarregamento visual da lista.
             cwrap.appendChild(feedEl);
             if (loaderEl) cwrap.appendChild(loaderEl);
         }
         if (boot) endBoot();                         // a lista nativa já está fora de vista → o <main> pode aparecer
         if (typeof MutationObserver !== "undefined" && srcMOTarget !== igSrc) {   // re-aponta o observer quando a grade muda (React re-render)
-            if (!srcMO) srcMO = new MutationObserver(queueSyncFeed); else srcMO.disconnect();
+            if (!srcMO) srcMO = new MutationObserver(surface === "home" ? queueSyncFeed : queueGridSync); else srcMO.disconnect();
             const observeOptions = { childList: true, subtree: true };
             if (surface !== "home") {
                 observeOptions.attributes = true;
@@ -4068,8 +4113,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const box = leftNavWidthBox();
         if (box) { box.classList.add("igm-navpin"); pinnedNav = box; chromeApplied = true; }
     }
-    function applyFeed() {
-        const list = feedArticleList();
+    function applyFeed(listOverride) {
+        const list = listOverride || feedArticleList();
         if (!list) { if (boot) bootTray(); return; }
         const split = feedColumnSplit(list);
         if (!split) return;   // sem a estrutura conhecida → não monto o feed próprio (evita bagunça)
@@ -4117,11 +4162,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                 })
                 .sort((a, b) => a.textContent.length - b.textContent.length);
         }
-        const anchorsIn = (node) => [...node.querySelectorAll(POST_GRID_SEL)].filter((anchor) => anchor.querySelector("img,svg,video"));
+        const anchorsIn = (node) => [...node.querySelectorAll(POST_GRID_SEL)];
         for (const heading of [...headings, ...labelled]) {
             if (!isRecommendationsHeading(heading.textContent || heading.getAttribute("aria-label"))) continue;
             for (let node = heading; node && node !== main; node = node.parentElement) {
-                const anchors = anchorsIn(node);
+                const anchors = anchorsIn(node).filter((anchor) => !anchor.closest('article,[role="article"]'));
                 if (anchors.length >= 2) return anchors;
             }
         }
@@ -4292,12 +4337,150 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (!feedEl) return;
         for (const s of feedEl.querySelectorAll(".igf-skel")) s.remove();
     }
+    function nativeDialogImage(target) {
+        const image = target && target.closest && target.closest("img");
+        if (!image || image.closest(".igf-src, .igf-feed")) return null;
+        if (!image.closest('[role="dialog"] article')) return null;
+        const rect = image.getBoundingClientRect();
+        return image.naturalWidth > 0 && rect.width >= 160 && rect.height >= 160 ? image : null;
+    }
+    function bindNativeDialogZoom() {
+        const ZOOMS = [1, 2, 3];
+        const states = new WeakMap();
+        let drag = null, suppressClick = null;
+        const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+        function stateFor(image) {
+            const source = image.currentSrc || image.src || "";
+            let state = states.get(image);
+            if (state && state.source === source) return state;
+            const originalTransform = state ? state.originalTransform : image.style.transform;
+            image.classList.remove("igm-dialog-zoomed", "igm-dialog-dragging");
+            image.style.transform = originalTransform;
+            image.title = "Clique para ampliar";
+            state = { source, scale: 1, x: 0, y: 0, originalTransform };
+            states.set(image, state);
+            return state;
+        }
+        function maxPan(image, scale) {
+            const width = image.offsetWidth || image.getBoundingClientRect().width;
+            const height = image.offsetHeight || image.getBoundingClientRect().height;
+            const nw = image.naturalWidth || width, nh = image.naturalHeight || height;
+            const fit = getComputedStyle(image).objectFit === "cover"
+                ? Math.max(width / nw, height / nh)
+                : Math.min(width / nw, height / nh);
+            return {
+                x: Math.max(0, (nw * fit * scale - width) / 2),
+                y: Math.max(0, (nh * fit * scale - height) / 2),
+            };
+        }
+        function applyZoom(image, state) {
+            const max = maxPan(image, state.scale);
+            state.x = clamp(state.x, -max.x, max.x);
+            state.y = clamp(state.y, -max.y, max.y);
+            image.classList.toggle("igm-dialog-zoomed", state.scale > 1);
+            image.style.transform = state.scale > 1
+                ? `translate(${Math.round(state.x)}px, ${Math.round(state.y)}px) scale(${state.scale})`
+                : state.originalTransform;
+            image.title = state.scale === 1 ? "Clique para ampliar" : `Zoom ${state.scale}× — arraste para mover`;
+        }
+        function zoomAt(image, state, clientX, clientY) {
+            const oldScale = state.scale;
+            state.scale = ZOOMS[(ZOOMS.indexOf(oldScale) + 1) % ZOOMS.length];
+            if (state.scale === 1) { state.x = 0; state.y = 0; }
+            else {
+                const rect = image.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2 - state.x;
+                const centerY = rect.top + rect.height / 2 - state.y;
+                const pointX = (clientX - centerX - state.x) / oldScale;
+                const pointY = (clientY - centerY - state.y) / oldScale;
+                state.x = clientX - centerX - pointX * state.scale;
+                state.y = clientY - centerY - pointY * state.scale;
+            }
+            applyZoom(image, state);
+        }
+        document.addEventListener("pointerover", (event) => {
+            const image = nativeDialogImage(event.target);
+            if (image) { image.classList.add("igm-dialog-zoomable"); stateFor(image); }
+        }, true);
+        document.addEventListener("pointerdown", (event) => {
+            const image = nativeDialogImage(event.target);
+            if (!image || event.button !== 0) return;
+            const state = stateFor(image);
+            if (state.scale === 1) return; // deixa o gesto horizontal nativo navegar pelo carrossel
+            event.preventDefault(); event.stopPropagation();
+            drag = { image, pointerId: event.pointerId, x: event.clientX, y: event.clientY, panX: state.x, panY: state.y, moved: false };
+            try { image.setPointerCapture(event.pointerId); } catch (_) { /**/ }
+        }, true);
+        document.addEventListener("pointermove", (event) => {
+            if (!drag || drag.pointerId !== event.pointerId) return;
+            const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+            if (!drag.moved && Math.hypot(dx, dy) > 4) {
+                drag.moved = true;
+                drag.image.classList.add("igm-dialog-dragging");
+            }
+            if (!drag.moved) return;
+            event.preventDefault(); event.stopPropagation();
+            const state = stateFor(drag.image), max = maxPan(drag.image, state.scale);
+            state.x = clamp(drag.panX + dx, -max.x, max.x);
+            state.y = clamp(drag.panY + dy, -max.y, max.y);
+            drag.image.style.transform = `translate(${Math.round(state.x)}px, ${Math.round(state.y)}px) scale(${state.scale})`;
+        }, true);
+        document.addEventListener("pointerup", (event) => {
+            if (!drag || drag.pointerId !== event.pointerId) return;
+            const ended = drag;
+            drag = null;
+            ended.image.classList.remove("igm-dialog-dragging");
+            try { ended.image.releasePointerCapture(event.pointerId); } catch (_) { /**/ }
+            if (ended.moved) {
+                event.preventDefault(); event.stopPropagation();
+                suppressClick = ended.image;
+                setTimeout(() => { if (suppressClick === ended.image) suppressClick = null; }, 0);
+            }
+        }, true);
+        document.addEventListener("pointercancel", (event) => {
+            if (!drag || drag.pointerId !== event.pointerId) return;
+            drag.image.classList.remove("igm-dialog-dragging");
+            drag = null;
+        }, true);
+        document.addEventListener("click", (event) => {
+            const image = nativeDialogImage(event.target);
+            if (!image) return;
+            event.preventDefault(); event.stopPropagation();
+            if (suppressClick === image) { suppressClick = null; return; }
+            const state = stateFor(image);
+            zoomAt(image, state, event.clientX, event.clientY);
+        }, true);
+        document.addEventListener("wheel", (event) => {
+            const image = nativeDialogImage(event.target);
+            if (!image) return;
+            const state = stateFor(image);
+            if (state.scale === 1) return;
+            event.preventDefault(); event.stopPropagation();
+            const max = maxPan(image, state.scale);
+            state.x = clamp(state.x - event.deltaX, -max.x, max.x);
+            state.y = clamp(state.y - event.deltaY, -max.y, max.y);
+            applyZoom(image, state);
+        }, { capture: true, passive: false });
+    }
+    bindNativeDialogZoom();
     function syncMasonry() {
         if (routeSettling) return;
         const surf = targetSurface();
-        if (surf !== mountedSurface) { unmasonry(); lastHarvestSig = ""; mountedSurface = surf; }   // trocou de superfície → limpa tudo (sig inclusive)
+        const postRouteChanged = surf === "post" && mountedSurface === "post" && mountedPostPath !== location.pathname;
+        let homeList = null;
+        if (surf === "home" && mountedSurface !== "home") {
+            if (!homeRouteReady()) return;
+            if (pendingHomePostCode) homeList = feedArticleList();
+        }
+        if (surf !== mountedSurface || postRouteChanged) {
+            unmasonry(); lastHarvestSig = ""; mountedSurface = surf;
+            mountedPostPath = surf === "post" ? location.pathname : "";
+        }   // trocou de superfície ou de publicação → limpa o estado do grid
         applyNavPin();   // gating próprio (masonry && pinNav)
-        if (surf === "home") { surface = "home"; applyFeed(); }
+        if (surf === "home") {
+            surface = "home"; applyFeed(homeList);
+            if (pendingHomePostCode && feedEl && igSrc) pendingHomePostCode = "";
+        }
         else if (surf === "explore" || surf === "profile" || surf === "saved" || surf === "post") { surface = surf; applyGrid(); }
         else unmasonry();
     }
@@ -4456,6 +4639,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     function needsRouteWork() {
         if (routeSettling) return false;
+        if (targetSurface() === "home" && mountedSurface !== "home" && !homeRouteReady()) return false;
         // quebrou DEPOIS de montar (React re-renderizou) → sempre conserta; nunca montou → até ROUTE_MAX
         if (!coreHealthy() && (routeMounted || routeTries < ROUTE_MAX)) return true;
         if (extrasTries >= EXTRAS_MAX) return false;
@@ -4467,6 +4651,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function routeWork() {
         if (routeQ) { clearTimeout(routeQ); routeQ = null; }
         if (routeSettling) return;
+        if (targetSurface() === "home" && mountedSurface !== "home" && !homeRouteReady()) return;
         if (coreHealthy()) extrasTries++; else routeTries++;
         applyTheme();
         syncMasonry();                                          // monta/re-assegura a superfície + pino do nav
@@ -4568,7 +4753,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     let routeSettleTimer = null;
     function onNav() {
         if (location.pathname !== lastPath) {
+            const previousPost = mountedSurface === "post" ? lastPath.match(/^\/(?:p|reel|reels)\/([^/]+)/) : null;
             lastPath = location.pathname;
+            pendingHomePostCode = isHome() && previousPost ? previousPost[1] : "";
             navBoxCache = null; routeTries = 0; extrasTries = 0; routeMounted = false;   // caches e limites são POR ROTA
             routeSettling = true;
             if (routeSettleTimer) clearTimeout(routeSettleTimer);
