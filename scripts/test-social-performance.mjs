@@ -38,6 +38,8 @@ assert.match(instagramCreateFeed, /apiFeedUsed\s*=\s*surface === "home" \? 0 : a
 assert.match(instagramCreateFeed, /if \(surface === "home"\) onApiFeed\(\)/);
 const instagramMount = section(instagram, "function mountOwnFeed", "function pauseNativeVideos");
 assert.match(instagramMount, /queueSyncFeed\(\)/);
+assert.match(instagramMount, /observeOptions\.attributes\s*=\s*true/);
+assert.match(instagramMount, /\["src", "srcset", "poster", "href"\]/);
 assert.doesNotMatch(instagramMount, /\bingestInlineJSON\(\)/);
 const instagramDomReady = section(instagram, "window.addEventListener(\"DOMContentLoaded\"", "window.addEventListener(\"load\"");
 assert.doesNotMatch(instagramDomReady, /\bingestInlineJSON\(\)/);
