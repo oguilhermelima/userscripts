@@ -56,7 +56,9 @@ assert.match(instagramCardMeta, /setPublishDate\(card, p\.publishedAt\)/);
 // Instagram: relative time stays in the card header; hover retains the exact timestamp.
 const instagramRelativeTime = section(instagram, "function formatRelativePublishTime", "function smallestVideo");
 assert.match(instagramRelativeTime, /RelativeTimeFormat/);
-assert.match(instagramRelativeTime, /formatPublishTime/);
+const instagramPublishUpdater = section(instagram, "function updatePublishDate", "function setPublishDate");
+assert.match(instagramPublishUpdater, /formatPublishTime/);
+assert.match(instagramPublishUpdater, /title/);
 const instagramPublishMarkup = section(instagram, "function buildCard(p)", "function bindFeedEvents");
 assert.match(instagramPublishMarkup, /igf-pubtime/);
 assert.match(instagramPublishMarkup, /igf-identity/);
