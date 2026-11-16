@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Immich — YouTube-Style Player, Cards & Album Sidebar
 // @namespace    immich-player
-// @version      2.5.3
+// @version      2.5.7
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/immich.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/immich.user.js
 // @author       oguilhermelima
@@ -2193,11 +2193,16 @@
             video.addEventListener('loadedmetadata', () => {
                 applyRate(video);
                 video.loop = state.loop;
+                updateMediaSession(video);
             });
             video.addEventListener('play', () => {
                 applyRate(video);
                 applyBoost(video);
+                updateMediaSession(video);
             });
+            for (const type of ['playing', 'pause', 'ended', 'timeupdate']) {
+                video.addEventListener(type, () => updateMediaSession(video));
+            }
             // Keep a rate changed by anything else, such as media-chrome.
             video.addEventListener('ratechange', () => {
                 if (video.readyState === 0 || video.playbackRate === state.rate) return;
@@ -3323,6 +3328,96 @@
         const SEEK_KEY = 'immich-player:seek';
         const watch = { assetId: null, video: null, last: null, savedAt: 0 };
         const watchedVideos = new WeakSet();
+        const MEDIA_SESSION_ACTIONS = ['play', 'pause', 'seekbackward', 'seekforward', 'seekto', 'previoustrack', 'nexttrack'];
+        let mediaSessionVideo = null;
+        let mediaSessionAssetId = null;
+        let mediaSessionPositionAt = 0;
+
+        function setMediaSessionAction(session, action, handler) {
+            try {
+                session.setActionHandler(action, handler);
+            } catch {}
+        }
+
+        function updateMediaSession(video) {
+            const session = navigator.mediaSession;
+            if (!session || video !== mediaSessionVideo) return;
+            try {
+                session.playbackState = video.paused ? 'paused' : 'playing';
+            } catch {}
+            if (typeof session.setPositionState !== 'function' || !Number.isFinite(video.duration) || video.duration <= 0) return;
+            if (Date.now() - mediaSessionPositionAt < 1000) return;
+            try {
+                session.setPositionState({
+                    duration: video.duration,
+                    playbackRate: video.playbackRate,
+                    position: Math.min(video.currentTime, video.duration),
+                });
+                mediaSessionPositionAt = Date.now();
+            } catch {}
+        }
+
+        // Expose playback controls to Android's lock screen when the browser
+        // supports Media Session. The OS still decides whether background audio
+        // can continue while the device is locked.
+        function syncMediaSession(video, assetId) {
+            const session = navigator.mediaSession;
+            if (!session) return;
+            if (!video || !assetId) {
+                if (!mediaSessionVideo) return;
+                MEDIA_SESSION_ACTIONS.forEach(action => setMediaSessionAction(session, action, null));
+                try {
+                    session.metadata = null;
+                    session.playbackState = 'none';
+                } catch {}
+                mediaSessionVideo = null;
+                mediaSessionAssetId = null;
+                return;
+            }
+            if (video === mediaSessionVideo && assetId === mediaSessionAssetId) {
+                updateMediaSession(video);
+                return;
+            }
+
+            mediaSessionVideo = video;
+            mediaSessionAssetId = assetId;
+            mediaSessionPositionAt = 0;
+            if (typeof MediaMetadata === 'function') {
+                try {
+                    session.metadata = new MediaMetadata({ title: 'Immich', artist: 'Vídeo' });
+                } catch {}
+            }
+
+            const isCurrent = () => video === mediaSessionVideo && assetId === mediaSessionAssetId;
+            const seek = (event, direction) => {
+                if (!isCurrent()) return;
+                const offset = Number.isFinite(event?.seekOffset) ? event.seekOffset : SEEK_SHORT;
+                seekBy(video, direction * offset);
+            };
+            const actions = {
+                play: () => {
+                    if (!isCurrent()) return;
+                    try { video.play()?.catch(() => {}); } catch {}
+                },
+                pause: () => { if (isCurrent()) video.pause(); },
+                seekbackward: event => seek(event, -1),
+                seekforward: event => seek(event, 1),
+                seekto: event => {
+                    if (!isCurrent() || !Number.isFinite(event?.seekTime)) return;
+                    video.currentTime = Number.isFinite(video.duration)
+                        ? Math.min(video.duration, Math.max(0, event.seekTime))
+                        : Math.max(0, event.seekTime);
+                },
+                previoustrack: () => {
+                    if (!isCurrent()) return;
+                    if (video.currentTime > SEEK_SHORT) video.currentTime = 0;
+                    else stepAsset('previous');
+                },
+                nexttrack: () => { if (isCurrent()) playNextVideo(); },
+            };
+            MEDIA_SESSION_ACTIONS.forEach(action => setMediaSessionAction(session, action, actions[action]));
+            updateMediaSession(video);
+        }
 
         function cleanProgress(value) {
             if (!Number.isFinite(value?.t) || !Number.isFinite(value?.d) || value.d <= 0) return null;
@@ -3370,6 +3465,7 @@
         function syncWatch() {
             const video = activeVideo();
             const assetId = video ? ASSET_ID_RE.exec(location.pathname)?.[1] ?? null : null;
+            syncMediaSession(video, assetId);
             if (assetId === watch.assetId && video === watch.video) return;
             flushProgress();
             Object.assign(watch, { assetId, video, last: null, savedAt: Date.now() });
