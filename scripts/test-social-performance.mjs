@@ -153,8 +153,9 @@ const instagramPostLayout = section(instagram, "function applyGrid()", "\/\* SKE
 assert.match(instagramPostLayout, /if \(!grid[\s\S]*applyPostDetailLayout\(\)/);
 assert.match(instagram, /igm-postpage|surface === "post"/);
 assert.match(instagram, /\.igm-postdetail\{/);
-assert.match(instagram, /\.igm-postitem\{[^}]*max-height:calc\(100dvh - 64px\)/);
-assert.doesNotMatch(instagram, /\.igm-postitem\{[^}]*height:calc/);
+const instagramPostItemStyle = section(instagram, ".igm-postitem{", ".igm-postmediabox{");
+assert.match(instagramPostItemStyle, /max-height:calc\(100dvh - 64px\)/);
+assert.doesNotMatch(instagramPostItemStyle, /(?:^|[;\s])height:/);
 assert.match(instagram, /\.igm-postmediabox\{/);
 assert.match(instagram, /\.igm-postmedia\{[^}]*max-height:calc\(100dvh - 96px\)/);
 const instagramPostDetailStyle = section(instagram, ".igm-postdetail{", ".igm-postdetail.igm-gridnav");
