@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instagram — Native Video Controls & Mosaic Feed
 // @namespace    instagram-native-player
-// @version      3.26.0
+// @version      3.26.1
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/instagram.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/instagram.user.js
 // @description  Additive layer over Instagram: an integrated video player on every surface, plus an optional uniform card grid for the home feed, explore, profiles and saved posts, all configured from a floating settings panel.
@@ -183,8 +183,13 @@
         const time = Number.isFinite(n) ? (n < 1e12 ? n * 1000 : n) : Date.parse(String(value));
         return Number.isFinite(time) && time > 0 && Number.isFinite(new Date(time).getTime()) ? time : 0;
     }
+    const PUBLISH_DATE_FORMAT = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+    const PUBLISH_TIME_FORMAT = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
     function formatPublishTime(time) {
-        return time ? new Date(time).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
+        if (!time) return "";
+        const date = new Date(time);
+        const parts = Object.fromEntries(PUBLISH_DATE_FORMAT.formatToParts(date).map((part) => [part.type, part.value]));
+        return parts.day + " " + parts.month.replace(/\.$/, "") + " " + parts.year + " · " + PUBLISH_TIME_FORMAT.format(date);
     }
     function smallestVideo(vs) {            // menor resolução disponível = preview leve (menos travamento)
         let best = null;
@@ -721,7 +726,8 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
   padding:6px 12px 0; box-sizing:border-box; font-size:14px; line-height:19px; color:var(--igf-text); }
 .igf-cap b{ font-weight:600; }
 .igf-capdate{ position:absolute; left:12px; right:12px; bottom:0; height:var(--igf-capdateh); overflow:hidden;
-  color:var(--igf-muted); font-size:11px; line-height:var(--igf-capdateh); white-space:nowrap; text-overflow:ellipsis; }
+  color:var(--igf-muted); font-size:12px; font-weight:500; font-variant-numeric:tabular-nums;
+  line-height:var(--igf-capdateh); white-space:nowrap; text-overflow:ellipsis; }
 /* @menções e #hashtags: cor de link do IG, clicáveis (não abrem/fecham o "mais") */
 .igf-tag{ color:rgb(var(--ig-link, 0, 149, 246)); text-decoration:none; }
 .igf-tag:hover{ text-decoration:underline; }
