@@ -145,6 +145,8 @@ assert.match(instagram, /igm-postpage|surface === "post"/);
 assert.match(instagram, /\.igm-postdetail\{/);
 const instagramPostDetailStyle = section(instagram, ".igm-postdetail{", ".igm-postdetail.igm-gridnav");
 assert.match(instagramPostDetailStyle, /width:min\(1440px/);
+assert.match(instagramPostDetailStyle, /max-height:calc\(100dvh - 96px\)!important/);
+assert.match(instagramPostDetailStyle, /overflow:hidden/);
 assert.doesNotMatch(instagramPostDetailStyle, /var\(--igm-maxw\)/);
 assert.match(instagram, /html\.igf-dark\s*\{[^}]*--ig-background:\s*0,\s*0,\s*0/);
 assert.match(instagram, /html\.igf-dark body\s*\{\s*background-color:#000 !important/);
