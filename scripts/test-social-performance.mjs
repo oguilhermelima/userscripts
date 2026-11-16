@@ -142,16 +142,19 @@ assert.match(instagramPostGrid, /surface === "post"/);
 const instagramPostTargets = section(instagram, "function postDetailBranches()", "function gridContainer");
 assert.match(instagramPostTargets, /classList\.add\("igm-postitem"\)/);
 assert.match(instagramPostTargets, /classList\.add\("igm-postmedia"\)/);
+assert.match(instagramPostTargets, /classList\.add\("igm-postmediabox"\)/);
 const instagramPostLayout = section(instagram, "function applyGrid()", "\/\* SKELETON");
 assert.match(instagramPostLayout, /if \(!grid[\s\S]*applyPostDetailLayout\(\)/);
 assert.match(instagram, /igm-postpage|surface === "post"/);
 assert.match(instagram, /\.igm-postdetail\{/);
-assert.match(instagram, /\.igm-postitem\{[^}]*max-height:calc\(100dvh - 96px\)/);
-assert.match(instagram, /\.igm-postmedia\{[^}]*max-height:calc\(100dvh - 144px\)/);
+assert.match(instagram, /\.igm-postitem\{[^}]*height:calc\(100dvh - 64px\)/);
+assert.match(instagram, /\.igm-postmediabox\{/);
+assert.match(instagram, /\.igm-postmedia\{[^}]*max-height:calc\(100dvh - 96px\)/);
 const instagramPostDetailStyle = section(instagram, ".igm-postdetail{", ".igm-postdetail.igm-gridnav");
 assert.match(instagramPostDetailStyle, /width:min\(1440px/);
-assert.match(instagramPostDetailStyle, /max-height:calc\(100dvh - 96px\)!important/);
+assert.match(instagramPostDetailStyle, /height:calc\(100dvh - 32px\)!important/);
 assert.match(instagramPostDetailStyle, /overflow:hidden/);
+assert.doesNotMatch(instagramPostDetailStyle, /overflow-y:\s*auto/);
 assert.doesNotMatch(instagramPostDetailStyle, /var\(--igm-maxw\)/);
 assert.match(instagram, /html\.igf-dark\s*\{[^}]*--ig-background:\s*0,\s*0,\s*0/);
 assert.match(instagram, /html\.igf-dark body\s*\{\s*background-color:#000 !important/);
@@ -159,7 +162,26 @@ assert.match(instagram, /--ig-primary-background:\s*0,\s*0,\s*0 !important/);
 assert.match(instagram, /html\.igf-dark \[id\^="mount_0"\]/);
 assert.match(instagram, /html\.igf-dark main\s*\{\s*background-color:#000 !important/);
 const instagramRouteTransition = section(instagram, "function onNav()", "for (const m of");
-assert.match(instagramRouteTransition, /setTimeout\(\(\) => routeWork\(\), 450\)/);
+assert.match(instagramRouteTransition, /routeSettling\s*=\s*true/);
+assert.match(instagramRouteTransition, /routeSettling\s*=\s*false/);
+const instagramSurfaceDetection = section(instagram, "function targetSurface()", "const GRID_SEL");
+assert.match(instagramSurfaceDetection, /if \(routeSettling && feedEl && feedEl\.isConnected\) return mountedSurface/);
+assert.match(instagramSurfaceDetection, /isPostModal\(\)/);
+
+// Instagram: username hover restores a profile preview with fetched profile details.
+const instagramProfileData = section(instagram, "async function resolveUser", "// clica o botão nativo do post");
+assert.match(instagramProfileData, /biography/);
+assert.match(instagramProfileData, /edge_followed_by/);
+assert.match(instagramProfileData, /edge_follow/);
+const instagramProfilePopover = section(instagram, "function bindProfilePopover", "/* HANDLERS DELEGADOS do feed");
+assert.match(instagramProfilePopover, /pointerover/);
+assert.match(instagramProfilePopover, /pointerout/);
+assert.match(instagramProfilePopover, /aria-expanded/);
+assert.match(instagramProfilePopover, /showProfilePopover/);
+const instagramProfileCard = section(instagram, "function buildCard(p)", "function bindProfilePopover");
+assert.match(instagramProfileCard, /aria-haspopup.*dialog/);
+assert.match(instagramProfileCard, /data-author/);
+assert.match(instagram, /\.igf-profile-popover\{/);
 
 // Cenário Reddit: CSS/classes críticas ficam disponíveis cedo, mas o pipeline
 // que varre shadow roots e posts só roda fora do caminho crítico do paint.
