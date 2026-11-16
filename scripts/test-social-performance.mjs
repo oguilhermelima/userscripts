@@ -176,7 +176,7 @@ assert.match(instagramPostMediaBox, /flex:\s*1 1/);
 assert.match(instagramPostMediaBox, /min-width:\s*0/);
 assert.match(instagramPostMediaBox, /\.igm-postmedia\{[^}]*max-height:calc\(100dvh - 96px\)/);
 assert.match(instagramPostMediaBox, /object-fit:contain/);
-const instagramPostDetailStyle = section(instagram, ".igm-postdetail{", ".igm-postdetail.igm-gridnav");
+const instagramPostDetailStyle = section(instagram, ".igm-postdetail{", ".igm-postitem{");
 assert.match(instagramPostDetailStyle, /width:min\(1440px/);
 assert.doesNotMatch(instagramPostDetailStyle, /display:flex|(?:^|[;\s])height:/);
 assert.match(instagramPostDetailStyle, /overflow:hidden/);
