@@ -132,7 +132,7 @@ assert.match(instagram, /\.igf-openpost:visited\{[^}]*color:\s*inherit/);
 
 // Instagram: standalone post pages widen their content and scope the custom grid to More posts.
 const instagramPostRoute = section(instagram, "function targetSurface()", "const itemsIn");
-assert.match(instagramPostRoute, /if \(isPostRoute\(\) \{/);
+assert.match(instagramPostRoute, /if \(isPostRoute\(\)\) \{/);
 const instagramRecommendations = section(instagram, "function postRecommendationTiles", "function gridContainer");
 assert.match(instagramRecommendations, /More posts|Mais publica/);
 assert.match(instagramRecommendations, /POST_GRID_SEL/);
