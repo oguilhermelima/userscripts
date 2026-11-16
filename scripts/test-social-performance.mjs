@@ -31,6 +31,13 @@ assert.doesNotMatch(twitterMedia, /observeVideos|autoplay/);
 // server-rendered, e cards novos entram numa inserção em lote sem reflow por item.
 assert.match(instagram, /content-visibility:auto/);
 assert.match(instagram, /document\.createDocumentFragment\(\)/);
+const instagramApiFeedGuard = section(instagram, "const apiFeedCodes = []", "// PERF: respostas interceptadas");
+assert.match(instagramApiFeedGuard, /collectFeedOrder && inFeed/);
+const instagramApiIngest = section(instagram, "function ingestText", "// PERF: respostas interceptadas");
+assert.match(instagramApiIngest, /walkForMedia\(j, 0, false, changedCodes, collectFeedOrder\)/);
+const instagramInterceptors = section(instagram, "function installInterceptors()", "function ingestInlineScript");
+assert.match(instagramInterceptors, /const collectFeedOrder = isHomeRoutePath\(\)/);
+assert.match(instagramInterceptors, /ingestSoon\(text, collectFeedOrder\)/);
 const instagramCreateFeed = section(instagram, "function createFeed", "function mountOwnFeed");
 assert.match(instagramCreateFeed, /scheduleInlineJSON/);
 assert.match(instagramCreateFeed, /resetFeedItems\(\)/);
