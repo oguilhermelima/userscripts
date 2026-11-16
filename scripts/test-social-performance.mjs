@@ -176,7 +176,7 @@ assert.match(instagramProfileData, /edge_follow/);
 const instagramProfilePopover = section(instagram, "function bindProfilePopover", "/* HANDLERS DELEGADOS do feed");
 assert.match(instagramProfilePopover, /pointerover/);
 assert.match(instagramProfilePopover, /pointerout/);
-assert.match(instagramProfilePopover, /aria-expanded/);
+assert.match(instagram, /setAttribute\("aria-expanded"/);
 assert.match(instagramProfilePopover, /showProfilePopover/);
 const instagramProfileCard = section(instagram, "function buildCard(p)", "function bindProfilePopover");
 assert.match(instagramProfileCard, /aria-haspopup.*dialog/);
