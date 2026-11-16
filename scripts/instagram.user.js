@@ -60,7 +60,7 @@
             { key: "gridSaved",   label: "Grid nos salvos", hint: "Os mesmos cards nos Salvos, com remover direto no card e seleção múltipla pra remover ou mover pra uma coleção. Liga junto com 'Grid no perfil'.", def: false },
         ] },
         { title: "Cards — largura · colunas · densidade", items: [   // valem p/ TODAS as superfícies (home + explore + perfil + salvos)
-            { key: "feedWidth", label: "Largura do conteúdo",     hint: "Largura máxima do bloco de conteúdo — vale pra home, explore, perfil e salvos.", type: "slider", min: 960, max: 1840, def: 1320, unit: "px", step: 20 },
+            { key: "feedWidth", label: "Largura do conteúdo",     hint: "Largura máxima do bloco de conteúdo — vale pra home, explore, perfil, salvos e posts relacionados.", type: "slider", min: 960, max: 1840, def: 1320, unit: "px", step: 20 },
             { key: "cols",      label: "Colunas",                 hint: "Nº de colunas da grade (Auto se adapta à largura). 3 é o recomendado; 4 carrega muito mais mídia por tela e pode causar lentidão.", type: "select", def: "auto",
               options: [{ value: "auto", label: "Auto" }, { value: "2", label: "2" }, { value: "3", label: "3 (Recomendado)" }, { value: "4", label: "4 (pode travar)" }] },
             { key: "density",   label: "Densidade",               hint: "Compacto = colunas mais estreitas, menos respiro, mais itens na tela.", type: "select", def: "comfortable",
@@ -188,11 +188,30 @@
     }
     const PUBLISH_DATE_FORMAT = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
     const PUBLISH_TIME_FORMAT = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    const PUBLISH_RELATIVE_FORMAT = new Intl.RelativeTimeFormat("pt-BR", { numeric: "always", style: "short" });
     function formatPublishTime(time) {
         if (!time) return "";
         const date = new Date(time);
         const parts = Object.fromEntries(PUBLISH_DATE_FORMAT.formatToParts(date).map((part) => [part.type, part.value]));
         return parts.day + " " + parts.month.replace(/\.$/, "") + " " + parts.year + " · " + PUBLISH_TIME_FORMAT.format(date);
+    }
+    function formatRelativePublishTime(time, now = Date.now()) {
+        // Intl.RelativeTimeFormat localiza intervalos como "há 2 h".
+        const timestamp = normalizePublishTime(time);
+        if (!timestamp) return "";
+        const delta = timestamp - now;
+        const distance = Math.abs(delta);
+        if (distance < 60_000) return "agora";
+        const units = [
+            [365.25 * 24 * 60 * 60 * 1000, "year"],
+            [30.44 * 24 * 60 * 60 * 1000, "month"],
+            [7 * 24 * 60 * 60 * 1000, "week"],
+            [24 * 60 * 60 * 1000, "day"],
+            [60 * 60 * 1000, "hour"],
+            [60_000, "minute"],
+        ];
+        const [size, unit] = units.find(([unitSize]) => distance >= unitSize) || units[units.length - 1];
+        return PUBLISH_RELATIVE_FORMAT.format(Math.round(delta / size), unit);
     }
     function smallestVideo(vs) {            // menor resolução disponível = preview leve (menos travamento)
         let best = null;
@@ -612,7 +631,7 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 `);
 
     /* ------------------------------------------------------------------ *
-     * CSS — mosaico (home / explore / perfil / salvos)
+     * CSS — mosaico (home / explore / perfil / salvos / posts relacionados)
      *   .igm-* = classes que EU ponho em nós DO IG → !important pra vencer o
      *   inline/atômico deles. .igf-* = DOM nosso → sem !important.
      * ------------------------------------------------------------------ */
@@ -633,18 +652,21 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igm-content{ max-width:var(--igm-maxw) !important; width:100% !important; margin-left:auto !important; margin-right:auto !important; box-sizing:border-box !important; --x-width:100% !important; --x-maxWidth:100% !important; }
 /* coluna do grid (explore/profile) que nasce SOB o nav fixo: maxw + padding do nav → conteúdo maxw centrado em (viewport − nav), igual à home */
 .igm-gridnav{ max-width:calc(var(--igm-maxw) + var(--igm-navw)) !important; padding-left:var(--igm-navw) !important; }
+/* página de publicação aberta em rota própria: amplia o post e mantém More posts alinhado ao grid. */
+.igm-postpage{ width:100% !important; max-width:var(--igm-maxw) !important; }
+.igm-postpage article{ width:100% !important; max-width:none !important; }
 /* HEADER DO PERFIL — ocupa mais espaço via zoom (amplia o bloco inteiro sem tocar na estrutura).
    NÃO mexer em flex/min-width/max-width dos filhos: a v3.16 fez isso e quebrou feio — o min-width:0
    caiu num wrapper errado e o texto passou a quebrar UMA LETRA POR LINHA, com o avatar solto no meio.
    O layout interno do header é do IG; aqui só escalamos e damos respiro. */
-.igm-gridcol header{ padding-top:26px !important; }
+.igm-gridcol:not(.igm-postpage) header{ padding-top:26px !important; }
 /* zoom só com folga: abaixo de ~1100px o header ampliado passava da coluna (rolagem horizontal/corte) */
-@media (min-width: 1100px){ .igm-gridcol header{ zoom:1.28; } }
-.igm-gridcol [role="tablist"]{ justify-content:center !important; }
+@media (min-width: 1100px){ .igm-gridcol:not(.igm-postpage) header{ zoom:1.28; } }
+.igm-gridcol:not(.igm-postpage) [role="tablist"]{ justify-content:center !important; }
 /* explore/search: a barra de busca e o bloco de resultados acompanham a largura do conteúdo (best-effort) */
-.igm-gridcol [role="search"], .igm-gridcol form[role="search"],
-${ariaHas("searchPart", ".igm-gridcol div:has(> input", ")")},
-${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width:100% !important; }
+.igm-gridcol:not(.igm-postpage) [role="search"], .igm-gridcol:not(.igm-postpage) form[role="search"],
+${ariaHas("searchPart", ".igm-gridcol:not(.igm-postpage) div:has(> input", ")")},
+${ariaHas("searchPart", ".igm-gridcol:not(.igm-postpage) input")}{ max-width:none !important; width:100% !important; }
 /* tray de stories: emoldurada como um card e alinhada à 1ª coluna (mesmo respiro lateral do feed) */
 .igm-stories{ width:calc(100% - 2 * var(--igf-pad)) !important; max-width:none !important;
   margin:0 var(--igf-pad) 10px !important; padding:12px 14px !important; box-sizing:border-box !important;
@@ -675,9 +697,9 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 .igf-feed{ display:grid; grid-template-columns:repeat(var(--igf-ncols,3), minmax(0,1fr)); gap:var(--igf-gap,24px);
   width:100%; padding:8px var(--igf-pad) 80px; box-sizing:border-box;
   --igf-ar:9/16;       /* proporção da mídia — a mais alta do IG (reels); igual pra todo item */
-  /* faixas de altura FIXA: card = mídia + head + ações + data/legenda + respiro do rodapé.
-     Data e legenda ocupam uma linha cada. Mexer aqui = mexer em cardHeightFor(). */
-  --igf-headh:48px; --igf-acth:40px; --igf-caplineh:25px; --igf-capdateh:24px; --igf-caph:49px; --igf-padb:9px;
+  /* faixas de altura FIXA: card = mídia + head + ações + legenda + respiro do rodapé.
+     Mexer aqui = mexer em cardHeightFor(). */
+  --igf-headh:68px; --igf-acth:40px; --igf-caplineh:25px; --igf-caph:25px; --igf-padb:9px;
   --igf-cardh:520px;   /* altura estimada p/ contain-intrinsic-size (recalculada no layout) */
 }
 .igf-card{ position:relative; min-width:0; box-sizing:border-box; border-radius:14px; overflow:hidden; padding-bottom:var(--igf-padb);
@@ -687,22 +709,33 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 .igf-card:hover{ border-color:var(--igf-line-hov); }
 .igf-feed.igf-shadow .igf-card{ box-shadow:var(--igf-shadow); }
 .igf-feed.igf-shadow .igf-card:hover{ transform:translateY(-4px); box-shadow:var(--igf-shadow-hov); }
-.igf-head{ display:flex; align-items:center; gap:8px; padding:0 11px; height:var(--igf-headh); box-sizing:border-box; }
+.igf-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; padding:7px 11px; height:var(--igf-headh); box-sizing:border-box; }
+.igf-identity{ display:flex; flex:1 1 auto; flex-direction:column; gap:3px; min-width:0; max-width:calc(100% - 90px); }
+.igf-userline{ display:flex; align-items:center; gap:3px; min-width:0; }
 .igf-who{ display:flex; align-items:center; gap:8px; min-width:0; text-decoration:none; }
 .igf-head img{ width:30px; height:30px; border-radius:50%; object-fit:cover; flex:0 0 auto; background:var(--igf-avatar-bg); }
-.igf-head b{ font-size:13px; font-weight:600; color:var(--igf-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.igf-copyuser{ flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; margin-left:-4px;
+.igf-head b{ font-size:15px; font-weight:650; color:var(--igf-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.igf-pubtime{ flex:0 0 auto; margin-left:auto; color:var(--igf-text-2); font-size:14px; font-weight:650; font-variant-numeric:tabular-nums;
+  line-height:20px; white-space:nowrap; text-decoration:none; }
+.igf-copyuser{ flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; margin-left:-2px;
   padding:0; border:0; border-radius:7px; background:transparent; color:var(--igf-muted); cursor:pointer; opacity:.7;
   transition:opacity .15s ease, background .15s ease, color .15s ease; }
-.igf-copyuser svg{ width:15px; height:15px; display:block; }
+.igf-copyuser svg{ width:14px; height:14px; display:block; }
 .igf-copyuser:hover{ opacity:1; background:var(--igf-hover-bg); color:var(--igf-text); }
 .igf-copyuser.igf-copied{ color:var(--igf-accent); opacity:1; }
 .igf-who:has(b:empty) + .igf-copyuser{ display:none; }
-.igf-follow{ margin-left:auto; flex:0 0 auto; background:none; border:0; cursor:pointer; padding:6px 10px; border-radius:8px;
-  color:var(--igf-accent); font-size:13px; font-weight:700; transition:background .15s ease, color .15s ease, transform .15s ease; }
+.igf-follow{ display:block; margin:0 0 0 38px; flex:0 0 auto; background:none; border:0; cursor:pointer; padding:2px 5px; border-radius:7px;
+  color:var(--igf-accent); font:inherit; font-size:12px; font-weight:700; line-height:16px; text-align:left;
+  transition:background .15s ease, color .15s ease, transform .15s ease; }
+.igf-follow:focus-visible{ outline:2px solid var(--igf-accent); outline-offset:1px; }
 .igf-follow:hover{ background:var(--igf-hover-bg); }
 .igf-follow.on{ color:var(--igf-muted); font-weight:600; }
+.igf-follow-hover{ display:none; }
+.igf-follow.on:hover, .igf-follow.on:focus-visible{ color:var(--igf-danger); background:color-mix(in srgb, var(--igf-danger) 10%, transparent); }
+.igf-follow.on:hover .igf-follow-label, .igf-follow.on:focus-visible .igf-follow-label{ display:none; }
+.igf-follow.on:hover .igf-follow-hover, .igf-follow.on:focus-visible .igf-follow-hover{ display:inline; }
 .igf-follow.igf-follow-success{ animation:igf-follow-pop .36s cubic-bezier(.2,.8,.2,1); }
+.igf-follow.igf-busy{ opacity:.55; pointer-events:none; }
 @keyframes igf-follow-pop{ 45%{ transform:scale(1.12); color:var(--igf-accent); } 100%{ transform:scale(1); } }
 /* aspect-ratio FIXO (não a proporção real do post) = a fonte da uniformidade. "contain" isola o
    layout da mídia do resto: a imagem chegando não invalida o layout do feed inteiro. */
@@ -722,14 +755,14 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 .igf-media.igf-fit .igf-blur{ position:absolute; inset:0; z-index:0; background-size:cover; background-position:center;
   filter:blur(16px) saturate(1.25) brightness(.65); transform:scale(1.1); pointer-events:none; }   /* raio menor = filtro bem mais barato; a fonte é o thumb pequeno */
 .igf-media[data-open]{ cursor:pointer; }
-.igf-media-tools{ position:absolute; top:10px; right:10px; z-index:5; display:flex; gap:6px; padding:5px;
-  border:1px solid rgba(255,255,255,.2); border-radius:12px; background:rgba(15,15,18,.64); backdrop-filter:blur(10px);
+.igf-media-tools{ position:absolute; top:8px; left:8px; z-index:5; display:flex; gap:2px; padding:3px;
+  border:1px solid rgba(255,255,255,.2); border-radius:10px; background:rgba(15,15,18,.64); backdrop-filter:blur(10px);
   opacity:0; visibility:hidden; transform:translateY(-4px); transition:opacity .16s ease, transform .16s ease, visibility .16s; }
 .igf-media:hover .igf-media-tools, .igf-media:focus-within .igf-media-tools{ opacity:1; visibility:visible; transform:none; }
-.igf-media-tool{ display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; padding:0;
-  border:0; border-radius:9px; background:transparent; color:#fff; cursor:pointer; transition:background .15s ease, transform .15s ease; }
+.igf-media-tool{ display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; padding:0;
+  border:0; border-radius:7px; background:transparent; color:#fff; cursor:pointer; transition:background .15s ease, transform .15s ease; }
 .igf-media-tool:hover{ background:rgba(255,255,255,.18); transform:translateY(-1px); }
-.igf-media-tool svg{ width:18px; height:18px; display:block; }
+.igf-media-tool svg{ width:15px; height:15px; display:block; }
 .igf-media-tool.igf-busy{ opacity:.5; pointer-events:none; }
 @media (hover:none){ .igf-media-tools{ opacity:1; visibility:visible; transform:none; } }
 /* vídeo: cover como a imagem. Entra TRANSPARENTE e só aparece com o 1º frame (.on, posto no loadeddata) */
@@ -764,9 +797,6 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 .igf-cap{ position:absolute; left:0; right:0; bottom:0; max-height:var(--igf-caplineh); overflow:hidden;
   padding:6px 12px 0; box-sizing:border-box; font-size:14px; line-height:19px; color:var(--igf-text); }
 .igf-cap b{ font-weight:600; }
-.igf-capdate{ position:absolute; top:0; left:12px; right:12px; height:var(--igf-capdateh); overflow:hidden;
-  color:var(--igf-text-2); font-size:14px; font-weight:650; font-variant-numeric:tabular-nums;
-  line-height:var(--igf-capdateh); white-space:nowrap; text-overflow:ellipsis; }
 /* @menções e #hashtags: cor de link do IG, clicáveis (não abrem/fecham o "mais") */
 .igf-tag{ color:rgb(var(--ig-link, 0, 149, 246)); text-decoration:none; }
 .igf-tag:hover{ text-decoration:underline; }
@@ -781,7 +811,7 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 .igf-card.igf-capopen .igf-capwrap{ position:absolute; left:0; right:0; bottom:var(--igf-padb); z-index:3;
   height:min(calc(var(--igf-cardh) * .72), 70vh); background:var(--igf-card-bg);
   border-top:1px solid var(--igf-line); box-shadow:0 -10px 24px var(--igf-shade); }
-.igf-card.igf-capopen .igf-cap{ top:var(--igf-capdateh); bottom:0; max-height:none; overflow-y:auto; overscroll-behavior:contain;
+.igf-card.igf-capopen .igf-cap{ top:0; bottom:0; max-height:none; overflow-y:auto; overscroll-behavior:contain;
   padding-bottom:26px; }
 .igf-card.igf-capopen .igf-capmore{ background:var(--igf-card-bg); padding-left:12px; border-radius:8px 0 0 0; }
 /* barra de ações única abaixo da mídia (like/comment/copiar link … save). Repost saiu: o web não reposta, só abria o post. */
@@ -790,7 +820,8 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
   color:var(--igf-text); font-size:13px; font-weight:600; line-height:1; }
 .igf-act:hover{ background:var(--igf-hover-bg); }
 .igf-act svg{ width:22px; height:22px; display:block; }
-.igf-openpost{ text-decoration:none; }
+.igf-openpost{ color:inherit; text-decoration:none; }
+.igf-openpost:visited{ color:inherit; }
 .igf-act.igf-like.on svg{ fill:var(--igf-like); stroke:var(--igf-like); }
 .igf-act.igf-save.on svg{ fill:currentColor; }
 .igf-act.igf-copied svg{ stroke:var(--igf-accent); }   /* share = COPIAR link: check de feedback */
@@ -803,16 +834,20 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 .igf-feed.igf-nocounts .igf-act > span{ display:none; }
 /* densidade COMPACTA (GAP cai via JS; aqui as faixas + fontes). As alturas são VARS: mudar aqui
    exige mudar os mesmos números em cardHeightFor() no JS. */
-.igf-feed.igf-dense{ --igf-headh:42px; --igf-acth:34px; --igf-caplineh:22px; --igf-capdateh:22px; --igf-caph:44px; --igf-padb:7px; }
+.igf-feed.igf-dense{ --igf-headh:58px; --igf-acth:34px; --igf-caplineh:22px; --igf-caph:22px; --igf-padb:7px; }
 .igf-feed.igf-dense.igf-nocap{ --igf-caph:0px; }
 .igf-feed.igf-dense .igf-card{ border-radius:12px; }
-.igf-feed.igf-dense .igf-head{ padding:0 9px; }
+.igf-feed.igf-dense .igf-head{ padding:5px 9px; }
 .igf-feed.igf-dense .igf-head img{ width:26px; height:26px; }
+.igf-feed.igf-dense .igf-skel-head{ padding:5px 9px; }
+.igf-feed.igf-dense .igf-skel-avatar{ width:26px; height:26px; }
+.igf-feed.igf-dense .igf-head b{ font-size:14px; }
+.igf-feed.igf-dense .igf-pubtime{ font-size:13px; }
+.igf-feed.igf-dense .igf-follow{ margin-left:34px; font-size:11px; line-height:15px; }
 .igf-feed.igf-dense .igf-actions{ padding:0 5px; }
 .igf-feed.igf-dense .igf-act{ padding:5px 6px; font-size:12px; }
 .igf-feed.igf-dense .igf-act svg{ width:20px; height:20px; }
 .igf-feed.igf-dense .igf-cap{ padding:5px 10px 0; font-size:13px; line-height:17px; }
-.igf-feed.igf-dense .igf-capdate{ font-size:13px; }
 .igf-feed.igf-dense .igf-capmore{ font-size:12px; line-height:17px; padding:5px 10px 0 30px; }
 
 /* Loader no fim da grade: o estado e a opção de tentar novamente continuam visíveis. */
@@ -835,11 +870,13 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
    Altura = a do card real (mesma conta do contain-intrinsic-size). Shimmer neutro (claro e escuro). */
 .igf-card.igf-skel{ display:flex; flex-direction:column; height:calc(var(--igf-cardh) + var(--igf-padb) + 2px);
   pointer-events:none; overflow:hidden; background:var(--igf-card-bg); }
-.igf-skel-head{ display:flex; align-items:center; gap:8px; height:var(--igf-headh); padding:0 11px; box-sizing:border-box; }
-.igf-skel-avatar, .igf-skel-name, .igf-skel-chip, .igf-skel-media, .igf-skel-line{ display:block; background:rgba(128,128,128,.14); }
+.igf-skel-head{ display:flex; align-items:flex-start; gap:8px; height:var(--igf-headh); padding:7px 11px; box-sizing:border-box; }
+.igf-skel-avatar, .igf-skel-name, .igf-skel-chip, .igf-skel-time, .igf-skel-media, .igf-skel-line{ display:block; background:rgba(128,128,128,.14); }
 .igf-skel-avatar{ width:30px; height:30px; border-radius:50%; flex:0 0 auto; }
+.igf-skel-identity{ display:flex; flex:1 1 auto; flex-direction:column; gap:5px; min-width:0; }
 .igf-skel-name{ width:31%; max-width:110px; height:9px; border-radius:8px; }
-.igf-skel-chip{ width:48px; height:9px; margin-left:auto; border-radius:8px; }
+.igf-skel-chip{ width:50px; height:7px; border-radius:8px; }
+.igf-skel-time{ width:46px; height:7px; margin-left:auto; border-radius:8px; }
 .igf-skel-media{ flex:1 1 auto; min-height:80px; margin:0 1px; border-radius:3px; }
 .igf-skel-actions{ display:flex; align-items:center; gap:9px; height:var(--igf-acth); padding:0 12px; }
 .igf-skel-actions .igf-skel-line{ width:22px; height:9px; border-radius:7px; }
@@ -1693,8 +1730,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     // virava "não-home" → unmasonry() destruía o feed (igSrc=null) e o clique seguinte caía no go() = redirect.
     const feedShouldLive = () => isHome() || (isPostRoute() && !!(feedEl && feedEl.isConnected));
 
-    // ===== SUPERFÍCIES: home (feed de <article>) · explore/profile (grade de tiles <a>) =====
-    // O mesmo motor de masonry/loadMore serve as 3; só muda o "que é um item" e "como buildar o card".
+    // ===== SUPERFÍCIES: home (feed de <article>) · explore/profile/post (grade de tiles <a>) =====
+    // O mesmo motor de masonry/loadMore atende quatro grades; só muda o que é um item e como montar o card.
     const RESERVED = new Set(["", "explore", "reels", "reel", "p", "stories", "direct", "accounts", "about",
         "legal", "settings", "your_activity", "directory", "challenge", "lite", "web", "api", "graphql", "emails", "session", "qr", "oauth"]);
     const isExplore = () => /^\/explore(\/|$)/.test(location.pathname);
@@ -1708,7 +1745,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (segs.length === 1) return true;                                   // /usuario/  (aba Posts)
         return segs.length === 2 && ["reels", "tagged"].includes(segs[1]);    // /usuario/reels|tagged (saved é superfície própria)
     };
-    let surface = "home";          // 'home' | 'explore' | 'profile' | 'saved' — qual harvester/builder usar
+    let surface = "home";          // 'home' | 'explore' | 'profile' | 'saved' | 'post'
     let mountedSurface = null;     // o que está montado agora (pra trocar = teardown + remount)
     // qual superfície DEVE estar montada agora (considerando os toggles + post aberto em modal por cima)
     function targetSurface() {
@@ -1716,7 +1753,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (isExplore() && prefs.gridExplore) return "explore";
         if (isSaved() && (prefs.gridSaved || prefs.gridProfile)) return "saved";   // salvos: flag própria OU junto do perfil
         if (isProfile() && prefs.gridProfile) return "profile";
-        if (/\/(p|reel)\/[^/]+/.test(location.pathname) && feedEl && feedEl.isConnected) return mountedSurface;   // modal por cima → mantém
+        if (isPostRoute()) {
+            if (postRecommendationTiles().length >= 2) return "post";
+            if (feedEl && feedEl.isConnected) return mountedSurface;              // modal por cima → mantém
+        }
         return null;
     }
     const GRID_SEL = 'a[role="link"][href*="/p/"], a[role="link"][href*="/reel/"]';   // tile do explore/profile
@@ -1811,7 +1851,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     // daquela página. Era 10 (travava a aba por segundos), virou 3 e agora 2: com o gatilho de scroll
     // re-disparando antes de faltar item, prefetchar mais que isso só antecipa tráfego que talvez
     // nunca seja visto — o usuário pode parar de rolar a qualquer momento.
-    const LOADMORE_ROUNDS = 2, GROWTH_MAX_MS = 1600;
+    const LOADMORE_ROUNDS = 2, GROWTH_MAX_MS = 4000;
     let GAP = 24;   // gap entre cards — vira 14 no modo compacto (applySettings)
     // proporção ÚNICA da mídia: 9:16, a MAIS ALTA que o IG produz (reels/stories) → um reel aparece
     // inteiro, sem corte, e todo item continua com a MESMA altura. Conteúdo mais largo que isso não é
@@ -1827,6 +1867,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         save: { a: OUTLINE, k: [["path", { d: "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" }]] },
         open: { a: OUTLINE, k: [["path", { d: "M15 3h6v6" }], ["path", { d: "M10 14 21 3" }], ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }]] },
         link: { a: OUTLINE, k: [["path", { d: "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5" }], ["path", { d: "M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5" }]] },
+        share: { a: OUTLINE, k: [["path", { d: "M22 2 15 22l-4-9-9-4 20-7z" }], ["path", { d: "M22 2 11 13" }]] },
         download: { a: OUTLINE, k: [["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }], ["path", { d: "m7 10 5 5 5-5" }], ["path", { d: "M12 15V3" }]] },
         check: { a: Object.assign({}, OUTLINE, { "stroke-width": "2.5" }), k: [["path", { d: "M20 6 9 17l-5-5" }]] },
         chevL: { a: { fill: "currentColor" }, k: [["path", { d: "M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" }]] },
@@ -1928,10 +1969,13 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             const t = (e.textContent || "").trim();
             if (/^\d[\d.,]*\s?[KMmilB]*$/.test(t) && t.length < 10 && !nums.includes(t)) { nums.push(t); if (nums.length >= 2) break; }
         }
-        // follow: existe um botão "Follow"/"Seguir" no post? (= ainda não sigo)
-        let canFollow = false;
+        // O estado do botão nativo é o fallback enquanto o payload não traz a amizade.
+        let following = rec.following;
         for (const b of a.querySelectorAll('button, [role="button"]')) {
-            if (RE_FOLLOW.test((b.textContent || "").trim())) { canFollow = true; break; }
+            if (typeof following === "boolean") break;
+            const label = (b.textContent || "").trim();
+            if (RE_FOLLOW.test(label)) { following = false; break; }
+            if (RE_FOLLOW_ANY.test(label)) { following = true; break; }
         }
         // LEGENDA: o <h1> do post nem sempre existe no momento do harvest (o IG renderiza a legenda tarde,
         // e no <article> virtualizado às vezes nem chega) — daí a descrição sumir na home. Caio na API
@@ -1945,8 +1989,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             key, code, href: (link.pathname || link.getAttribute("href") || ""), author: author || rec.author || "",
             avatar: avatar ? avatar.src : "", media, srcset, sizes, isVideo: !!video,
             caption: capText.slice(0, 1500),
-            likes: nums[0] || "", comments: nums[1] || "", authorPk: rec.authorPk || "", following: rec.following,
-            publishedAt: rec.publishedAt || 0, follow: canFollow || rec.following !== true,
+            likes: nums[0] || "", comments: nums[1] || "", authorPk: rec.authorPk || "", following,
+            publishedAt: rec.publishedAt || 0,
         });
         order.push(key);
         return true;
@@ -1994,7 +2038,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             // dados p/ o CARD COMPLETO (explore/perfil/salvos): vêm da API (igMedia), não do DOM do tile
             author: rec.author || "", avatar: rec.avatar || "", caption: rec.caption || "", likes: rec.likes || "", comments: rec.comments || "",
             publishedAt: rec.publishedAt || 0,
-            authorPk: rec.authorPk || "", following: rec.following, follow: rec.following !== true,   // mostra "Seguir" a menos que JÁ siga
+            authorPk: rec.authorPk || "", following: rec.following,
         });
         order.push(key);
         return true;
@@ -2027,7 +2071,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         });
     }
     function copyLink(p, btn) {            // share = COPIAR o link limpo pro clipboard (+ feedback de check)
-        copyWithFeedback(btn, cleanPostUrl(p), ICO.link, "Link copiado");
+        copyWithFeedback(btn, cleanPostUrl(p), ICO.share, "Link copiado");
     }
     function mediaActionUrl(card, p) {
         const rec = igMedia.get(p.code || codeOf(p.key)) || {};
@@ -2284,20 +2328,34 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         raf(() => { if (button.isConnected) button.classList.add("igf-follow-success"); });
         setTimeout(() => button.classList.remove("igf-follow-success"), 500);
     }
+    function renderFollowButton(btn, following, author = "") {
+        let label = btn.querySelector(".igf-follow-label");
+        let hover = btn.querySelector(".igf-follow-hover");
+        if (!label || !hover) {
+            btn.textContent = "";
+            label = el("span", { class: "igf-follow-label", "aria-hidden": "true" });
+            hover = el("span", { class: "igf-follow-hover", "aria-hidden": "true" });
+            btn.append(label, hover);
+        }
+        btn.classList.toggle("on", following);
+        btn.setAttribute("aria-pressed", following ? "true" : "false");
+        btn.setAttribute("aria-label", (following ? "Deixar de seguir" : "Seguir") + (author ? " @" + author : ""));
+        btn.title = (following ? "Deixar de seguir" : "Seguir") + (author ? " @" + author : "");
+        label.textContent = following ? "Seguindo" : "Seguir";
+        hover.textContent = following ? "Deixar de seguir" : "";
+    }
     function syncFollowButtons(author, following, touched = true) {
         if (!feedEl || !author) return;
         for (const card of feedEl.children) {
             const p = posts.get(card.dataset && card.dataset.key || "");
             if (!p || p.author !== author) continue;
             p.following = following;
-            if (touched) { p.followTouched = true; p.follow = true; }
-            else if (!p.followTouched) p.follow = !following;
+            p.followTouched = true;
             const rec = igMedia.get(p.code || codeOf(p.key));
             if (rec) rec.following = following;
             const b = card.querySelector(".igf-follow");
-            if (!p.follow) { if (b) b.remove(); continue; }
             if (b) {
-                b.classList.toggle("on", following); b.textContent = following ? "Seguindo" : "Seguir";
+                renderFollowButton(b, following, p.author);
                 if (touched && following) animateFollowButton(b);
             }
             else setFollowButton(card, p);
@@ -2314,27 +2372,27 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             }
             if (p.following === true && !btn.classList.contains("on")) {
                 if (p.author) syncFollowButtons(p.author, true, false);
-                else { p.follow = false; btn.remove(); }
+                else btn.remove();
                 return;
             }
             const wasFollowing = btn.classList.contains("on") || p.following === true;
             const next = !wasFollowing;
             if (pk) {
-                btn.classList.toggle("on", next); btn.textContent = next ? "Seguindo" : "Seguir";   // otimista
+                renderFollowButton(btn, next, p.author);   // otimista
                 if (await igApiPost("/api/v1/friendships/" + (next ? "create" : "destroy") + "/" + pk + "/", "", true)) {
                     if (p.author) userPkCache.set(p.author, { pk, following: next });
-                    p.follow = true; p.following = next; p.followTouched = true;
+                    p.following = next; p.followTouched = true;
                     const rec = igMedia.get(p.code || codeOf(p.key)); if (rec) rec.following = next;
                     syncFollowButtons(p.author, next);
                     if (!p.author) animateFollowButton(btn);
                     toast(next ? "Você está seguindo" + (p.author ? " @" + p.author : "") : "Você deixou de seguir" + (p.author ? " @" + p.author : ""));
                     return;
                 }
-                btn.classList.toggle("on", wasFollowing); btn.textContent = wasFollowing ? "Seguindo" : "Seguir";   // desfaz
+                renderFollowButton(btn, wasFollowing, p.author);   // desfaz
             }
             const nativeFollowing = await clickNativeFollow(p.key, next); // API indisponível/recusada → tenta o nativo
             if (nativeFollowing === next) {
-                p.follow = true; p.following = next; p.followTouched = true;
+                p.following = next; p.followTouched = true;
                 const rec = igMedia.get(p.code || codeOf(p.key)); if (rec) rec.following = next;
                 syncFollowButtons(p.author, next);
                 if (!p.author) animateFollowButton(btn);
@@ -2998,7 +3056,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         a.click();                                            // abre a modal
         check();
     }
-    // UM card pra TODAS as superfícies (home, explore, perfil, salvos): header + mídia + barra de ações
+    // UM card pra TODAS as superfícies (home, explore, perfil, salvos e More posts): header + mídia + ações
     // + legenda. Nenhum listener por card: cada controle leva um data-act e o feed trata TUDO num
     // handler delegado (bindFeedEvents) — antes eram ~10 listeners por card, crescendo com a sessão.
     function buildCard(p) {
@@ -3008,19 +3066,24 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         card.dataset.mediaUrl = mediaActionUrl(card, p);
         const profHref = p.author ? "/" + p.author + "/" : p.href;
         const head = el("div", { class: "igf-head" });
+        const identity = el("div", { class: "igf-identity" });
+        const userline = el("div", { class: "igf-userline" });
         const who = el("a", { class: "igf-who", href: profHref });   // nome/avatar → PERFIL
         if (p.avatar) who.appendChild(el("img", { src: p.avatar, loading: "lazy", alt: "" }));
         who.appendChild(el("b", {}, p.author || ""));
-        head.appendChild(who);
         // copiar o @ (sem a arroba) — fora do <a> do perfil; some enquanto o autor não chegou (CSS :empty)
-        head.appendChild(el("button", { class: "igf-copyuser", type: "button", "data-act": "copyuser", title: "Copiar @", "aria-label": "Copiar nome de usuário", icon: ICO_COPY }));
-        // "Seguir" não aparece no PERFIL: lá todo card é do mesmo autor, então o botão viraria ruído
-        // repetido em cada item (e o header do próprio perfil já tem o dele).
-        if (p.follow && surface !== "profile") {              // só quando ainda não sigo — home + explore + salvos
-            const fb = el("button", { class: "igf-follow", type: "button", "data-act": "follow" }, "Seguir");
-            if (p.following) { fb.classList.add("on"); fb.textContent = "Seguindo"; }   // estado real, quando a API já disse
-            head.appendChild(fb);
+        userline.append(who, el("button", { class: "igf-copyuser", type: "button", "data-act": "copyuser", title: "Copiar @", "aria-label": "Copiar nome de usuário", icon: ICO_COPY }));
+        identity.appendChild(userline);
+        // Em posts de outras superfícies, o controle persiste nos dois estados: Seguir e Seguindo.
+        // No perfil ele continua fora dos cards, pois o header da página já tem o controle do autor.
+        if (p.author && surface !== "profile") {
+            const fb = el("button", { class: "igf-follow", type: "button", "data-act": "follow" });
+            renderFollowButton(fb, p.following === true, p.author);
+            identity.appendChild(fb);
         }
+        const pubtime = el("time", { class: "igf-pubtime" });
+        updatePublishDate(pubtime, p.publishedAt);
+        head.append(identity, pubtime);
         card.appendChild(head);
         const slides = (igMedia.get(code) || {}).carousel;    // carrossel? (todos os slides vieram da API)
         const isCarousel = !!(slides && slides.length > 1);
@@ -3048,13 +3111,13 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         };
         actions.appendChild(act(ICO.like, p.likes, "like", "igf-like"));
         actions.appendChild(act(ICO.comment, p.comments, "comment"));                        // → modal (comentários)
-        actions.appendChild(act(ICO.link, "", "share", "igf-share", "Copiar link"));         // share → COPIAR link limpo (sem tracking)
-        // ↗ ABRIR O POST — link real para uma nova guia. O handler delegado não intercepta este anchor.
-        actions.appendChild(el("a", { class: "igf-act igf-openpost", href: cleanPostUrl(p), target: "_blank", rel: "noopener noreferrer", title: "Abrir post em nova guia", "aria-label": "Abrir post em nova guia", icon: ICO.open }));
+        actions.appendChild(act(ICO.share, "", "share", "igf-share", "Copiar link"));         // share → COPIAR link limpo (sem tracking)
         actions.appendChild(el("div", { class: "igf-act-sp" }));
         const sv = act(ICO.save, "", "save", "igf-save", surface === "saved" ? "Remover dos salvos" : "Salvar");
         if (surface === "saved") sv.classList.add("on");      // já está salvo → bookmark preenchido (clicar des-salva)
         actions.appendChild(sv);
+        // ↗ ABRIR O POST — link real para uma nova guia, imediatamente ao lado de salvar.
+        actions.appendChild(el("a", { class: "igf-act igf-openpost", href: cleanPostUrl(p), target: "_blank", rel: "noopener noreferrer", title: "Abrir post em nova guia", "aria-label": "Abrir post em nova guia", icon: ICO.open }));
         card.appendChild(actions);
         if (surface === "saved")                              // overlay de multisseleção (cobre o card no modo seleção)
             card.appendChild(el("div", { class: "igf-selovl", "data-act": "select" }, el("div", { class: "igf-selcb" })));
@@ -3161,11 +3224,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     function buildCaption(p) {
         const wrap = el("div", { class: "igf-capwrap" });
-        const date = el("time", { class: "igf-capdate", "aria-hidden": "true" });
         const cap = el("div", { class: "igf-cap" });
         renderCaption(cap, p.caption || "");
-        updatePublishDate(date, p.publishedAt);
-        wrap.append(date, cap, el("button", { class: "igf-capmore", type: "button", "data-act": "capmore" }, "mais"));
+        wrap.append(cap, el("button", { class: "igf-capmore", type: "button", "data-act": "capmore" }, "mais"));
         return wrap;
     }
     function toggleCaption(card) {
@@ -3209,9 +3270,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     // fora da tela e o scroll pularia ao entrar/sair. Precisa ESPELHAR as vars --igf-* do CSS.
     function cardHeightFor(colw) {
         const dense = prefs.density === "compact";
-        const bands = (dense ? 42 : 48)                                // header
+        const bands = (dense ? 58 : 68)                                // header
             + (dense ? 34 : 40)                                        // barra de ações
-            + (prefs.showCaption ? (dense ? 44 : 49) : 0);             // data + legenda ("mais" expande sobre a mídia)
+            + (prefs.showCaption ? (dense ? 22 : 25) : 0);             // legenda ("mais" expande sobre a mídia)
         return Math.round((colw - 2) * (AR_H / AR_W) + bands);      // colw - bordas laterais = largura da mídia
     }
     function layoutFeed() {
@@ -3247,7 +3308,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             key: "/p/" + code, code, href: (r.reel ? "/reel/" : "/p/") + code + "/", author: r.author || "",
             avatar: r.avatar || "", media: media || "", srcset: "", sizes: "", isVideo: !!r.isVideo,
             caption: (r.caption || "").slice(0, 1500), likes: r.likes || "", comments: r.comments || "",
-            authorPk: r.authorPk || "", following: r.following, follow: r.following !== true, publishedAt: r.publishedAt || 0,
+            authorPk: r.authorPk || "", following: r.following, publishedAt: r.publishedAt || 0,
         };
     }
     function onApiFeed() {
@@ -3352,21 +3413,23 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     function updatePublishDate(date, publishedAt) {
         if (!date) return;
-        const label = formatPublishTime(publishedAt);
+        const timestamp = normalizePublishTime(publishedAt);
+        const label = formatRelativePublishTime(timestamp);
+        const exact = formatPublishTime(timestamp);
         date.textContent = label;
-        if (!label) {
+        if (!timestamp || !label || !exact) {
             date.setAttribute("aria-hidden", "true");
             date.removeAttribute("datetime"); date.removeAttribute("title"); date.removeAttribute("aria-label");
             return;
         }
-        const announcement = "Publicado em " + label;
-        date.setAttribute("datetime", new Date(publishedAt).toISOString());
-        date.setAttribute("title", announcement);
+        const announcement = "Publicado " + label + ". Data original: " + exact;
+        date.setAttribute("datetime", new Date(timestamp).toISOString());
+        date.setAttribute("title", "Publicado em " + exact);
         date.setAttribute("aria-label", announcement);
         date.removeAttribute("aria-hidden");
     }
     function setPublishDate(card, publishedAt) {
-        updatePublishDate(card.querySelector(".igf-capdate"), publishedAt);
+        updatePublishDate(card.querySelector(".igf-pubtime"), publishedAt);
     }
     // Legenda nova ou corrigida: atualiza o texto existente, inclusive quando o API traz a versão completa
     // depois de uma linha parcial do DOM, e refaz a medição do botão "mais".
@@ -3380,15 +3443,14 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     function setFollowButton(card, p) {
         let btn = card.querySelector(".igf-follow");
-        if (surface === "profile" || !p.follow) { if (btn) btn.remove(); return; }
+        if (surface === "profile" || !p.author) { if (btn) btn.remove(); return; }
         if (!btn) {
-            const head = card.querySelector(".igf-head");
-            if (!head) return;
-            btn = el("button", { class: "igf-follow", type: "button", "data-act": "follow" }, "Seguir");
-            head.appendChild(btn);
+            const identity = card.querySelector(".igf-identity");
+            if (!identity) return;
+            btn = el("button", { class: "igf-follow", type: "button", "data-act": "follow" });
+            identity.appendChild(btn);
         }
-        btn.classList.toggle("on", p.following === true);
-        btn.textContent = p.following === true ? "Seguindo" : "Seguir";
+        renderFollowButton(btn, p.following === true, p.author);
     }
     function updateCardMeta(card) {
         const p = posts.get(card.dataset.key);
@@ -3406,9 +3468,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (rec.avatar) p.avatar = rec.avatar;
             if (rec.caption) p.caption = rec.caption.slice(0, 1500);
             if (rec.authorPk) p.authorPk = rec.authorPk;
-            if (typeof rec.following === "boolean") {
+            if (typeof rec.following === "boolean" && !p.followTouched) {
                 p.following = rec.following;
-                if (!p.followTouched) p.follow = !rec.following;
             }
             if (rec.publishedAt) p.publishedAt = rec.publishedAt;
         }
@@ -3501,11 +3562,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                 loading = false;
                 unmountSkeleton();
                 layoutFeed();
-                if ((surf === "profile" || surf === "saved") && empties >= 2) {
+                if ((surf === "profile" || surf === "saved" || surf === "post") && empties >= 2) {
                     feedExhausted = true;
                     setLoaderState("done", "Você chegou ao fim dos resultados", true, "Tentar novamente");
                 } else if (empties >= 2) {
-                    setLoaderState("retry", "Não foi possível carregar mais publicações", true);
+                    setLoaderState("retry", "O Instagram ainda não trouxe novas publicações", true, "Tentar carregar mais");
                 } else {
                     setLoaderState("idle", grewAny ? "Role para carregar mais publicações" : "Aguardando novas publicações");
                 }
@@ -3746,16 +3807,40 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         setChromeMarks(marks, split.col.parentElement);
         mountOwnFeed(list, cwrap);   // esconde a lista nativa + renderiza MEU feed em masonry
     }
-    // ===== EXPLORE / PROFILE: grade de tiles → mosaico próprio =====
+    // ===== EXPLORE / PROFILE / POST: grade de tiles → mosaico próprio =====
     // a "grade" = ancestral mais baixo que abraça a maioria dos tiles (eles vêm agrupados em linhas).
+    // A seção More posts / Mais publicações fica isolada do post aberto na rota individual.
+    function postRecommendationTiles() {
+        // Instagram labels this section "More posts" or "Mais publicações" depending on locale.
+        const main = document.querySelector("main");
+        if (!main || !isPostRoute()) return [];
+        const isRecommendationsHeading = (value) => {
+            const text = (value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+            return text.includes("more posts") || text.includes("mais publicacoes") || text.includes("mais posts") || text.includes("posts recomendados");
+        };
+        const headings = [...main.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')];
+        const labelled = [...main.querySelectorAll("[aria-label]")].filter((node) => isRecommendationsHeading(node.getAttribute("aria-label")));
+        const anchorsIn = (node) => [...node.querySelectorAll(GRID_SEL)].filter((anchor) => anchor.querySelector("img,svg,video"));
+        for (const heading of [...headings, ...labelled]) {
+            if (!isRecommendationsHeading(heading.textContent || heading.getAttribute("aria-label"))) continue;
+            for (let node = heading; node && node !== main; node = node.parentElement) {
+                const anchors = anchorsIn(node);
+                if (anchors.length >= 2) return anchors;
+            }
+        }
+        return [];
+    }
     function gridContainer() {
-        let tiles = [...document.querySelectorAll("main " + GRID_SEL)].filter((a) => a.querySelector("img, svg, video"));
+        const minTiles = surface === "post" ? 2 : 4;
+        let tiles = surface === "post"
+            ? postRecommendationTiles()
+            : [...document.querySelectorAll("main " + GRID_SEL)].filter((a) => a.querySelector("img, svg, video"));
         // PREFERE a grade NOVA/visível: quando o React re-renderiza, a grade antiga continua no DOM já
         // ESCONDIDA (.igf-src) → ignoro-a pra não confundir a detecção (era a causa do "grade nativa + nosso
         // mosaico aparecerem juntos"). Se TODOS estão escondidos (steady state) → uso todos (re-assert).
         const fresh = tiles.filter((a) => !a.closest(".igf-src"));
-        if (fresh.length >= 4) tiles = fresh;
-        if (tiles.length < 4) return null;
+        if (fresh.length >= minTiles) tiles = fresh;
+        if (tiles.length < minTiles) return null;
         // sobe até o ancestral que contém TODOS os tiles (a GRADE inteira). Threshold de 80% deixava 1 tile de
         // fora (ex.: perfil de 6 posts) → ele ficava VISÍVEL (grid nativo aparecendo). Guarda o de maior contagem
         // como fallback (caso algum tile esteja numa seção separada).
@@ -3765,7 +3850,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (c > bestN) { bestN = c; best = n; }
             if (c === tiles.length) return n;   // contém TODOS → é a grade
         }
-        return bestN >= Math.max(4, Math.floor(tiles.length * 0.8)) ? best : null;
+        return bestN >= Math.max(minTiles, Math.floor(tiles.length * 0.8)) ? best : null;
     }
     /* botão de COPIAR o username, colado no nome do perfil. Acha o nó FOLHA cujo texto é exatamente
      * o usuário da URL (o IG muda a tag conforme o layout/experimento, então não dá pra fixar h1/h2).
@@ -3820,6 +3905,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (let n = grid; n && n !== col; n = n.parentElement) { n.classList.add("igm-wide"); marks.push([n, "igm-wide"]); }   // tira os caps internos do IG
         // a COLUNA inteira (header + grid) ganha a MESMA largura/centragem do feed da home (--igm-maxw)
         col.classList.add("igm-content", "igm-gridcol");
+        col.classList.toggle("igm-postpage", surface === "post");
         mountedChrome = col;
         if (underNav) col.classList.add("igm-gridnav");   // main nasce sob o nav fixo → desloca p/ centrar em (viewport − nav), igual home
         marks.push([col, "igm-content"]);
@@ -3837,7 +3923,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const frag = document.createDocumentFragment();
         for (let i = 0; i < count; i++) {
             frag.appendChild(el("div", { class: "igf-card igf-skel", "aria-hidden": "true" },
-                el("div", { class: "igf-skel-head" }, el("i", { class: "igf-skel-avatar" }), el("i", { class: "igf-skel-name" }), el("i", { class: "igf-skel-chip" })),
+                el("div", { class: "igf-skel-head" },
+                    el("i", { class: "igf-skel-avatar" }),
+                    el("div", { class: "igf-skel-identity" }, el("i", { class: "igf-skel-name" }), el("i", { class: "igf-skel-chip" })),
+                    el("i", { class: "igf-skel-time" })),
                 el("div", { class: "igf-skel-media" }),
                 el("div", { class: "igf-skel-actions" }, el("i", { class: "igf-skel-line" }), el("i", { class: "igf-skel-line" }), el("i", { class: "igf-skel-line" })),
                 el("div", { class: "igf-skel-caption" }, el("i", { class: "igf-skel-line" }), el("i", { class: "igf-skel-line" }))));
@@ -3859,7 +3948,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (surf !== mountedSurface) { unmasonry(); lastHarvestSig = ""; mountedSurface = surf; }   // trocou de superfície → limpa tudo (sig inclusive)
         applyNavPin();   // gating próprio (masonry && pinNav)
         if (surf === "home") { surface = "home"; applyFeed(); }
-        else if (surf === "explore" || surf === "profile" || surf === "saved") { surface = surf; applyGrid(); }
+        else if (surf === "explore" || surf === "profile" || surf === "saved" || surf === "post") { surface = surf; applyGrid(); }
         else unmasonry();
     }
     function unmasonry() {
@@ -3874,6 +3963,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (const e of document.querySelectorAll(".igm-content")) e.classList.remove("igm-content");
         for (const e of document.querySelectorAll(".igm-gridnav")) e.classList.remove("igm-gridnav");
         for (const e of document.querySelectorAll(".igm-gridcol")) e.classList.remove("igm-gridcol");
+        for (const e of document.querySelectorAll(".igm-postpage")) e.classList.remove("igm-postpage");
         for (const e of document.querySelectorAll(".igm-col")) e.classList.remove("igm-col");
         for (const e of document.querySelectorAll(".igm-stories")) e.classList.remove("igm-stories");
         for (const e of document.querySelectorAll(".igm-norail")) e.classList.remove("igm-norail");
