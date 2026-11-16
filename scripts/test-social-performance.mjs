@@ -43,7 +43,7 @@ assert.doesNotMatch(instagramDomReady, /\bingestInlineJSON\(\)/);
 // band also shows the publication date without losing the complete caption.
 assert.match(instagram, /publishedAt:\s*normalizePublishTime\(m\.taken_at_timestamp\s*\?\?\s*m\.taken_at\)/);
 assert.match(instagram, /class:\s*["']igf-capdate["']/);
-const instagramPublishTime = section(instagram, "function formatPublishTime", "function smallestVideo");
+const instagramPublishTime = section(instagram, "const PUBLISH_DATE_FORMAT", "function smallestVideo");
 assert.match(instagramPublishTime, /hour:\s*["']2-digit["']/);
 assert.match(instagramPublishTime, /minute:\s*["']2-digit["']/);
 const instagramPublishStyle = section(instagram, ".igf-capdate{", ".igf-capmore");
