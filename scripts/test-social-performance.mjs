@@ -197,6 +197,8 @@ const instagramRouteWork = section(instagram, "function routeWork()", "let route
 assert.match(instagramRouteWork, /if \(routeSettling\) return/);
 const instagramMasonrySync = section(instagram, "function syncMasonry()", "function unmasonry");
 assert.match(instagramMasonrySync, /if \(routeSettling\) return/);
+assert.match(instagramMasonrySync, /postRouteChanged/);
+assert.match(instagramMasonrySync, /surf !== mountedSurface \|\| postRouteChanged/);
 const instagramFeedReset = section(instagram, "function resetFeedItems()", "function teardownOwnFeed");
 assert.match(instagramFeedReset, /posts\.clear\(\)/);
 assert.match(instagramFeedReset, /order\.length\s*=\s*0/);
