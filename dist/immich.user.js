@@ -1126,6 +1126,14 @@
             html.iv-cards-on main:has(> #iv-cards) > :not(#iv-cards, #iv-marks-page) {
                 visibility: hidden !important;
             }
+            /* During a file drop, give Immich's native album drop target the
+               whole main area instead of leaving the card overlay on top. */
+            html.iv-file-drop-active.iv-cards-on main:has(> #iv-cards) > :not(#iv-cards, #iv-marks-page) {
+                visibility: visible !important;
+            }
+            html.iv-file-drop-active.iv-cards-on main:has(> #iv-cards) > #iv-cards {
+                display: none !important;
+            }
             /* The marks page takes the place of the cards while it is open. */
             main:has(> #iv-marks-page) > #iv-cards { display: none; }
             /* The top padding mirrors <main>'s, which sits under the bar, so
@@ -4185,6 +4193,34 @@
                 cards.lastAsset = null;
             }
         }
+
+        let fileDropResetTimer = 0;
+        function clearNativeFileDrop() {
+            document.documentElement.classList.remove('iv-file-drop-active');
+            fileDropResetTimer = 0;
+        }
+
+        function enterNativeFileDrop(event) {
+            const root = document.documentElement;
+            const types = event.dataTransfer?.types;
+            if (!root.classList.contains('iv-cards-on') || !Array.from(types ?? []).includes('Files')) return false;
+            root.classList.add('iv-file-drop-active');
+            clearTimeout(fileDropResetTimer);
+            fileDropResetTimer = setTimeout(clearNativeFileDrop, 1000);
+            return true;
+        }
+
+        document.addEventListener('dragenter', event => {
+            if (enterNativeFileDrop(event)) event.preventDefault();
+        }, true);
+        document.addEventListener('dragover', event => {
+            if (enterNativeFileDrop(event)) event.preventDefault();
+        }, true);
+        document.addEventListener('drop', event => {
+            if (!enterNativeFileDrop(event)) return;
+            clearTimeout(fileDropResetTimer);
+            fileDropResetTimer = setTimeout(clearNativeFileDrop, 0);
+        }, true);
 
         // With Immich's own grid chosen, its view chip stays reachable: in
         // the page's header row when there is one, else in a bar of its own
