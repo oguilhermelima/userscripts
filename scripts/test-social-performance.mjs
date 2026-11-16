@@ -33,6 +33,7 @@ assert.match(instagram, /content-visibility:auto/);
 assert.match(instagram, /document\.createDocumentFragment\(\)/);
 const instagramCreateFeed = section(instagram, "function createFeed", "function mountOwnFeed");
 assert.match(instagramCreateFeed, /scheduleInlineJSON/);
+assert.match(instagramCreateFeed, /apiFeedUsed\s*=\s*surface === "home" \? 0 : apiFeedCodes\.length/);
 const instagramMount = section(instagram, "function mountOwnFeed", "function pauseNativeVideos");
 assert.match(instagramMount, /queueSyncFeed\(\)/);
 assert.doesNotMatch(instagramMount, /\bingestInlineJSON\(\)/);
