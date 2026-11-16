@@ -62,6 +62,16 @@ assert.match(instagramPublishUpdater, /title/);
 const instagramPublishMarkup = section(instagram, "function buildCard(p)", "function bindFeedEvents");
 assert.match(instagramPublishMarkup, /igf-pubtime/);
 assert.match(instagramPublishMarkup, /igf-identity/);
+assert.match(instagramPublishMarkup, /igf-avatar/);
+assert.match(instagramPublishMarkup, /igf-profilemeta/);
+const instagramPublishHeaderStyle = section(instagram, ".igf-pubtime{", ".igf-copyuser{");
+assert.match(instagramPublishHeaderStyle, /font-weight:\s*(400|500)/);
+const instagramFollowStyle = section(instagram, ".igf-follow{", ".igf-follow:focus-visible");
+assert.match(instagramFollowStyle, /display:\s*inline-flex/);
+assert.match(instagramFollowStyle, /width:\s*max-content/);
+assert.match(instagramFollowStyle, /border-radius:\s*999px/);
+const instagramIdentityStyle = section(instagram, ".igf-identity{", ".igf-userline{");
+assert.match(instagramIdentityStyle, /align-items:\s*center/);
 
 // Instagram: keep media URLs separate from post permalinks, including the active carousel slide.
 assert.match(instagram, /originalImageUrl/);
@@ -125,9 +135,11 @@ assert.match(instagramPostRoute, /postRecommendationTiles\(\)/);
 assert.match(instagramPostRoute, /return "post"/);
 const instagramRecommendations = section(instagram, "function postRecommendationTiles", "function gridContainer");
 assert.match(instagramRecommendations, /More posts|Mais publica/);
+assert.match(instagramRecommendations, /POST_GRID_SEL/);
 const instagramPostGrid = section(instagram, "function gridContainer()", "\/\* botão de COPIAR o username");
 assert.match(instagramPostGrid, /surface === "post"/);
 assert.match(instagram, /igm-postpage|surface === "post"/);
+assert.match(instagram, /\.igm-postdetail\{/);
 
 // Cenário Reddit: CSS/classes críticas ficam disponíveis cedo, mas o pipeline
 // que varre shadow roots e posts só roda fora do caminho crítico do paint.
