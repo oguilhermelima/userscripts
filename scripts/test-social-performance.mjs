@@ -78,7 +78,7 @@ assert.match(redditLightbox, /classList\.toggle\(["']rx-lb-zoomed["']/);
 const instagramInitial = section(instagram, "let initialWorkTask", "// bootstrap");
 assert.match(instagramInitial, /requestAnimationFrame/);
 assert.doesNotMatch(instagramInitial, /requestIdleCallback/);
-assert.match(instagramInitial, /scan\(\)/);
+assert.match(instagramInitial, /routeWork\(\)/);
 
 // Instagram: when the feed has only one article, home must not wait for a
 // second post before starting the own feed.
