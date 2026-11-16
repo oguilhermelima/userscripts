@@ -106,7 +106,7 @@ const instagramFollowRender = section(instagram, "function renderFollowButton", 
 assert.match(instagramFollowRender, /Deixar de seguir/);
 assert.match(instagramFollowRender, /aria-pressed/);
 assert.doesNotMatch(instagramFollowRender, /if \(!p\.follow\).*remove/);
-assert.match(instagram, /follow:\s*true/);
+assert.match(instagram, /if \(p\.author && surface !== "profile"\)/);
 assert.match(instagram, /\.igf-follow\.on:hover/);
 
 // Instagram: media shortcuts are compact at the media's upper-left; actionbar share copies,
