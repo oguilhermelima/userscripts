@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instagram — Native Video Controls & Mosaic Feed
 // @namespace    instagram-native-player
-// @version      3.25.0
+// @version      3.26.0
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/instagram.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/instagram.user.js
 // @description  Additive layer over Instagram: an integrated video player on every surface, plus an optional uniform card grid for the home feed, explore, profiles and saved posts, all configured from a floating settings panel.
@@ -177,6 +177,15 @@
         if (n >= 1e3) return (n / 1e3).toFixed(n % 1e3 ? 1 : 0).replace(/\.0$/, "") + "K";
         return String(n);
     }
+    function normalizePublishTime(value) {
+        if (value == null || value === "") return 0;
+        const n = Number(value);
+        const time = Number.isFinite(n) ? (n < 1e12 ? n * 1000 : n) : Date.parse(String(value));
+        return Number.isFinite(time) && time > 0 && Number.isFinite(new Date(time).getTime()) ? time : 0;
+    }
+    function formatPublishTime(time) {
+        return time ? new Date(time).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
+    }
     function smallestVideo(vs) {            // menor resolução disponível = preview leve (menos travamento)
         let best = null;
         for (const v of vs) if (v && v.url && (!best || (v.width || 0) < (best.width || 1e9))) best = v;
@@ -225,11 +234,13 @@
             pk: (m.pk || (m.id && String(m.id).split("_")[0])) || prev.pk || "",   // media pk → unsave/like/save via API
             authorPk: (m.user && m.user.pk) || prev.authorPk || "",                // user pk → follow via API
             following: (m.user && m.user.friendship_status) ? !!m.user.friendship_status.following : prev.following,   // já segue? (se a API trouxer)
+            publishedAt: normalizePublishTime(m.taken_at_timestamp ?? m.taken_at) || prev.publishedAt || 0,
             carousel: carousel || prev.carousel || null,
             w: w || prev.w || 0, h: h || prev.h || 0,
             author: (m.user && m.user.username) || prev.author || "",
             avatar: (m.user && m.user.profile_pic_url) || prev.avatar || "",
             caption: (m.caption && (m.caption.text || (typeof m.caption === "string" ? m.caption : ""))) || prev.caption || "",
+            captionKnown: Object.prototype.hasOwnProperty.call(m, "caption") || !!prev.captionKnown,
             reel: m.product_type === "clips" || !!prev.reel,
             likes: fmtCountNum(m.like_count) || prev.likes || "",
             comments: fmtCountNum(m.comment_count) || prev.comments || "",
@@ -259,25 +270,27 @@
     const apiFeedCodes = [];
     const apiFeedSet = new Set();
     const FEED_KEY = /timeline|feed_items/i;
-    function walkForMedia(node, depth, inFeed) {    // varre o JSON inteiro atrás de itens de mídia (schema aninhado/variável)
+    function walkForMedia(node, depth, inFeed, changedCodes) {    // varre o JSON inteiro atrás de itens de mídia (schema aninhado/variável)
         // o HTML server-rendered embrulha os dados em camadas de require/__bbox: os posts iniciais ficam
         // além de 12 níveis, e com o limite antigo eles nunca entravam no igMedia (card sem legenda/vídeo)
         if (!node || typeof node !== "object" || depth > 64) return;
-        if (Array.isArray(node)) { for (const x of node) walkForMedia(x, depth + 1, inFeed); return; }
+        if (Array.isArray(node)) { for (const x of node) walkForMedia(x, depth + 1, inFeed, changedCodes); return; }
         if (node.code && (node.video_versions || node.image_versions2 || node.carousel_media)) {
             ingestNode(node);
+            if (igMedia.has(node.code)) changedCodes.add(node.code);
             if (inFeed && !apiFeedSet.has(node.code) && igMedia.has(node.code)) { apiFeedSet.add(node.code); apiFeedCodes.push(node.code); }
             inFeed = false;                     // slides de carrossel / filhos não são posts do feed
         }
         if (node.collection_id && node.collection_name) igCollections.set(String(node.collection_id), String(node.collection_name));   // coleções de salvos
-        for (const k in node) { const v = node[k]; if (v && typeof v === "object") walkForMedia(v, depth + 1, inFeed || FEED_KEY.test(k)); }
+        for (const k in node) { const v = node[k]; if (v && typeof v === "object") walkForMedia(v, depth + 1, inFeed || FEED_KEY.test(k), changedCodes); }
     }
     function ingestText(text) {
         if (!text || text.length < 40 || (text.indexOf("video_versions") < 0 && text.indexOf("image_versions2") < 0 && text.indexOf("collection_id") < 0)) return;
         let j; try { j = JSON.parse(text); } catch (_) { return false; }
         const feedBefore = apiFeedCodes.length;
-        try { walkForMedia(j, 0, false); } catch (_) { /**/ }
-        try { queueMetaUpdate(); } catch (_) { /**/ }   // igMedia atualizou → preenche header/legenda dos cards já renderizados
+        const changedCodes = new Set();
+        try { walkForMedia(j, 0, false, changedCodes); } catch (_) { /**/ }
+        try { queueMetaUpdate(changedCodes); } catch (_) { /**/ }   // metadados atualizados → sincroniza apenas os cards dos posts tocados
         if (apiFeedCodes.length > feedBefore) { try { onApiFeed(); } catch (_) { /**/ } }   // posts novos do feed → cards já
         return true;
     }
@@ -631,11 +644,9 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 .igf-feed{ display:grid; grid-template-columns:repeat(var(--igf-ncols,3), minmax(0,1fr)); gap:var(--igf-gap,24px);
   width:100%; padding:8px var(--igf-pad) 80px; box-sizing:border-box;
   --igf-ar:9/16;       /* proporção da mídia — a mais alta do IG (reels); igual pra todo item */
-  /* faixas de altura FIXA: card = mídia + head + ações + legenda + respiro do rodapé.
-     A legenda é UMA linha exata (line-height em px, caixa = padding-top + 1×linha, SEM padding-bottom:
-     o overflow clipa na padding-box, então qualquer padding embaixo deixaria a 2ª linha espiando).
-     Mexer aqui = mexer em cardHeightFor(). */
-  --igf-headh:48px; --igf-acth:40px; --igf-caph:25px; --igf-padb:9px;   /* legenda = 6 + 1×19 */
+  /* faixas de altura FIXA: card = mídia + head + ações + legenda/data + respiro do rodapé.
+     A legenda continua em uma linha; a data ocupa a linha abaixo. Mexer aqui = mexer em cardHeightFor(). */
+  --igf-headh:48px; --igf-acth:40px; --igf-caplineh:25px; --igf-capdateh:18px; --igf-caph:43px; --igf-padb:9px;
   --igf-cardh:520px;   /* altura estimada p/ contain-intrinsic-size (recalculada no layout) */
 }
 .igf-card{ position:relative; min-width:0; box-sizing:border-box; border-radius:14px; overflow:hidden; padding-bottom:var(--igf-padb);
@@ -706,16 +717,18 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 /* LEGENDA — o wrap tem a altura FIXA (é ele que mantém a uniformidade, mesmo sem legenda);
    a legenda mora COLADA no rodapé dele e, ao expandir, cresce PRA CIMA por cima da mídia. */
 .igf-capwrap{ position:relative; height:var(--igf-caph); }
-.igf-cap{ position:absolute; left:0; right:0; bottom:0; max-height:var(--igf-caph); overflow:hidden;
+.igf-cap{ position:absolute; left:0; right:0; bottom:var(--igf-capdateh); max-height:var(--igf-caplineh); overflow:hidden;
   padding:6px 12px 0; box-sizing:border-box; font-size:14px; line-height:19px; color:var(--igf-text); }
 .igf-cap b{ font-weight:600; }
+.igf-capdate{ position:absolute; left:12px; right:12px; bottom:0; height:var(--igf-capdateh); overflow:hidden;
+  color:var(--igf-muted); font-size:11px; line-height:var(--igf-capdateh); white-space:nowrap; text-overflow:ellipsis; }
 /* @menções e #hashtags: cor de link do IG, clicáveis (não abrem/fecham o "mais") */
 .igf-tag{ color:rgb(var(--ig-link, 0, 149, 246)); text-decoration:none; }
 .igf-tag:hover{ text-decoration:underline; }
 /* [data-capmore] = medido e TEM mais texto do que cabe. O "mais" fica no FIM DA LINHA, com degradê à esquerda. */
 .igf-card[data-capmore] .igf-cap{ cursor:pointer; }
 .igf-card[data-capmore] .igf-capmore{ display:block; }
-.igf-capmore{ display:none; position:absolute; right:0; bottom:0; z-index:3; border:0; cursor:pointer;
+.igf-capmore{ display:none; position:absolute; right:0; bottom:var(--igf-capdateh); z-index:3; border:0; cursor:pointer;
   padding:6px 12px 0 34px; font-family:inherit; font-size:13px; font-weight:600; line-height:19px; color:var(--igf-text);
   background:linear-gradient(90deg, transparent, var(--igf-card-bg) 34%); }
 .igf-capmore:hover{ text-decoration:underline; }
@@ -743,7 +756,7 @@ ${ariaHas("searchPart", ".igm-gridcol input")}{ max-width:none !important; width
 .igf-feed.igf-nocounts .igf-act > span{ display:none; }
 /* densidade COMPACTA (GAP cai via JS; aqui as faixas + fontes). As alturas são VARS: mudar aqui
    exige mudar os mesmos números em cardHeightFor() no JS. */
-.igf-feed.igf-dense{ --igf-headh:42px; --igf-acth:34px; --igf-caph:22px; --igf-padb:7px; }   /* legenda = 5 + 1×17 */
+.igf-feed.igf-dense{ --igf-headh:42px; --igf-acth:34px; --igf-caplineh:22px; --igf-capdateh:17px; --igf-caph:39px; --igf-padb:7px; }
 .igf-feed.igf-dense.igf-nocap{ --igf-caph:0px; }
 .igf-feed.igf-dense .igf-card{ border-radius:12px; }
 .igf-feed.igf-dense .igf-head{ padding:0 9px; }
@@ -1748,6 +1761,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     const posts = new Map();        // key -> dados do post (dedup por permalink)
     const order = [];               // keys na ordem de harvest
     const rendered = new Set();     // keys já renderizados
+    const cardsByCode = new Map();  // code -> cards que recebem metadados tardios desse post
     let renderedUpTo = 0;           // ponteiro em `order` até onde já renderizei (append-only → não re-varre)
     const carouselWait = new Map(); // key -> 1ª vez vista como galeria (espera os slides da API p/ ter ‹ ›)
     let feedEl = null, igSrc = null, srcMO = null, srcMOTarget = null, resizeBound = false, layoutQ = false;
@@ -1850,12 +1864,14 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         // depois. Limite alto: o texto inteiro é o que o "mais" expande; só a 1ª linha fica à mostra.
         const code = codeOf(key);
         const capText = (capEl && (capEl.textContent || "").trim()) || (igMedia.get(code) || {}).caption || "";
+        const rec = igMedia.get(code) || {};
         liveCodes.add(code);
         posts.set(key, {
-            key, code, href: (link.pathname || link.getAttribute("href") || ""), author,
+            key, code, href: (link.pathname || link.getAttribute("href") || ""), author: author || rec.author || "",
             avatar: avatar ? avatar.src : "", media, srcset, sizes, isVideo: !!video,
             caption: capText.slice(0, 1500),
-            likes: nums[0] || "", comments: nums[1] || "", follow: canFollow,
+            likes: nums[0] || "", comments: nums[1] || "", authorPk: rec.authorPk || "", following: rec.following,
+            publishedAt: rec.publishedAt || 0, follow: canFollow || rec.following !== true,
         });
         order.push(key);
         return true;
@@ -1902,6 +1918,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             key, code, href: (a.getAttribute("href") || a.href || ""), media, isVideo, tile: true,
             // dados p/ o CARD COMPLETO (explore/perfil/salvos): vêm da API (igMedia), não do DOM do tile
             author: rec.author || "", avatar: rec.avatar || "", caption: rec.caption || "", likes: rec.likes || "", comments: rec.comments || "",
+            publishedAt: rec.publishedAt || 0,
             authorPk: rec.authorPk || "", following: rec.following, follow: rec.following !== true,   // mostra "Seguir" a menos que JÁ siga
         });
         order.push(key);
@@ -2098,7 +2115,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             const j = await r.json();
             const u = j && j.data && j.data.user;
             if (!u || !u.id) return null;
-            const rec = { pk: String(u.id), following: !!u.followed_by_viewer };
+            const state = u.friendship_status && u.friendship_status.following;
+            const following = typeof state === "boolean" ? state
+                : typeof u.followed_by_viewer === "boolean" ? u.followed_by_viewer : undefined;
+            const rec = { pk: String(u.id), following };
             userPkCache.set(username, rec);
             return rec;
         } catch (_) { return null; }
@@ -2112,15 +2132,43 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         }
         return null;
     }
+    function nativeFollowState(key) {
+        const btn = nativeFollowBtn(key);
+        if (!btn) return null;
+        const label = (btn.textContent || "").trim();
+        if (RE_FOLLOW.test(label)) return false;
+        return RE_FOLLOW_ANY.test(label) ? true : null;
+    }
+    function clickNativeFollow(key, expected) {
+        const art = nativeArticle(key), btn = nativeFollowBtn(key);
+        if (!art || !btn || typeof MutationObserver === "undefined") return Promise.resolve(null);
+        if (nativeFollowState(key) === expected) return Promise.resolve(expected);
+        return new Promise((resolve) => {
+            let timer;
+            const obs = new MutationObserver(() => { if (nativeFollowState(key) === expected) finish(expected); });
+            const finish = (state) => { obs.disconnect(); clearTimeout(timer); resolve(state); };
+            try { obs.observe(art, { childList: true, subtree: true, characterData: true, attributes: true }); }
+            catch (_) { return finish(null); }
+            timer = setTimeout(() => finish(null), 3000);
+            try { btn.click(); } catch (_) { return finish(null); }
+            if (nativeFollowState(key) === expected) finish(expected);
+        });
+    }
     // o mesmo autor aparece em vários cards — todos acompanham o novo estado
-    function syncFollowButtons(author, following) {
+    function syncFollowButtons(author, following, touched = true) {
         if (!feedEl || !author) return;
         for (const card of feedEl.children) {
             const p = posts.get(card.dataset && card.dataset.key || "");
             if (!p || p.author !== author) continue;
             p.following = following;
+            if (touched) { p.followTouched = true; p.follow = true; }
+            else if (!p.followTouched) p.follow = !following;
+            const rec = igMedia.get(p.code || codeOf(p.key));
+            if (rec) rec.following = following;
             const b = card.querySelector(".igf-follow");
+            if (!p.follow) { if (b) b.remove(); continue; }
             if (b) { b.classList.toggle("on", following); b.textContent = following ? "Seguindo" : "Seguir"; }
+            else setFollowButton(card, p);
         }
     }
     async function followUser(p, btn) {
@@ -2128,20 +2176,35 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         btn.dataset.busy = "1"; btn.classList.add("igf-busy");
         try {
             let pk = p.authorPk || (igMedia.get(p.code || codeOf(p.key)) || {}).authorPk || "";
-            if (!pk && p.author) { const u = await resolveUser(p.author); if (u) { pk = u.pk; p.authorPk = pk; } }
-            const wasFollowing = btn.classList.contains("on");
+            if (p.author && (!pk || typeof p.following !== "boolean")) {
+                const u = await resolveUser(p.author);
+                if (u) { pk = pk || u.pk; p.authorPk = pk; if (typeof u.following === "boolean") p.following = u.following; }
+            }
+            if (p.following === true && !btn.classList.contains("on")) {
+                if (p.author) syncFollowButtons(p.author, true, false);
+                else { p.follow = false; btn.remove(); }
+                return;
+            }
+            const wasFollowing = btn.classList.contains("on") || p.following === true;
             const next = !wasFollowing;
             if (pk) {
                 btn.classList.toggle("on", next); btn.textContent = next ? "Seguindo" : "Seguir";   // otimista
-                if (await igApiPost("/api/v1/friendships/" + (next ? "create" : "destroy") + "/" + pk + "/", "")) {
+                if (await igApiPost("/api/v1/friendships/" + (next ? "create" : "destroy") + "/" + pk + "/", "", true)) {
                     if (p.author) userPkCache.set(p.author, { pk, following: next });
+                    p.follow = true; p.following = next; p.followTouched = true;
+                    const rec = igMedia.get(p.code || codeOf(p.key)); if (rec) rec.following = next;
                     syncFollowButtons(p.author, next);
                     return;
                 }
                 btn.classList.toggle("on", wasFollowing); btn.textContent = wasFollowing ? "Seguindo" : "Seguir";   // desfaz
             }
-            const nb = nativeFollowBtn(p.key);                 // API indisponível/recusada → tenta o nativo
-            if (nb) { nb.click(); syncFollowButtons(p.author, next); return; }
+            const nativeFollowing = await clickNativeFollow(p.key, next); // API indisponível/recusada → tenta o nativo
+            if (nativeFollowing === next) {
+                p.follow = true; p.following = next; p.followTouched = true;
+                const rec = igMedia.get(p.code || codeOf(p.key)); if (rec) rec.following = next;
+                syncFollowButtons(p.author, next);
+                return;
+            }
             toast(pk ? "O Instagram recusou a ação" : "Não consegui identificar o perfil");
         } finally { delete btn.dataset.busy; btn.classList.remove("igf-busy"); }
     }
@@ -2426,8 +2489,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         releaseVideo(card);
         const code = card.dataset.code;
         if (code) videoState.delete(code);
-        // (o card SEGUE em metaPending: a legenda/header que chegarem depois ainda precisam entrar nele —
-        // um card montado escondido, longe ou com o feed em display:none, perdia a legenda pra sempre)
+        // o card segue indexado por shortcode: metadados que chegarem depois podem atualizá-lo mesmo longe da tela
         for (const img of card.querySelectorAll(".igf-media img")) {
             const src = img.getAttribute("src");
             if (!src) continue;
@@ -2714,11 +2776,17 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (savedToolbarSync) savedToolbarSync();
     }
     // ===== MOVER PARA COLEÇÃO (best-effort: endpoints privados do IG, não verificáveis no snapshot) =====
-    function igApiPost(path, body) {
+    async function igApiPost(path, body, requireOkStatus = false) {
         const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "";
-        return fetch(path, { method: "POST", credentials: "include", body,
-            headers: { "X-CSRFToken": csrf, "X-IG-App-ID": igAppId, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded" },
-        }).then((r) => r.ok).catch(() => false);
+        try {
+            const r = await fetch(path, { method: "POST", credentials: "include", body,
+                headers: { "X-CSRFToken": csrf, "X-IG-App-ID": igAppId, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded" },
+            });
+            if (!r.ok) return false;
+            const data = await r.json().catch(() => null);
+            if (requireOkStatus) return !!data && data.status === "ok";
+            return !data || !data.status || data.status === "ok";
+        } catch (_) { return false; }
     }
     const selectedPks = () => [...savedSelected.keys()].map((key) => { const p = posts.get(key); return p ? pkOf(p) : null; }).filter(Boolean);
     async function moveSelectedToCollection(collectionId, newName) {
@@ -2944,8 +3012,10 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function buildCaption(p) {
         const wrap = el("div", { class: "igf-capwrap" });
         const cap = el("div", { class: "igf-cap" });
+        const date = el("time", { class: "igf-capdate", "aria-hidden": "true" });
         renderCaption(cap, p.caption || "");
-        wrap.append(cap, el("button", { class: "igf-capmore", type: "button", "data-act": "capmore" }, "mais"));
+        updatePublishDate(date, p.publishedAt);
+        wrap.append(cap, date, el("button", { class: "igf-capmore", type: "button", "data-act": "capmore" }, "mais"));
         return wrap;
     }
     function toggleCaption(card) {
@@ -2991,7 +3061,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const dense = prefs.density === "compact";
         const bands = (dense ? 42 : 48)                                // header
             + (dense ? 34 : 40)                                        // barra de ações
-            + (prefs.showCaption ? (dense ? 22 : 25) : 0);             // legenda (1 linha; o "mais" expande)
+            + (prefs.showCaption ? (dense ? 39 : 43) : 0);             // legenda + data ("mais" expande sobre a mídia)
         return Math.round((colw - 2) * (AR_H / AR_W) + bands);      // colw - bordas laterais = largura da mídia
     }
     function layoutFeed() {
@@ -3027,7 +3097,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             key: "/p/" + code, code, href: (r.reel ? "/reel/" : "/p/") + code + "/", author: r.author || "",
             avatar: r.avatar || "", media: media || "", srcset: "", sizes: "", isVideo: !!r.isVideo,
             caption: (r.caption || "").slice(0, 1500), likes: r.likes || "", comments: r.comments || "",
-            authorPk: r.authorPk || "", following: r.following, follow: r.following === false,
+            authorPk: r.authorPk || "", following: r.following, follow: r.following !== true, publishedAt: r.publishedAt || 0,
         };
     }
     function onApiFeed() {
@@ -3063,9 +3133,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     // Fonte: o harvest da lista nativa OU o payload da API (onApiFeed) — o que chegar primeiro.
     function renderNew() {
         if (!feedEl) return;
+        const fresh = [];
         if (renderedUpTo < order.length) {
             const frag = document.createDocumentFragment();
-            const fresh = [];
             for (; renderedUpTo < order.length; renderedUpTo++) {
                 const key = order[renderedUpTo];
                 if (rendered.has(key)) continue;
@@ -3077,11 +3147,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (fresh.length) {
                 feedEl.appendChild(frag);
                 for (const card of fresh) {
+                    indexCardMeta(card);
                     observeVideoCard(card);                                  // vídeo → rastreia visibilidade (toca no hover)
                     observeFar(card);                                        // longe da tela → descarrega a mídia
-                    // grid: falta tudo (header/legenda). home: só entra na fila se a legenda não veio do <article>.
-                    const needsMeta = metaSurface() || !card.querySelector(".igf-cap").textContent;
-                    if (needsMeta && !card.dataset.metaDone) metaPending.add(card);
                 }
             }
         }
@@ -3091,63 +3159,123 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (igSrc && !igSrc.classList.contains("igf-src")) { igSrc.classList.add("igf-src"); pauseNativeVideos(); }
         }   // 1º card real → tira o skeleton + esconde a grade nativa (grid: só agora, pra não dar tela preta)
         else if (surface !== "home" && igSrc) igSrc.classList.remove("igf-src");           // GRID vazio → mostra a grade NATIVA (nunca deixa só o spinner numa tela vazia)
-        updateCardsMeta();      // preenche autor/avatar/legenda dos cards que renderizaram antes do igMedia
+        updateCardsMeta(fresh); // aplica dados que já chegaram antes do card ser montado
+        updatePendingHomeCaptions(); // o <h1> nativo pode aparecer depois do harvest
         layoutFeed();
         if (!loading) queuePick();
     }
-    // PREENCHE o header (autor/avatar/seguir) + legenda dos cards de GRID que renderizaram antes da API trazer os
-    // metadados (igMedia). Roda quando o igMedia ingere uma resposta + a cada syncOwnFeed.
-    // Só percorre os cards PENDENTES (Set) — antes varria todos os filhos do feed a cada chamada.
+    // Cards são append-only e podem sobreviver a muitas páginas da API. Indexá-los pelo shortcode permite
+    // aplicar uma resposta tardia só aos posts alterados, sem varrer a sessão inteira a cada scroll.
     let metaUpdQ = false;
-    const metaPending = new Set();
-    // TODA superfície tem card pendente de metadados. No grid (explore/perfil/salvos) vem tudo da API
-    // (autor, avatar, legenda). Na HOME o header sai do <article>, mas a LEGENDA não: o IG renderiza o
-    // <h1> tarde (às vezes nunca, no post virtualizado), e era por isso que a descrição não aparecia —
-    // então na home eu completo a legenda pelo igMedia (a resposta de feed/timeline traz caption).
-    const metaSurface = () => surface === "explore" || surface === "saved" || surface === "profile";
-    function queueMetaUpdate() { if (metaUpdQ) return; metaUpdQ = true; raf(() => { metaUpdQ = false; updateCardsMeta(); }); }
-    // legenda nova num card já montado: escreve na faixa (altura fixa → zero re-layout) e re-agenda a
-    // medição do "mais" (o card pode ter sido medido quando ainda estava sem texto).
+    const pendingMetaCodes = new Set();
+    const metaPending = new Set(); // legendas da home que ainda podem chegar pelo <h1> nativo
+    function indexCardMeta(card) {
+        const code = card.dataset.code;
+        if (!code) return;
+        let cards = cardsByCode.get(code);
+        if (!cards) cardsByCode.set(code, cards = new Set());
+        cards.add(card);
+    }
+    function queueMetaUpdate(codes) {
+        if (!codes || !codes.size) return;
+        for (const code of codes) pendingMetaCodes.add(code);
+        if (metaUpdQ) return;
+        metaUpdQ = true;
+        raf(() => {
+            metaUpdQ = false;
+            const cards = [];
+            for (const code of pendingMetaCodes) {
+                const indexed = cardsByCode.get(code);
+                if (!indexed) continue;
+                for (const card of indexed) {
+                    if (card.isConnected) cards.push(card);
+                    else indexed.delete(card);
+                }
+                if (!indexed.size) cardsByCode.delete(code);
+            }
+            pendingMetaCodes.clear();
+            updateCardsMeta(cards);
+        });
+    }
+    function updatePublishDate(date, publishedAt) {
+        if (!date) return;
+        const label = formatPublishTime(publishedAt);
+        date.textContent = label;
+        if (!label) {
+            date.setAttribute("aria-hidden", "true");
+            date.removeAttribute("datetime"); date.removeAttribute("title"); date.removeAttribute("aria-label");
+            return;
+        }
+        const announcement = "Publicado em " + label;
+        date.setAttribute("datetime", new Date(publishedAt).toISOString());
+        date.setAttribute("title", announcement);
+        date.setAttribute("aria-label", announcement);
+        date.removeAttribute("aria-hidden");
+    }
+    function setPublishDate(card, publishedAt) {
+        updatePublishDate(card.querySelector(".igf-capdate"), publishedAt);
+    }
+    // Legenda nova ou corrigida: atualiza o texto existente, inclusive quando o API traz a versão completa
+    // depois de uma linha parcial do DOM, e refaz a medição do botão "mais".
     function setCaption(card, text) {
         const cap = card.querySelector(".igf-cap");
-        if (!cap || !text || cap.textContent) return;
+        if (!cap || !text || cap.textContent === text) return;
         renderCaption(cap, text);
         delete card.dataset.capMeasured;
-        if (card.matches(":hover")) measureCaption(card);      // já está sob o cursor → mede agora
+        delete card.dataset.capmore;
+        if (card.matches(":hover")) measureCaption(card);
     }
-    function updateCardsMeta() {
-        if (!feedEl || !metaPending.size) return;
-        const home = surface === "home";
-        for (const card of metaPending) {
-            if (!card.isConnected) { metaPending.delete(card); continue; }
-            const rec = igMedia.get(card.dataset.code);
-            const p = posts.get(card.dataset.key); if (!p) { metaPending.delete(card); continue; }
-            if (home) {
-                // home: o <article> já deu header/contadores — daqui só a LEGENDA: da API, senão do <h1>
-                // do artigo nativo (o IG costuma renderizá-lo depois do harvest). Sai do pendente quando
-                // achou a legenda ou quando a API respondeu sem ela (post sem legenda).
-                let cap = rec && rec.caption;
-                if (!cap) { const art = nativeArticle(card.dataset.key), h = art && art.querySelector("h1"); cap = h ? (h.textContent || "").trim() : ""; }
-                if (cap) { p.caption = cap.slice(0, 1500); setCaption(card, p.caption); }
-                if (cap || rec) { card.dataset.metaDone = "1"; metaPending.delete(card); }
-                continue;
-            }
-            if (!rec) continue;                                 // a API ainda não trouxe este post
-            if (!rec.author && !rec.caption) continue;
+    function setFollowButton(card, p) {
+        let btn = card.querySelector(".igf-follow");
+        if (surface === "profile" || !p.follow) { if (btn) btn.remove(); return; }
+        if (!btn) {
+            const head = card.querySelector(".igf-head");
+            if (!head) return;
+            btn = el("button", { class: "igf-follow", type: "button", "data-act": "follow" }, "Seguir");
+            head.appendChild(btn);
+        }
+        btn.classList.toggle("on", p.following === true);
+        btn.textContent = p.following === true ? "Seguindo" : "Seguir";
+    }
+    function updateCardMeta(card) {
+        const p = posts.get(card.dataset.key);
+        if (!p) return;
+        const rec = igMedia.get(card.dataset.code);
+        if (rec) {
             if (rec.author) p.author = rec.author;
             if (rec.avatar) p.avatar = rec.avatar;
-            if (rec.caption) p.caption = rec.caption;
+            if (rec.caption) p.caption = rec.caption.slice(0, 1500);
             if (rec.authorPk) p.authorPk = rec.authorPk;
-            const who = card.querySelector(".igf-who");
-            if (who && p.author) {
-                who.setAttribute("href", "/" + p.author + "/");
-                if (p.avatar && !who.querySelector("img")) who.insertBefore(el("img", { src: p.avatar, loading: "lazy", alt: "" }), who.firstChild);
-                const b = who.querySelector("b"); if (b && b.textContent !== p.author) b.textContent = p.author;
+            if (typeof rec.following === "boolean") {
+                p.following = rec.following;
+                if (!p.followTouched) p.follow = !rec.following;
             }
-            if (rec.following === true) { const fb = card.querySelector(".igf-follow"); if (fb) fb.remove(); }   // já sigo → tira o "Seguir"
-            setCaption(card, p.caption);
-            card.dataset.metaDone = "1";
-            metaPending.delete(card);
+            if (rec.publishedAt) p.publishedAt = rec.publishedAt;
+        }
+        if (surface === "home" && !p.caption && !(rec && rec.captionKnown)) {
+            const art = nativeArticle(card.dataset.key), h = art && art.querySelector("h1");
+            const nativeCaption = h ? (h.textContent || "").trim() : "";
+            if (nativeCaption) p.caption = nativeCaption.slice(0, 1500);
+        }
+        if (surface === "home") {
+            if (p.caption || (rec && rec.captionKnown)) metaPending.delete(card);
+            else metaPending.add(card);
+        }
+        const who = card.querySelector(".igf-who");
+        if (who && p.author) {
+            who.setAttribute("href", "/" + p.author + "/");
+            if (p.avatar && !who.querySelector("img")) who.insertBefore(el("img", { src: p.avatar, loading: "lazy", alt: "" }), who.firstChild);
+            const b = who.querySelector("b"); if (b && b.textContent !== p.author) b.textContent = p.author;
+        }
+        setFollowButton(card, p);
+        setCaption(card, p.caption);
+        setPublishDate(card, p.publishedAt);
+    }
+    function updateCardsMeta(cards) { if (feedEl) for (const card of cards) updateCardMeta(card); }
+    function updatePendingHomeCaptions() {
+        if (surface === "home") for (const card of [...metaPending]) {
+            if (card.isConnected) updateCardMeta(card);
+            else metaPending.delete(card);
         }
     }
     // espera CHEGAR POST NOVO → resolve ASSIM QUE chega, ou após maxMs (rede lenta / fim).
@@ -3251,7 +3379,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (surface === "saved") { savedToolbar = buildSavedToolbar(); parent.insertBefore(savedToolbar, feedEl); }   // toolbar de multisseleção ACIMA do mosaico
         loaderEl = el("div", { class: "igf-loader" + (feedExhausted ? " igf-done" : "") }, el("div", { class: "igf-spin" }), el("span", {}, "Carregando mais…"));
         parent.appendChild(loaderEl);             // spinner no fim (escondido se o grid já esgotou) — feedback + sentinela do carregar-mais
-        rendered.clear(); renderedUpTo = 0; metaPending.clear(); feedNcols = 0; feedColw = 0;   // feed novo (React pode ter removido) → re-renderiza tudo
+        rendered.clear(); renderedUpTo = 0; cardsByCode.clear(); metaPending.clear(); pendingMetaCodes.clear(); feedNcols = 0; feedColw = 0;   // feed novo (React pode ter removido) → re-renderiza tudo
         scheduleInlineJSON();                    // parse server-rendered fora do caminho crítico do primeiro paint
         // (o header/legenda que chegam DEPOIS vêm pelo queueMetaUpdate do ingestText — sem poll aqui)
         layoutFeed();                            // colunas + altura do card ANTES do skeleton (ele usa --igf-cardh)
@@ -3359,7 +3487,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (nativeHideTimer) { clearTimeout(nativeHideTimer); nativeHideTimer = null; }
         if (savedToolbar) { savedToolbar.remove(); savedToolbar = null; savedToolbarSync = null; }
         savedSelectMode = false; savedSelected.clear(); batchStop = true; savedBusy = false;   // sair da página aborta o lote
-        posts.clear(); order.length = 0; rendered.clear(); renderedUpTo = 0; metaPending.clear(); carouselWait.clear(); lastHarvestSig = "";
+        posts.clear(); order.length = 0; rendered.clear(); renderedUpTo = 0; cardsByCode.clear(); metaPending.clear(); pendingMetaCodes.clear(); carouselWait.clear(); lastHarvestSig = "";
         feedNcols = 0; feedColw = 0; loading = false; feedExhausted = false;
     }
 

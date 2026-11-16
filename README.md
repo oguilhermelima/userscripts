@@ -93,7 +93,7 @@ YouTube-style player with speed, audio boost and video marks, a card view with t
 <td align="center" width="96"><img src="https://cdn.simpleicons.org/instagram" width="48" height="48" alt="Instagram"></td>
 <td>
 
-### Instagram — Native Video Controls & Mosaic Feed <img src="https://img.shields.io/badge/v3.25.0-555?style=flat-square" alt="v3.25.0">
+### Instagram — Native Video Controls & Mosaic Feed <img src="https://img.shields.io/badge/v3.26.0-555?style=flat-square" alt="v3.26.0">
 
 <sub>instagram.com</sub>
 
