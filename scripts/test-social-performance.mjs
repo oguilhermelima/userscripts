@@ -53,6 +53,47 @@ const instagramCardMeta = section(instagram, "function updateCardMeta", "functio
 assert.match(instagramCardMeta, /setCaption\(card, p\.caption\)/);
 assert.match(instagramCardMeta, /setPublishDate\(card, p\.publishedAt\)/);
 
+// Instagram: publication date and time lead the caption and remain readable.
+const instagramCaptionStyle = section(instagram, ".igf-capdate{", ".igf-tag");
+assert.match(instagramCaptionStyle, /top:\s*0/);
+assert.match(instagramCaptionStyle, /font-size:\s*14px/);
+const instagramCaptionMarkup = section(instagram, "function buildCaption", "function toggleCaption");
+assert.match(instagramCaptionMarkup, /wrap\.append\(date, cap,/);
+
+// Instagram: keep media URLs separate from post permalinks, including the active carousel slide.
+assert.match(instagram, /originalImageUrl/);
+assert.match(instagram, /downloadVideoUrl/);
+const instagramCarousel = section(instagram, "function buildCarousel", "\/\* <img> da mídia");
+assert.match(instagramCarousel, /dataset\.mediaUrl/);
+assert.match(instagramCarousel, /buildMediaTools\(\)/);
+const instagramMediaActions = section(instagram, "function mediaActionUrl", "function nativeModalTrigger");
+assert.match(instagramMediaActions, /originalImageUrl/);
+assert.match(instagramMediaActions, /downloadVideoUrl/);
+assert.match(instagramMediaActions, /function downloadMedia/);
+
+// Instagram: the media opens the modal, the ↗ link opens the post in another tab,
+// and modal failures never change the current page URL.
+const instagramModalTrigger = section(instagram, "function nativeModalTrigger", "function clickModalTrigger");
+assert.doesNotMatch(instagramModalTrigger, /a\[role="link"/);
+const instagramModalWait = section(instagram, "function openViaNative", "function nativeArticle");
+assert.doesNotMatch(instagramModalWait, /go\(cleanPostUrl\(p\)\)/);
+assert.match(instagram, /target:\s*["']_blank["']/);
+assert.doesNotMatch(instagram, /data-act:\s*["']open["']/);
+
+// Instagram: incremental loading has skeletons, a visible end state, and a retry action.
+const instagramLoaderStyle = section(instagram, ".igf-loader{", "@keyframes igf-rot");
+assert.match(instagramLoaderStyle, /igf-retry/);
+assert.doesNotMatch(instagramLoaderStyle, /igf-done\{\s*display:\s*none/);
+const instagramLoadMore = section(instagram, "async function loadMore", "\/\/ gatilho redundante por SCROLL");
+assert.match(instagramLoadMore, /mountSkeleton\(3/);
+assert.match(instagramLoadMore, /setLoaderState\(/);
+assert.match(instagram, /data-act:\s*["']retry["']/);
+
+// Instagram: successful follow actions confirm the result to the user.
+const instagramFollow = section(instagram, "async function followUser", "\/\* === VÍDEO NOS CARDS");
+assert.match(instagramFollow, /toast\(next\s*\?/);
+assert.match(instagram, /igf-follow-pop/);
+
 // Instagram: treat a follow as successful only when the API confirms it, and
 // show a follow action when the API omits the current relationship state.
 const instagramApiPost = section(instagram, "function igApiPost", "const selectedPks");
