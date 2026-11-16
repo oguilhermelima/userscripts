@@ -148,6 +148,9 @@ assert.match(instagramPostDetailStyle, /width:min\(1440px/);
 assert.doesNotMatch(instagramPostDetailStyle, /var\(--igm-maxw\)/);
 assert.match(instagram, /html\.igf-dark\s*\{[^}]*--ig-background:\s*0,\s*0,\s*0/);
 assert.match(instagram, /html\.igf-dark body\s*\{\s*background-color:#000 !important/);
+assert.match(instagram, /--ig-primary-background:\s*0,\s*0,\s*0 !important/);
+assert.match(instagram, /html\.igf-dark \[id\^="mount_0"\]/);
+assert.match(instagram, /html\.igf-dark main\s*\{\s*background-color:#000 !important/);
 const instagramRouteTransition = section(instagram, "function onNav()", "for (const m of");
 assert.match(instagramRouteTransition, /setTimeout\(\(\) => routeWork\(\), 450\)/);
 
