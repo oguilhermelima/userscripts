@@ -45,10 +45,15 @@ assert.match(instagramCreateFeed, /apiFeedUsed\s*=\s*surface === "home" \? 0 : a
 assert.match(instagramCreateFeed, /if \(surface === "home"\) onApiFeed\(\)/);
 const instagramMount = section(instagram, "function mountOwnFeed", "function pauseNativeVideos");
 assert.match(instagramMount, /queueSyncFeed\(\)/);
-assert.match(instagramMount, /if \(firstMount && feedEl\) teardownOwnFeed\(\)/);
+assert.doesNotMatch(instagramMount, /if \(firstMount && feedEl\) teardownOwnFeed\(\)/);
+assert.match(instagramMount, /if \(!feedEl\) createFeed\(cwrap\)/);
 assert.match(instagramMount, /observeOptions\.attributes\s*=\s*true/);
 assert.match(instagramMount, /\["src", "srcset", "poster", "href"\]/);
 assert.doesNotMatch(instagramMount, /\bingestInlineJSON\(\)/);
+const instagramGridSync = section(instagram, "function queueGridSync", "function syncOwnFeed");
+assert.match(instagramGridSync, /attributes/);
+assert.match(instagramGridSync, /lastHarvestSig\s*=\s*["']{2}/);
+assert.match(instagramGridSync, /queueSyncFeed\(\)/);
 const instagramDomReady = section(instagram, "window.addEventListener(\"DOMContentLoaded\"", "window.addEventListener(\"load\"");
 assert.doesNotMatch(instagramDomReady, /\bingestInlineJSON\(\)/);
 
@@ -149,6 +154,7 @@ assert.match(instagramPostRoute, /if \(isPostRoute\(\)\) \{/);
 const instagramRecommendations = section(instagram, "function postRecommendationTiles", "function gridContainer");
 assert.match(instagramRecommendations, /More posts|Mais publica/);
 assert.match(instagramRecommendations, /POST_GRID_SEL/);
+assert.match(instagramRecommendations, /const anchorsIn = \(node\) => \[\.\.\.node\.querySelectorAll\(POST_GRID_SEL\)\]/);
 assert.doesNotMatch(instagramRecommendations, /if \(!main \|\| !tiles\.length\) return \[\]/);
 const instagramPostGrid = section(instagram, "function gridContainer()", "\/\* botão de COPIAR o username");
 assert.match(instagramPostGrid, /surface === "post"/);
@@ -164,8 +170,12 @@ assert.match(instagram, /\.igm-postdetail\{/);
 const instagramPostItemStyle = section(instagram, ".igm-postitem{", ".igm-postmediabox{");
 assert.match(instagramPostItemStyle, /max-height:calc\(100dvh - 64px\)/);
 assert.doesNotMatch(instagramPostItemStyle, /(?:^|[;\s])height:/);
-assert.match(instagram, /\.igm-postmediabox\{/);
-assert.match(instagram, /\.igm-postmedia\{[^}]*max-height:calc\(100dvh - 96px\)/);
+const instagramPostMediaBox = section(instagram, ".igm-postmediabox{", ".igm-postdetail.igm-gridnav");
+assert.match(instagramPostMediaBox, /display:flex/);
+assert.match(instagramPostMediaBox, /flex:\s*1 1/);
+assert.match(instagramPostMediaBox, /min-width:\s*0/);
+assert.match(instagramPostMediaBox, /\.igm-postmedia\{[^}]*max-height:calc\(100dvh - 96px\)/);
+assert.match(instagramPostMediaBox, /object-fit:contain/);
 const instagramPostDetailStyle = section(instagram, ".igm-postdetail{", ".igm-postdetail.igm-gridnav");
 assert.match(instagramPostDetailStyle, /width:min\(1440px/);
 assert.doesNotMatch(instagramPostDetailStyle, /display:flex|(?:^|[;\s])height:/);
@@ -191,6 +201,22 @@ const instagramFeedReset = section(instagram, "function resetFeedItems()", "func
 assert.match(instagramFeedReset, /posts\.clear\(\)/);
 assert.match(instagramFeedReset, /order\.length\s*=\s*0/);
 assert.match(instagramFeedReset, /rendered\.clear\(\)/);
+const instagramRenderNew = section(instagram, "function renderNew()", "// Cards são append-only");
+assert.match(instagramRenderNew, /surface === "post"[\s\S]*loaderEl\.hidden/);
+assert.match(instagramRenderNew, /igSrc\.classList\.remove\("igf-src"\)/);
+
+// Instagram: photos inside Instagram's native post dialog can zoom and pan without
+// changing post navigation or affecting media in the custom feed.
+const instagramNativeZoom = section(instagram, "function nativeDialogImage", "function bindNativeDialogZoom");
+assert.match(instagramNativeZoom, /\[role="dialog"\].*article|article.*\[role="dialog"\]/);
+assert.match(instagramNativeZoom, /\.igf-src, \.igf-feed/);
+const instagramZoomBinding = section(instagram, "function bindNativeDialogZoom", "function syncMasonry");
+assert.match(instagramZoomBinding, /ZOOMS\s*=\s*\[1,\s*2,\s*3\]/);
+assert.match(instagramZoomBinding, /pointerdown/);
+assert.match(instagramZoomBinding, /pointermove/);
+assert.match(instagramZoomBinding, /pointerup/);
+assert.match(instagramZoomBinding, /translate\(/);
+assert.match(instagram, /\.igm-dialog-zoomed/);
 
 // Instagram: username hover restores a profile preview with fetched profile details.
 const instagramProfileData = section(instagram, "async function resolveUser", "// clica o botão nativo do post");
