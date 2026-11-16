@@ -160,7 +160,7 @@ assert.match(instagram, /\.igm-postmediabox\{/);
 assert.match(instagram, /\.igm-postmedia\{[^}]*max-height:calc\(100dvh - 96px\)/);
 const instagramPostDetailStyle = section(instagram, ".igm-postdetail{", ".igm-postdetail.igm-gridnav");
 assert.match(instagramPostDetailStyle, /width:min\(1440px/);
-assert.doesNotMatch(instagramPostDetailStyle, /display:flex|height:calc/);
+assert.doesNotMatch(instagramPostDetailStyle, /display:flex|(?:^|[;\s])height:/);
 assert.match(instagramPostDetailStyle, /overflow:hidden/);
 assert.doesNotMatch(instagramPostDetailStyle, /overflow-y:\s*auto/);
 assert.doesNotMatch(instagramPostDetailStyle, /var\(--igm-maxw\)/);
