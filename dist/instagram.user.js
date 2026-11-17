@@ -677,10 +677,9 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igm-gridnav{ max-width:calc(var(--igm-maxw) + var(--igm-navw)) !important; padding-left:var(--igm-navw) !important; }
 /* página de publicação aberta em rota própria: amplia o post e mantém More posts alinhado ao grid. */
 .igm-postpage{ width:100% !important; max-width:min(1560px, calc(100vw - var(--igm-navw) - 24px)) !important; }
-.igm-postpage article{ width:100% !important; max-width:none !important; }
 .igm-postdetail{ box-sizing:border-box !important; width:min(1440px, calc(100vw - var(--igm-navw) - 48px)) !important;
-  max-width:none !important; max-height:calc(100vh - 64px)!important; max-height:calc(100dvh - 64px)!important;
-  min-height:0 !important; margin-left:auto !important; margin-right:auto !important; overflow:hidden !important;
+  max-width:none !important;
+  min-height:0 !important; margin-left:auto !important; margin-right:auto !important;
   overscroll-behavior:none !important; }
 .igm-postitem{ box-sizing:border-box !important; max-height:calc(100vh - 64px)!important; max-height:calc(100dvh - 64px)!important;
   min-height:0 !important; overflow:hidden !important; }
@@ -4163,7 +4162,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                 })
                 .sort((a, b) => a.textContent.length - b.textContent.length);
         }
-        const anchorsIn = (node) => [...node.querySelectorAll(POST_GRID_SEL)];
+        const anchorsIn = (node) => [...node.querySelectorAll(POST_GRID_SEL)].filter((anchor) => !anchor.closest(".igf-feed"));
         for (const heading of [...headings, ...labelled]) {
             if (!isRecommendationsHeading(heading.textContent || heading.getAttribute("aria-label"))) continue;
             for (let node = heading; node && node !== main; node = node.parentElement) {
@@ -4175,10 +4174,12 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     function postDetailBranches() {
         const main = document.querySelector("main");
-        const tiles = postRecommendationTiles();
         if (!main) return [];
-        const media = [...main.querySelectorAll("img,video")]
-            .filter((node) => !node.closest(".igf-src, .igf-feed") && !tiles.some((tile) => tile.contains(node)))
+        const article = [...main.querySelectorAll('article,[role="article"]')]
+            .find((node) => !node.closest(".igf-src, .igf-feed") && node.querySelector("img,video"));
+        if (!article) return [];
+        const media = [...article.querySelectorAll("img,video")]
+            .filter((node) => !node.closest(".igf-src, .igf-feed"))
             .sort((a, b) => {
                 const area = (node) => {
                     const rect = node.getBoundingClientRect();
@@ -4186,20 +4187,17 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                 };
                 return area(b) - area(a);
             })[0];
-        const articles = [...main.querySelectorAll('article,[role="article"]')]
-            .filter((article) => !article.closest(".igf-src, .igf-feed") && !tiles.some((tile) => article.contains(tile)));
-        let detail = media && articles.find((article) => article.contains(media));
-        if (!detail) detail = articles[0];
-        if (!detail) detail = media;
-        if (!detail) return [];
-        detail.classList.add("igm-postitem");
-        if (media) {
+        for (const node of main.querySelectorAll(".igm-postitem, .igm-postmedia, .igm-postmediabox, .igm-postdetail")) {
+            if (node !== article && node !== media && node !== media?.parentElement) {
+                node.classList.remove("igm-postitem", "igm-postmedia", "igm-postmediabox", "igm-postdetail", "igm-content", "igm-gridnav");
+            }
+        }
+        article.classList.add("igm-postitem");
+        if (media && (media.getBoundingClientRect().width >= 120 || (media.naturalWidth || media.videoWidth || 0) >= 320)) {
             media.classList.add("igm-postmedia");
             if (media.parentElement) media.parentElement.classList.add("igm-postmediabox");
         }
-        let branch = detail;
-        while (branch.parentElement && branch.parentElement !== main && !tiles.some((tile) => branch.parentElement.contains(tile))) branch = branch.parentElement;
-        return [branch];
+        return [article];
     }
     function gridContainer() {
         const minTiles = surface === "post" ? 2 : 4;
@@ -4278,7 +4276,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         const marks = [];
         if (surface === "post") for (const branch of postDetailBranches()) {
             branch.classList.add("igm-content", "igm-postdetail");
-            branch.classList.toggle("igm-gridnav", underNav);
+            branch.classList.remove("igm-gridnav");
             marks.push([branch, "igm-postdetail"]);
         }
         for (let n = grid; n && n !== col; n = n.parentElement) { n.classList.add("igm-wide"); marks.push([n, "igm-wide"]); }   // tira os caps internos do IG
