@@ -1875,10 +1875,12 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     // Fallback: o cap inline de 630px que o IG usa hoje na coluna (constante de layout, frágil por natureza).
     function feedColumnSplit(list) {
         let col = null, rails = null;
+        const isNativeSibling = (node, column) => node !== column && !node.contains(list) &&
+            !node.matches(".igf-feed, .igf-loader, .igf-savedbar");
         for (let c = list.parentElement; c && c.parentElement; c = c.parentElement) {
             const row = c.parentElement;
             if (row.tagName === "MAIN" || row === document.body) break;
-            const sibs = [...row.children].filter((k) => k !== c && !k.contains(list));
+            const sibs = [...row.children].filter((k) => isNativeSibling(k, c));
             if (!sibs.length) continue;
             const cr = c.getBoundingClientRect();
             const right = sibs.filter((k) => {
@@ -1893,7 +1895,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
                 if (/max-width\s*:\s*630px/.test(n.getAttribute("style") || "")) { col = n; break; }
             }
             if (!col || !col.parentElement) return null;
-            rails = [...col.parentElement.children].filter((k) => k.nodeType === 1 && k !== col && !k.contains(list));
+            rails = [...col.parentElement.children].filter((k) => isNativeSibling(k, col));
         }
         return { col, rails };
     }
@@ -4080,7 +4082,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function contentWrapper(col, list) {
         let w = list;
         while (w.parentElement && w.parentElement !== col) w = w.parentElement;
-        return w;
+        return w === list ? col : w;
     }
     // a tray de stories (atributo semântico estável do IG)
     function storiesTray(col) {
@@ -4137,8 +4139,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (tray) { tray.classList.add("igm-stories"); trayEl = tray; }
         for (const r of split.rails) { r.classList.toggle("igm-norail", !!prefs.hideRail); if (prefs.hideRail) marks.push([r, "igm-norail"]); }   // flag: esconder coluna direita
         if (tray) marks.push([tray, "igm-stories"]);
-        setChromeMarks(marks, split.col.parentElement);
         mountOwnFeed(list, cwrap);   // esconde a lista nativa + renderiza MEU feed em masonry
+        setChromeMarks(marks, split.col.parentElement); // inclui os nós próprios na contagem estável da row
     }
     // ===== EXPLORE / PROFILE / POST: grade de tiles → mosaico próprio =====
     // a "grade" = ancestral mais baixo que abraça a maioria dos tiles (eles vêm agrupados em linhas).
