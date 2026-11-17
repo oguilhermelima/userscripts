@@ -266,6 +266,9 @@ const instagramFeedDiscovery = section(instagram, "function feedArticleList", "f
 assert.match(instagramFeedDiscovery, /isHome\(\)\s*\?\s*1\s*:\s*2/);
 const instagramColumnSplit = section(instagram, "function feedColumnSplit", "function leftNavWidthBox");
 assert.match(instagramColumnSplit, /for \(let n = list\.parentElement;/);
+assert.match(instagramColumnSplit, /\.igf-feed, \.igf-loader, \.igf-saved-toolbar/);
+const instagramContentWrapper = section(instagram, "function contentWrapper", "function storiesTray");
+assert.match(instagramContentWrapper, /w === list \? col : w/);
 
 // Instagram: paint must not depend on a fullscreen gate that can hide both the
 // native fallback and the own feed while the DOM is unstable.
