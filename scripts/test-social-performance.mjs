@@ -160,9 +160,16 @@ assert.doesNotMatch(instagramRecommendations, /if \(!main \|\| !tiles\.length\) 
 const instagramPostGrid = section(instagram, "function gridContainer()", "\/\* botão de COPIAR o username");
 assert.match(instagramPostGrid, /surface === "post"/);
 const instagramPostTargets = section(instagram, "function postDetailBranches()", "function gridContainer");
-assert.match(instagramPostTargets, /article\.querySelectorAll\("img,video"\)/);
+assert.match(instagramPostTargets, /postDetailFallback\(main\)/);
 assert.doesNotMatch(instagramPostTargets, /while \(branch\.parentElement/);
 assert.match(instagramPostTargets, /\.igf-src, \.igf-feed/);
+const instagramPostFallback = section(instagram, "function postDetailFallback", "function postDetailBranches()");
+assert.match(instagramPostFallback, /postRecommendationTiles\(\)/);
+assert.match(instagramPostFallback, /contains\(avatar\)/);
+assert.match(instagramPostFallback, /igm-postnative/);
+assert.match(instagram, /function postAuthorAvatar\(author\)/);
+assert.match(instagram, /postAuthorAvatar\(p\.author\)/);
+assert.match(instagram, /\.igm-postnative\{/);
 const instagramPostLayout = section(instagram, "function applyGrid()", "\/\* SKELETON");
 assert.match(instagramPostLayout, /if \(!grid[\s\S]*applyPostDetailLayout\(\)/);
 assert.match(instagram, /igm-postpage|surface === "post"/);
