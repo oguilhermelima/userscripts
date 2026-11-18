@@ -45,6 +45,7 @@ assert.match(instagramCreateFeed, /apiFeedUsed\s*=\s*surface === "home" \? 0 : a
 assert.match(instagramCreateFeed, /if \(surface === "home"\) onApiFeed\(\)/);
 const instagramMount = section(instagram, "function mountOwnFeed", "function pauseNativeVideos");
 assert.match(instagramMount, /queueSyncFeed\(\)/);
+assert.match(instagramMount, /igSrc && igSrc !== src[\s\S]*loading = false/);
 assert.doesNotMatch(instagramMount, /if \(firstMount && feedEl\) teardownOwnFeed\(\)/);
 assert.match(instagramMount, /if \(!feedEl\) createFeed\(cwrap\)/);
 assert.match(instagramMount, /observeOptions\.attributes\s*=\s*true/);
@@ -267,6 +268,9 @@ assert.match(instagramFeedDiscovery, /isHome\(\)\s*\?\s*1\s*:\s*2/);
 const instagramColumnSplit = section(instagram, "function feedColumnSplit", "function leftNavWidthBox");
 assert.match(instagramColumnSplit, /for \(let n = list\.parentElement;/);
 assert.match(instagramColumnSplit, /\.igf-feed, \.igf-loader, \.igf-savedbar/);
+assert.match(instagramColumnSplit, /homeSplit && homeSplit\.col\.isConnected/);
+assert.match(instagramColumnSplit, /homeSplit\.col\.contains\(list\)/);
+assert.match(instagramColumnSplit, /homeSplit\.rowKids/);
 const instagramContentWrapper = section(instagram, "function contentWrapper", "function storiesTray");
 assert.match(instagramContentWrapper, /w === list \? col : w/);
 
