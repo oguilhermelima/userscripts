@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instagram — Native Video Controls & Mosaic Feed
 // @namespace    instagram-native-player
-// @version      3.27.0
+// @version      3.28.0
 // @updateURL    https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/instagram.user.js
 // @downloadURL  https://raw.githubusercontent.com/oguilhermelima/userscripts/main/dist/instagram.user.js
 // @description  Additive layer over Instagram: an integrated video player on every surface, plus an optional uniform card grid for the home feed, explore, profiles and saved posts, all configured from a floating settings panel.
@@ -1874,7 +1874,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     // rail da tray de stories (que mora ACIMA da lista, dentro da coluna) e de qualquer bloco acima/abaixo.
     // Uma rail que nós mesmos já escondemos (.igm-norail, sem caixa) conta. Só roda na montagem (rota).
     // Fallback: o cap inline de 630px que o IG usa hoje na coluna (constante de layout, frágil por natureza).
+    let homeSplit = null;
     function feedColumnSplit(list) {
+        if (homeSplit && homeSplit.col.isConnected && homeSplit.col.contains(list) &&
+            homeSplit.row.isConnected && homeSplit.col.parentElement === homeSplit.row &&
+            homeSplit.row.childElementCount === homeSplit.rowKids) return homeSplit;
         let col = null, rails = null;
         const isNativeSibling = (node, column) => node !== column && !node.contains(list) &&
             !node.matches(".igf-feed, .igf-loader, .igf-savedbar");
@@ -3936,7 +3940,6 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     // cria o NOSSO feed (+ loader) dentro de `parent`: o cwrap da superfície, ou o shell do boot da home
     function createFeed(parent) {
         unmountSkeleton();
-        if (nativeHideTimer) { clearTimeout(nativeHideTimer); nativeHideTimer = null; }
         resetFeedItems();
         feedEl = el("div", { class: "igf-feed" });
         bindFeedEvents(feedEl);
@@ -3976,7 +3979,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         while (src.parentElement && src.parentElement !== cwrap) src = src.parentElement;
         if (src === document.body || src === document.documentElement || !cwrap.contains(src)) return;
         const firstMount = !feedEl;
-        if (igSrc && igSrc !== src) igSrc.classList.remove("igf-src");
+        if (igSrc && igSrc !== src) {
+            igSrc.classList.remove("igf-src");
+            loading = false; feedExhausted = false;
+            unmountSkeleton();
+        }
         igSrc = src;
         // home: esconde a nativa JÁ (harvest confiável, o skeleton cobre). GRID (explore/profile): só esconde
         // DEPOIS que renderizar o 1º card (em syncOwnFeed) → se o harvest falhar, a grade NATIVA continua à
@@ -4142,6 +4149,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         if (tray) marks.push([tray, "igm-stories"]);
         mountOwnFeed(list, cwrap);   // esconde a lista nativa + renderiza MEU feed em masonry
         setChromeMarks(marks, split.col.parentElement); // inclui os nós próprios na contagem estável da row
+        homeSplit = { col: split.col, rails: split.rails, row: split.col.parentElement, rowKids: split.col.parentElement.childElementCount };
     }
     // ===== EXPLORE / PROFILE / POST: grade de tiles → mosaico próprio =====
     // a "grade" = ancestral mais baixo que abraça a maioria dos tiles (eles vêm agrupados em linhas).
@@ -4487,6 +4495,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     function unmasonry() {
         if (boot) endBoot();
+        homeSplit = null;
         unmountSkeleton();
         closeProfilePopover();
         // sem nada aplicado, não há o que limpar — sem este flag os 5 querySelectorAll full-doc rodavam
