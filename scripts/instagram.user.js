@@ -690,6 +690,16 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
 .igm-postdetail.igm-gridnav{ width:min(calc(1440px + var(--igm-navw)), calc(100vw - 24px)) !important;
   padding-left:var(--igm-navw) !important; }
 @media (min-width: 1000px){
+  .igm-postnative{ display:flex !important; width:100% !important; height:calc(100vh - 112px) !important;
+    height:calc(100dvh - 112px) !important; max-height:calc(100dvh - 112px) !important; min-height:0 !important; }
+  .igm-postnative-media{ flex:1 1 60% !important; min-width:0 !important; height:100% !important; overflow:hidden !important; }
+  .igm-postnative-side{ flex:0 1 420px !important; min-width:min(360px, 34vw) !important; max-width:520px !important; min-height:0 !important; }
+  .igm-postnative-media :is([role="presentation"], ul, li, li > div, ._aagu, ._aagv){ height:100% !important; max-height:100% !important; }
+  .igm-postnative-media ._aagv{ padding-bottom:0 !important; }
+  .igm-postnative-media ._aagv img{ width:100% !important; height:100% !important; object-fit:contain !important; }
+  .igm-postnative-media li > div[style*="width:"]{ width:100% !important; }
+}
+@media (min-width: 1000px){
   .igm-postmediabox{ height:min(calc(100vh - 112px), 920px) !important; height:min(calc(100dvh - 112px), 920px) !important; }
   .igm-postmedia{ width:100% !important; height:100% !important; max-height:100% !important; object-fit:contain !important; }
   .igm-postmediabox ~ *:last-child{ flex:0 1 420px !important; min-width:min(360px, 34vw) !important; max-width:520px !important; }
@@ -2100,6 +2110,22 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     // lê um TILE (explore/perfil/salvos) → post. Mídia = thumb da API (ou o <img>/poster do tile);
     // autor/avatar/legenda vêm da API (igMedia) e preenchem o card depois, se chegarem atrasados.
+    const postAvatars = new Map();
+    function postAuthorAvatar(author) {
+        if (surface !== "post" || !author) return "";
+        const key = author.toLowerCase();
+        if (postAvatars.has(key)) return postAvatars.get(key);
+        const main = document.querySelector("main");
+        if (!main) return "";
+        for (const img of main.querySelectorAll("img[alt]")) {
+            if (img.closest(".igf-src, .igf-feed")) continue;
+            const alt = (img.alt || "").toLowerCase();
+            if (!alt.includes(key) || !/(profile|perfil)/.test(alt)) continue;
+            const src = img.currentSrc || img.src;
+            if (src) { postAvatars.set(key, src); return src; }
+        }
+        return "";
+    }
     function harvestTile(a) {
         const key = tileKey(a);
         if (!key || posts.has(key)) return false;
@@ -2130,7 +2156,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         posts.set(key, {
             key, code, href: (a.getAttribute("href") || a.href || ""), media, isVideo, tile: true,
             // dados p/ o CARD COMPLETO (explore/perfil/salvos): vêm da API (igMedia), não do DOM do tile
-            author: rec.author || "", avatar: rec.avatar || "", caption: rec.caption || "", likes: rec.likes || "", comments: rec.comments || "",
+            author: rec.author || "", avatar: rec.avatar || postAuthorAvatar(rec.author) || "", caption: rec.caption || "", likes: rec.likes || "", comments: rec.comments || "",
             publishedAt: rec.publishedAt || 0,
             authorPk: rec.authorPk || "", following: rec.following,
         });
@@ -3776,6 +3802,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             }
             if (rec.publishedAt) p.publishedAt = rec.publishedAt;
         }
+        if (!p.avatar && p.author) p.avatar = postAuthorAvatar(p.author);
         if (surface === "home" && !p.caption && !(rec && rec.captionKnown)) {
             const art = nativeArticle(card.dataset.key), h = art && art.querySelector("h1");
             const nativeCaption = h ? (h.textContent || "").trim() : "";
@@ -4069,6 +4096,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     }
     function teardownOwnFeed() {
         closeProfilePopover();
+        postAvatars.clear();
         cancelInlineJSON();
         if (srcMO) { srcMO.disconnect(); srcMO = null; } srcMOTarget = null;
         if (loaderIO) { loaderIO.disconnect(); loaderIO = null; }
@@ -4181,12 +4209,40 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         }
         return [];
     }
+    function postDetailFallback(main) {
+        const tiles = postRecommendationTiles();
+        const outsideGrid = (node) => !node.closest(".igf-src, .igf-feed") && !tiles.some((tile) => tile.contains(node));
+        const avatar = [...main.querySelectorAll('img[alt]')].find((img) => outsideGrid(img) && /profile|perfil/i.test(img.alt || ""));
+        if (!avatar) return [];
+        const media = [...main.querySelectorAll("img,video")].filter((node) => {
+            if (!outsideGrid(node) || node === avatar) return false;
+            const rect = node.getBoundingClientRect();
+            return rect.width >= 160 && rect.height >= 160;
+        }).sort((a, b) => {
+            const ar = a.getBoundingClientRect(), br = b.getBoundingClientRect();
+            return br.width * br.height - ar.width * ar.height;
+        })[0];
+        if (!media) return [];
+        let item = media.parentElement;
+        while (item && item !== main && !item.contains(avatar)) item = item.parentElement;
+        if (!item || item === main || tiles.some((tile) => item.contains(tile))) return [];
+        let mediaBranch = media, sideBranch = avatar;
+        while (mediaBranch.parentElement && mediaBranch.parentElement !== item) mediaBranch = mediaBranch.parentElement;
+        while (sideBranch.parentElement && sideBranch.parentElement !== item) sideBranch = sideBranch.parentElement;
+        if (mediaBranch === sideBranch || mediaBranch.parentElement !== item || sideBranch.parentElement !== item) return [];
+        const wrapper = item.parentElement;
+        if (!wrapper || wrapper === main || tiles.some((tile) => wrapper.contains(tile))) return [];
+        item.classList.add("igm-postnative");
+        mediaBranch.classList.add("igm-postnative-media");
+        sideBranch.classList.add("igm-postnative-side");
+        return [wrapper];
+    }
     function postDetailBranches() {
         const main = document.querySelector("main");
         if (!main) return [];
         const article = [...main.querySelectorAll('article,[role="article"]')]
             .find((node) => !node.closest(".igf-src, .igf-feed") && node.querySelector("img,video"));
-        if (!article) return [];
+        if (!article) return postDetailFallback(main);
         const media = [...article.querySelectorAll("img,video")]
             .filter((node) => !node.closest(".igf-src, .igf-feed"))
             .sort((a, b) => {
@@ -4511,6 +4567,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (const e of document.querySelectorAll(".igm-postitem")) e.classList.remove("igm-postitem");
         for (const e of document.querySelectorAll(".igm-postmedia")) e.classList.remove("igm-postmedia");
         for (const e of document.querySelectorAll(".igm-postmediabox")) e.classList.remove("igm-postmediabox");
+        for (const e of document.querySelectorAll(".igm-postnative")) e.classList.remove("igm-postnative");
+        for (const e of document.querySelectorAll(".igm-postnative-media")) e.classList.remove("igm-postnative-media");
+        for (const e of document.querySelectorAll(".igm-postnative-side")) e.classList.remove("igm-postnative-side");
         for (const e of document.querySelectorAll(".igm-col")) e.classList.remove("igm-col");
         for (const e of document.querySelectorAll(".igm-stories")) e.classList.remove("igm-stories");
         for (const e of document.querySelectorAll(".igm-norail")) e.classList.remove("igm-norail");
