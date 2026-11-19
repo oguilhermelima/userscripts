@@ -1005,6 +1005,7 @@ html.igf-boot .igm-content > :not(.igf-feed):not(.igf-loader):not(.igf-keep){ po
 .igf-cdot.on{ background:#fff; }
 .igf-ccount{ position:absolute; top:8px; right:8px; z-index:3; pointer-events:none;
   background:rgba(0,0,0,.55); color:#fff; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; }
+.igf-post-ccount{ z-index:6; font-size:12px; padding:5px 9px; }
 
 /* ===== SALVOS: toolbar de multisseleção + overlay/checkbox nos tiles ===== */
 .igf-savedbar{ display:flex; align-items:center; gap:10px; padding:4px 2px 12px; }
@@ -1458,8 +1459,9 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             on(tgt, "mouseleave", hide);
         } else {
             // feed: capture phase porque o IG engole pointer events na overlay (bubble).
-            on(host, "mousemove", show, { capture: true });
-            on(host, "mouseleave", hide);
+            const hoverTarget = host.closest(".igm-postnative-media") && host.closest("li") || host;
+            on(hoverTarget, "mousemove", show, { capture: true });
+            on(hoverTarget, "mouseleave", hide);
         }
 
         renderTime(); renderBuffered();
@@ -2241,8 +2243,32 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             el("button", { class: "igf-media-tool", type: "button", "data-act": "copyMedia", title: "Copiar URL direta da mídia", "aria-label": "Copiar URL direta da mídia", icon: ICO.link }),
             el("button", { class: "igf-media-tool", type: "button", "data-act": "downloadMedia", title: "Baixar mídia", "aria-label": "Baixar mídia", icon: ICO.download }));
     }
+    const postCarouselObservers = new Map();
+    function ensurePostCarouselCounter(host) {
+        if (postCarouselObservers.has(host)) return;
+        for (const [node, observer] of postCarouselObservers) {
+            if (!node.isConnected) { observer.disconnect(); postCarouselObservers.delete(node); }
+        }
+        const counter = el("div", { class: "igf-ccount igf-post-ccount", "aria-live": "polite", hidden: "" });
+        host.appendChild(counter);
+        const update = () => {
+            const dots = [...host.querySelectorAll("._acvz > ._acnb")];
+            const active = dots.findIndex((dot) => dot.classList.contains("_acnf"));
+            const text = active >= 0 && dots.length > 1 ? (active + 1) + " / " + dots.length : "";
+            counter.hidden = !text;
+            if (counter.textContent !== text) counter.textContent = text;
+        };
+        const observer = new MutationObserver((records) => {
+            if (records.some((record) => record.target !== counter && !counter.contains(record.target))) update();
+        });
+        observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+        postCarouselObservers.set(host, observer);
+        update();
+    }
     function ensurePostMediaTools(host) {
-        if (!host || host.querySelector(":scope > .igf-post-media-tools")) return;
+        if (!host) return;
+        ensurePostCarouselCounter(host);
+        if (host.querySelector(":scope > .igf-post-media-tools")) return;
         const tools = buildMediaTools();
         tools.classList.add("igf-post-media-tools");
         tools.addEventListener("click", (event) => {
@@ -4612,6 +4638,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (const e of document.querySelectorAll(".igm-postnative-media")) e.classList.remove("igm-postnative-media");
         for (const e of document.querySelectorAll(".igm-postnative-side")) e.classList.remove("igm-postnative-side");
         for (const e of document.querySelectorAll(".igf-post-media-tools")) e.remove();
+        for (const [host, observer] of postCarouselObservers) {
+            observer.disconnect();
+            host.querySelector(":scope > .igf-post-ccount")?.remove();
+        }
+        postCarouselObservers.clear();
         for (const e of document.querySelectorAll(".igm-col")) e.classList.remove("igm-col");
         for (const e of document.querySelectorAll(".igm-stories")) e.classList.remove("igm-stories");
         for (const e of document.querySelectorAll(".igm-norail")) e.classList.remove("igm-norail");
