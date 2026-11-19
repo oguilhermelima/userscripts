@@ -836,6 +836,9 @@ ${ariaHas("searchPart", ".igm-gridcol:not(.igm-postpage) input")}{ max-width:non
   border:1px solid rgba(255,255,255,.2); border-radius:10px; background:rgba(15,15,18,.64); backdrop-filter:blur(10px);
   opacity:0; visibility:hidden; transform:translateY(-4px); transition:opacity .16s ease, transform .16s ease, visibility .16s; }
 .igf-media:hover .igf-media-tools, .igf-media:focus-within .igf-media-tools{ opacity:1; visibility:visible; transform:none; }
+.igm-postnative-media, .igm-postmediabox{ position:relative !important; }
+.igm-postnative-media:hover > .igf-media-tools, .igm-postnative-media:focus-within > .igf-media-tools,
+.igm-postmediabox:hover > .igf-media-tools, .igm-postmediabox:focus-within > .igf-media-tools{ opacity:1; visibility:visible; transform:none; }
 .igf-media-tool{ display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; padding:0;
   border:0; border-radius:7px; background:transparent; color:#fff; cursor:pointer; transition:background .15s ease, transform .15s ease; }
 .igf-media-tool:hover{ background:rgba(255,255,255,.18); transform:translateY(-1px); }
@@ -2238,6 +2241,41 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         return el("div", { class: "igf-media-tools" },
             el("button", { class: "igf-media-tool", type: "button", "data-act": "copyMedia", title: "Copiar URL direta da mídia", "aria-label": "Copiar URL direta da mídia", icon: ICO.link }),
             el("button", { class: "igf-media-tool", type: "button", "data-act": "downloadMedia", title: "Baixar mídia", "aria-label": "Baixar mídia", icon: ICO.download }));
+    }
+    function ensurePostMediaTools(host) {
+        if (!host || host.querySelector(":scope > .igf-post-media-tools")) return;
+        const tools = buildMediaTools();
+        tools.classList.add("igf-post-media-tools");
+        tools.addEventListener("click", (event) => {
+            const btn = event.target.closest("button[data-act]");
+            if (!btn || !isPostRoute()) return;
+            event.preventDefault(); event.stopPropagation();
+            const box = host.getBoundingClientRect();
+            const visible = [...host.querySelectorAll("video,img")].filter((media) => {
+                const rect = media.getBoundingClientRect();
+                const width = Math.min(rect.right, box.right) - Math.max(rect.left, box.left);
+                const height = Math.min(rect.bottom, box.bottom) - Math.max(rect.top, box.top);
+                return width >= 120 && height >= 120;
+            });
+            const media = visible.find((node) => node.tagName === "VIDEO") || visible[0];
+            if (!media) { toast("A mídia ainda não está disponível"); return; }
+            const code = (location.pathname.match(/^\/(?:p|reel|reels)\/([^/]+)/) || [])[1] || "";
+            const rec = igMedia.get(code) || {};
+            const slide = media.closest("li"), slides = slide && slide.parentElement ? [...slide.parentElement.children] : [];
+            const index = slide ? slides.indexOf(slide) : -1;
+            const info = index >= 0 && rec.carousel && slides.length === rec.carousel.length ? rec.carousel[index] : null;
+            const kind = media.tagName === "VIDEO" ? "video" : "image";
+            let url = info && !!info.isVideo === (kind === "video") ? (info.downloadUrl || (kind === "video" ? info.videoUrl : info.imageUrl)) : "";
+            if (!url && !rec.carousel) url = kind === "video" ? rec.downloadVideoUrl || rec.videoUrl : rec.originalImageUrl || rec.imageUrl;
+            if (!url) url = media.currentSrc || media.src || "";
+            if (!/^https?:/i.test(url)) url = "";
+            if (!url) { toast("A URL da mídia ainda não está disponível"); return; }
+            const card = { dataset: { mediaUrl: url, mediaType: kind, mediaIndex: index >= 0 ? String(index + 1) : "" } };
+            const post = { code, isVideo: kind === "video" };
+            if (btn.dataset.act === "copyMedia") copyMediaLink(post, card, btn);
+            else if (btn.dataset.act === "downloadMedia") downloadMedia(post, card, btn);
+        });
+        host.appendChild(tools);
     }
     // ABRIR A MODAL (overlay sobre o feed), não navegar. O <a> de permalink (`/p/CODE/`) só NAVEGA →
     // página do post ("outra página"). A modal in-feed é aberta por `openPostModalForId` (bundle), que
@@ -4232,6 +4270,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         item.classList.add("igm-postnative");
         mediaBranch.classList.add("igm-postnative-media");
         sideBranch.classList.add("igm-postnative-side");
+        ensurePostMediaTools(mediaBranch);
+        collectVideos(mediaBranch); queueVideoWork();
         return [wrapper];
     }
     function postDetailBranches() {
@@ -4257,7 +4297,11 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         article.classList.add("igm-postitem");
         if (media && (media.getBoundingClientRect().width >= 120 || (media.naturalWidth || media.videoWidth || 0) >= 320)) {
             media.classList.add("igm-postmedia");
-            if (media.parentElement) media.parentElement.classList.add("igm-postmediabox");
+            if (media.parentElement) {
+                media.parentElement.classList.add("igm-postmediabox");
+                ensurePostMediaTools(media.parentElement);
+                collectVideos(media.parentElement); queueVideoWork();
+            }
         }
         return [article];
     }
@@ -4401,7 +4445,8 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
     function nativeDialogImage(target) {
         const image = target && target.closest && target.closest("img");
         if (!image || image.closest(".igf-src, .igf-feed")) return null;
-        if (!image.closest('[role="dialog"] article')) return null;
+        if (!image.closest('[role="dialog"] article') &&
+            !(isPostRoute() && image.closest("main .igm-postnative-media, main .igm-postmediabox"))) return null;
         const rect = image.getBoundingClientRect();
         return image.naturalWidth > 0 && rect.width >= 160 && rect.height >= 160 ? image : null;
     }
@@ -4567,6 +4612,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
         for (const e of document.querySelectorAll(".igm-postnative")) e.classList.remove("igm-postnative");
         for (const e of document.querySelectorAll(".igm-postnative-media")) e.classList.remove("igm-postnative-media");
         for (const e of document.querySelectorAll(".igm-postnative-side")) e.classList.remove("igm-postnative-side");
+        for (const e of document.querySelectorAll(".igf-post-media-tools")) e.remove();
         for (const e of document.querySelectorAll(".igm-col")) e.classList.remove("igm-col");
         for (const e of document.querySelectorAll(".igm-stories")) e.classList.remove("igm-stories");
         for (const e of document.querySelectorAll(".igm-norail")) e.classList.remove("igm-norail");
