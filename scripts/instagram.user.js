@@ -2075,7 +2075,7 @@ html.igf-no-msg .igf-msgdock{ display:none !important; }
             if (/^\d[\d.,]*\s?[KMmilB]*$/.test(t) && t.length < 10 && !nums.includes(t)) { nums.push(t); if (nums.length >= 2) break; }
         }
         // O estado do botão nativo é o fallback enquanto o payload não traz a amizade.
-        let following = rec.following;
+        let following = rec0.following;
         for (const b of a.querySelectorAll('button, [role="button"]')) {
             if (typeof following === "boolean") break;
             const label = (b.textContent || "").trim();
