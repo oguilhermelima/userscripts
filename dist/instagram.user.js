@@ -695,10 +695,6 @@ input.igvc-range::-moz-range-thumb{ width:12px; height:12px; border:0; border-ra
     height:calc(100dvh - 112px) !important; max-height:calc(100dvh - 112px) !important; min-height:0 !important; }
   .igm-postnative-media{ flex:1 1 60% !important; min-width:0 !important; height:100% !important; overflow:hidden !important; }
   .igm-postnative-side{ flex:0 1 420px !important; min-width:min(360px, 34vw) !important; max-width:520px !important; min-height:0 !important; }
-  .igm-postnative-media :is([role="presentation"], ul, li, li > div, ._aagu, ._aagv){ height:100% !important; max-height:100% !important; }
-  .igm-postnative-media ._aagv{ padding-bottom:0 !important; }
-  .igm-postnative-media ._aagv img{ width:100% !important; height:100% !important; object-fit:contain !important; }
-  .igm-postnative-media li > div[style*="width:"]{ width:100% !important; }
 }
 @media (min-width: 1000px){
   .igm-postmediabox{ height:min(calc(100vh - 112px), 920px) !important; height:min(calc(100dvh - 112px), 920px) !important; }
